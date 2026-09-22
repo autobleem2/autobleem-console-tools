@@ -1,0 +1,32 @@
+# autobleem-console-tools CI: build pscbios + abflashkit against the autobleem-core submodule in the shared
+# image. NOTE: the submodule checkout needs autobleem-core to be public (a repo's GITHUB_TOKEN cannot read
+# other private org repos) - as libpicofe is public for pcsx-abnxt. Gated by AB_CI_ENABLED.
+name: build
+on:
+  push:
+    branches: [develop, master]
+    tags: ['v*']
+  pull_request:
+    branches: [develop, master]
+  workflow_dispatch:
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    if: vars.AB_CI_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/autobleem2/autobleem-build:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+      - name: Build
+        run: cmake --build build
