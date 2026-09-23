@@ -61,3 +61,14 @@ add_subdirectory(autobleem-core)
 
 add_subdirectory(apps/pscbios)
 add_subdirectory(apps/abflashkit)
+
+# the tools' own suites (tests/), on the core's harness - host builds only
+if (AB_TARGET STREQUAL "dev")
+    option(AB_TOOL_TESTS "Build the console tools' unit tests" ON)
+else()
+    set(AB_TOOL_TESTS OFF)
+endif()
+if (AB_TOOL_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
