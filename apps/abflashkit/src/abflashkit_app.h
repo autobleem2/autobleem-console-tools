@@ -5,6 +5,7 @@
 #pragma once
 
 #include "app_base.h"
+#include "core/flash_actions.h"
 #include "core/flasher.h"
 #include "core/led.h"
 
@@ -25,6 +26,9 @@ public:
     std::string validMarker() const; // <usb root>/validlboot - skips the restore's inspection
     std::string kernelDir() const;   // <app dir>/kernel - boot.img, boot.md5, recovery-*.img, install_payload.sh
     std::string scratchDir() const { return scratchDir_; }
+    // all of those, plus the built-in games (Env's internal games dir and internal.db) and the stick's
+    // "Games Backup" folder - what the actions run with
+    FlashKitPaths paths() const;
 
     int run();
 

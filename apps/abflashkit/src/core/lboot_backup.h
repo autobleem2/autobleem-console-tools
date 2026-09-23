@@ -5,6 +5,8 @@
 //
 #pragma once
 
+#include <ableem/engine/byte_progress.h>
+
 #include <string>
 #include <vector>
 
@@ -40,4 +42,6 @@ public:
     };
     // what an extracted backup holds, judged by those md5s
     static Contents inspect(const std::string &extractedDir);
+    // the same, reporting the bytes hashed so far over both images together
+    static Contents inspect(const std::string &extractedDir, const ableem::ByteProgress &bytes);
 };

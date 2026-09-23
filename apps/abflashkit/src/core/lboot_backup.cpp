@@ -55,14 +55,26 @@ bool LbootBackup::isAutoBleemBackup(const string &path) {
 // LbootBackup::inspect
 //*******************************
 LbootBackup::Contents LbootBackup::inspect(const string &extractedDir) {
+    return inspect(extractedDir, ableem::ByteProgress());
+}
+
+LbootBackup::Contents LbootBackup::inspect(const string &extractedDir, const ableem::ByteProgress &bytes) {
     Contents contents;
     string boot = extractedDir + sep + "boot.img";
     string rootfs = extractedDir + sep + "rootfs.ext4";
     contents.hasBoot = DirEntry::exists(boot);
-    if (contents.hasBoot)
-        contents.bootIsVanilla = ableem::Md5::ofFile(boot) == VanillaBootMd5;
     contents.hasRootfs = DirEntry::exists(rootfs);
+    // one count over both images: the boot image's bytes, then the rootfs's after them
+    const uint64_t bootSize = contents.hasBoot ? static_cast<uint64_t>(DirEntry::fileSize(boot)) : 0;
+    const uint64_t total = bootSize + (contents.hasRootfs ? static_cast<uint64_t>(DirEntry::fileSize(rootfs)) : 0);
+    auto from = [&bytes, total](uint64_t before) -> ableem::ByteProgress {
+        if (!bytes)
+            return ableem::ByteProgress();
+        return [&bytes, before, total](uint64_t done, uint64_t) { bytes(before + done, total); };
+    };
+    if (contents.hasBoot)
+        contents.bootIsVanilla = ableem::Md5::ofFile(boot, from(0)) == VanillaBootMd5;
     if (contents.hasRootfs)
-        contents.rootfsIsVanilla = ableem::Md5::ofFile(rootfs) == VanillaRootfsMd5;
+        contents.rootfsIsVanilla = ableem::Md5::ofFile(rootfs, from(bootSize)) == VanillaRootfsMd5;
     return contents;
 }

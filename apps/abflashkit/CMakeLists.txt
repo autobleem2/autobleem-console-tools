@@ -7,6 +7,8 @@ add_library(abflashkit_core STATIC
         src/core/flash_actions.h
         src/core/flasher.cpp
         src/core/flasher.h
+        src/core/games_backup.cpp
+        src/core/games_backup.h
         src/core/lboot_backup.cpp
         src/core/lboot_backup.h
         src/core/lboot_signature.h

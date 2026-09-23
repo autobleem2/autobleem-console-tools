@@ -1,13 +1,14 @@
 # ABFlashKit - developer context
 
-The console's kernel installer, an App in `Apps/abflashkit` the launcher starts from its Apps set. Three
-actions on one status bar: **Flash Kernel** (a recovery backup of the console's partitions to the USB
+The console's kernel installer, an App in `Apps/abflashkit` the launcher starts from its Apps set. Four
+actions in one menu: **Flash Kernel** (a recovery backup of the console's partitions to the USB
 stick's `LBOOT.EPB` if there is none yet, the backup and the kernel image validated, the bootloader's
-recovery flag set, `kernel/boot.img` written to the boot partition, the AutoBleem rootfs overlay unpacked
-onto the data partition by `kernel/install_payload.sh`, the flag cleared, a reboot), **Full backup** (all
-four partitions, rootfs included, to `LBOOT.EPB`) and **Restore Mode** (checks the backup is ours and is
-the stock firmware, sets the recovery flag and reboots - Sony's own recovery then restores the console
-from the file on the stick). Ported on 2026-09-18 from the 2020 standalone tool (a fork of the old AutoBleem
+recovery flag set, `kernel/boot.img` written to the boot partition and read back, the AutoBleem rootfs
+overlay unpacked onto the data partition by `kernel/install_payload.sh`, the flag cleared, a reboot),
+**Full backup** (all four partitions, rootfs included, to `LBOOT.EPB`), **Restore Mode** (checks the
+backup is ours and is the stock firmware, sets the recovery flag and reboots - Sony's own recovery then
+restores the console from the file on the stick) and **Back up games** (2026-09-24: the built-in games in
+`/gaadata/<id>/` copied to `<usb root>/Games Backup/<title>/`, see below). Ported on 2026-09-18 from the 2020 standalone tool (a fork of the old AutoBleem
 GUI, in git history under `psctools/abflashkit`) onto `lib_ableem` + `ab_core` + `ab_classic`; the root
 CLAUDE.md covers those and the build.
 
@@ -17,9 +18,14 @@ no device. Keep it that way.
 
 ## What the console provides
 
-- `/dev/disk/by-partlabel/{BOOTIMG1,ROOTFS1,USRDATA,TEE1}` - read as files into the backup; `MISC` and
-  `BOOTIMG1` are written with `dd` (the recovery flag from `kernel/recovery-{on,off}.img`, 16 bytes; the
-  kernel from `kernel/boot.img`).
+- `/dev/disk/by-partlabel/{BOOTIMG1,ROOTFS1,USRDATA,TEE1}` - read as files into the backup (a block
+  device's size comes from seeking to its end, `DirEntry::sizeBySeeking`). `MISC` is written with `dd`
+  (the recovery flag from `kernel/recovery-{on,off}.img`, 16 bytes). `BOOTIMG1` is written in-process since
+  2026-09-24 (`ConsoleFlasher::writeImage`, was `dd`): opened for update (never truncated or created),
+  refused before the first byte when the image is missing or bigger than the partition, `fsync`ed, dropped
+  from the page cache (`posix_fadvise`) and read back against the md5 of what was written.
+- `/gaadata/<id>/` (`Env::getPathToInternalGamesDir()`) - the built-in games, read only; their titles
+  come from the stick's `System/Databases/internal.db`, the launcher's copy of the console's database.
 - `image_verify_tool` - the firmware's own checker for an `LBOOT.EPB`; "fail" in its output is a no.
 - `kernel/install_payload.sh` (a console script in the payload, run with `bash`), `sync`, `killall -9
   autobleem-gui`, `systemctl stop weston`, `systemctl reboot`.
@@ -41,6 +47,36 @@ for byte the 2020 tool's; never regenerate it.** Its last nine bytes ("autobleem
 stock firmware's `boot.img` (`28ce5f6d…`) and `rootfs.ext4` (`ca710a12…`): a modified one, or one
 without a rootfs (an ABFK 1.0a backup), gets a warning question before a restore.
 
+## Progress (2026-09-24)
+
+Every step that can measure itself draws a bar under the spinner, in bytes: the backup (one bar over all
+the partitions, not one per partition), the kernel write and its read-back (one bar, twice the image's
+size), the restore's unpacking plus the md5 of `boot.img`/`rootfs.ext4` after it (one bar, both sized from
+the zip's directory up front), and the games backup (one bar over every file still to copy). The bytes come
+from autobleem-core's `ableem::ByteProgress` overloads (`ZipWriter::addFile`, `ZipArchive::extract`,
+`Md5::ofFile`, `DirEntry::copy`); `FlashKitActions::bar()` turns them into `BarSteps` (1000) and reports a
+step only when it moves, and `GuiFlashKitMain::progress` draws at most one every 40 ms - a frame waits for
+the display, so drawing all 1000 made a 2 s check take 26 s. A step that cannot measure itself -
+`image_verify_tool`, `install_payload.sh`, `sync` - goes through `FlashUi::runInBackground`: on a thread,
+with the spinner turning and no bar (the 2020 tool froze the screen for all of them).
+
+**A kernel write that fails** is now told apart (`Flasher::KernelWrite`): nothing written -> the flag is
+cleared and the console restarts as it was; written part way or not reading back -> the flag **stays on**
+and the payload is not installed, so the restart goes into Sony's recovery, which restores the partitions
+from the backup just made. The 2020 tool ignored `dd`'s result and cleared the flag either way.
+
+## Back up games (2026-09-24)
+
+`GamesBackup` (`core/games_backup.*`): every numbered folder under the internal games dir is a game (empty
+ones and `databases/` are not), copied whole, sub-folders included, to `Games Backup/<title>` - the title
+FAT-safe (`folderName`: no `<>:"/\|?*`, a colon becomes " -", no trailing dots/spaces), `"<title> (<id>)"`
+when two share one, `"Game <id>"` when internal.db does not know the id. A file is copied through
+`<name>.part` and renamed once whole; a file already there at the source's size is skipped, so a second run
+says "already backed up" and an interrupted one resumes. The free space is checked first (`System::
+diskSpace`, 16 MB of slack). Nothing on the console is written. The copies sit outside `Games/` on purpose:
+the launcher still shows the originals from `/gaadata`; moving a folder into `Games/` makes it a USB game.
+On a dev host `main.cpp` points the internal games dir at `<app dir>/fake/gaadata` with three 16 MB games.
+
 The vendored miniz needed one patch for this: its backward scan for the zip end record went wrong when
 the record was within 4 KB of the file start (a small zip plus the trailer) - marked `AutoBleem:` in
 `lib_ableem/third_party/miniz/miniz.c`, regression test in `tests/core/test_zip_writer.cpp`.
@@ -52,17 +88,21 @@ src/core/       abflashkit_core (SDL-free, links ab_core; the tests link it)
   lboot_signature.h   the trailer bytes
   lboot_backup.*      LbootBackup - the partition lists, the trailer, isAutoBleemBackup, inspect
   flasher.*           Flasher interface; ConsoleFlasher (the commands above, through System::execUnixCommand,
-                      the zip through ableem::ZipWriter, md5 through ableem::Md5) and FakeFlasher (every step
-                      logged and delayed 1.5 s; a backup written for real from stand-in files under
-                      <app dir>/fake/partitions; validation always passes; the reboot only sets a flag)
+                      the zip through ableem::ZipWriter, md5 through ableem::Md5, the kernel through
+                      writeImage) and FakeFlasher (every step logged and delayed 1.5 s; a backup written for
+                      real from 8 MB stand-in files under <app dir>/fake/partitions; validation always passes;
+                      kernelWrite says how the flash went; the reboot only sets a flag)
+  games_backup.*      GamesBackup - the built-in games found, named and copied to the stick
   led.*               Led interface; SysfsLed (a std::thread blinker, joined by the destructor - the 2020
                       tool forked one it never reaped) and NullLed (logs)
-  flash_actions.*     FlashKitActions - flash()/fullBackup()/restore() step by step, through a FlashUi
-                      (status line, confirm, wait) so the tests run them to the end against the fakes
-src/screens/gui_flashkit_main.*  the one screen: a GuiActionMenu of the three actions (name + a line of what it
+  flash_actions.*     FlashKitActions - flash()/fullBackup()/restore()/backupGames() step by step, through a
+                      FlashUi (status line, progress bar, confirm, wait, runInBackground) so the tests run them
+                      to the end against the fakes; FlashKitPaths is every path they use
+src/screens/gui_flashkit_main.*  the one screen: a GuiActionMenu of the four actions (name + a line of what it
                       does, the version at the header's right), and the FlashUi: each status line is the busy
-                      spinner's message over the dimmed menu (Gui::beginBusy), a question a GuiConfirm, a pause
-                      keeps the spinner turning; the last status stays 1.5 s before the menu is back
+                      spinner's message over the dimmed menu (Gui::beginBusy) with the bar under it, a question
+                      a GuiConfirm, a pause or a background job keeps the spinner turning; the last status stays
+                      1.5 s before the menu is back
 src/abflashkit_app.*  AbFlashKit : AppBase - holds the Flasher and the Led, knows the paths
 src/main.cpp          EnvironmentSetup::forTool, the flasher/led choice, logs
 resources/            app.ini, run.sh, readme.txt, icon.png, lang/ (Polski from the 2020 tool)
@@ -85,7 +125,8 @@ over the main file (`Lang::loadMore`). Regenerate `English.txt` with
 ## Build, run, test
 
 Part of the root build: `make_win.sh` builds `abflashkit.exe` and runs `tests/apps/test_abflashkit_core.cpp`
-(the three sequences with a scripted `FlashUi`, the backup round trip, the kernel check, the LED). `make_psc.sh`
+(the four sequences with a scripted `FlashUi` that also checks each bar fills, the backup round trip, the
+kernel check and write, the games backup, the LED). `make_psc.sh`
 builds it for the console, checks it, packs it and copies the binary plus `resources/` into
 `payload/Apps/abflashkit/` (binary name `abflashkit` since the port; `run.sh` matches). Not built for the Pi.
 
@@ -103,6 +144,9 @@ reports "Invalid backup or invalid kernel image" and "reboots"; drop a `kernel/b
   and before a Restore sets the recovery flag and reboots (the point of no return). Neither was asked.
 - A backup that fails half way is deleted, so the next flash does not take it for a good one.
 - The kernel md5 and the backup's contents are checked in-process (`ableem::Md5`), not through `md5sum`.
+- The kernel is written in-process and read back, not with `dd`; a failed write keeps the recovery flag on
+  (see "Progress"). Every long step shows a byte bar or a turning spinner instead of a frozen screen.
+- Back up games is new.
 - The blinker is a thread, not an orphaned fork; `systemctl reboot` and the rest are unchanged.
 - The dev host runs against a fake and never runs `dd`, `systemctl` or `image_verify_tool`; the 2020 tool
   ran them all on x86 (a Cross would have rebooted the machine).

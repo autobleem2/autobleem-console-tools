@@ -2,6 +2,7 @@
 // AbFlashKit: the program.
 //
 #include "abflashkit_app.h"
+#include "core/games_backup.h"
 #include "screens/gui_flashkit_main.h"
 #include "gui/screens/gui_confirm.h"
 
@@ -28,6 +29,18 @@ string AbFlashKit::validMarker() const {
 
 string AbFlashKit::kernelDir() const {
     return Env::getAppDir() + sep + "kernel";
+}
+
+FlashKitPaths AbFlashKit::paths() const {
+    FlashKitPaths paths;
+    paths.backup = backupPath();
+    paths.kernelDir = kernelDir();
+    paths.scratchDir = scratchDir_;
+    paths.validMarker = validMarker();
+    paths.internalGamesDir = Env::getPathToInternalGamesDir();
+    paths.internalDb = Env::getPathToInternalDBFile();
+    paths.gamesBackupDir = Env::getPathToUSBRoot() + sep + GamesBackup::FolderName;
+    return paths;
 }
 
 //*******************************

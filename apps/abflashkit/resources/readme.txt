@@ -32,3 +32,10 @@ USB port. If this happens:
 1. Copy backup from any other console - they are universal or
 2. (advanced users) Use Fastboot tool to flash old kernel and MISC partition
    This step is not part of this read me
+
+Back up games
+-------------
+Copies the console's built-in games to the "Games Backup" folder on the USB
+stick, one folder per game named by its title. Nothing on the console is
+changed. Games already copied are skipped, so running it again finishes an
+interrupted copy. Move a game folder into "Games" to play it from the stick.

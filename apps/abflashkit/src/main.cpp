@@ -44,6 +44,23 @@ static int runAbFlashKit(int argc, char *argv[]) {
     unique_ptr<Flasher> flasher = std::move(fake);
     unique_ptr<Led> led = make_unique<NullLed>();
     string scratchDir = fakeDir + sep + "lbootzip";
+    // and the console's built-in games: three numbered folders standing in for /gaadata, titled from the
+    // stick's internal.db like the real ones, big enough for Back up games' bar to be seen moving
+    string fakeGames = fakeDir + sep + "gaadata";
+    Env::setInternalGamesDir(fakeGames);
+    for (int id = 1; id <= 3; id++) {
+        string game = fakeGames + sep + to_string(id);
+        DirEntry::createDirs(game);
+        string disc = game + sep + "fake-" + to_string(id) + ".bin";
+        if (DirEntry::fileSize(disc) < 16 * 1024 * 1024) {
+            ofstream out(disc, ios::binary);
+            string block(1024 * 1024, static_cast<char>('0' + id));
+            for (int mb = 0; mb < 16; mb++)
+                out << block;
+        }
+        ofstream(game + sep + "fake-" + to_string(id) + ".cue")
+            << "FILE \"fake-" << id << ".bin\" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\n";
+    }
 #else
     unique_ptr<Flasher> flasher = make_unique<ConsoleFlasher>();
     unique_ptr<Led> led = make_unique<SysfsLed>();
