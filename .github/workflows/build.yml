@@ -30,3 +30,90 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
       - name: Build
         run: cmake --build build
+
+  plan:
+    if: vars.AB_CI_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0 }
+      - id: v
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else echo "version=$(date -u +%Y%m%d)-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"; fi
+
+  psc:
+    # cross-compiles pscbios+abflashkit for the console (AB_TARGET=psc, ported into this repo + the
+    # autobleem-core submodule 2026-09-23 - see their CMakeLists.txt comments) and publishes
+    # console-tools-psc-<version>.tar.gz, laid out as Apps/{pscbios,abflashkit}/ - what the PSC assembler
+    # will extract straight into the payload. Uses the image's proven gcc-6 toolchain (/opt/psc), the same
+    # one the launcher's own psc target builds with and that has run on real console hardware.
+    if: vars.AB_CI_ENABLED == 'true'
+    needs: plan
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/autobleem2/autobleem-build:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      SCCACHE_DIR: /sccache
+      SCCACHE_CACHE_SIZE: 2G
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Restore sccache cache
+        uses: actions/cache@v6
+        with:
+          path: /sccache
+          key: sccache-console-psc-${{ github.sha }}
+          restore-keys: sccache-console-psc-
+      - name: Configure (psc, /opt/psc toolchain)
+        run: |
+          cmake -S . -B build_psc -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=toolchains/psc/PSCtoolchainV8.cmake -DAB_PSC_TOOLCHAIN=/opt/psc \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+      - name: Build
+        run: ninja -C build_psc
+      - name: Check the binaries against the console's glibc 2.24 / GLIBCXX 3.4.22, no RPATH
+        run: |
+          bash tools/check_psc_binary.sh build_psc/apps/pscbios/pscbios /opt/psc
+          bash tools/check_psc_binary.sh build_psc/apps/abflashkit/abflashkit /opt/psc
+      - name: Package
+        id: stage
+        run: |
+          set -e
+          V="${{ needs.plan.outputs.version }}"
+          rm -rf stage out && mkdir -p stage/Apps/pscbios stage/Apps/abflashkit out
+          for tool in pscbios abflashkit; do
+            cp -a "apps/$tool/resources/." "stage/Apps/$tool/"
+            cp "build_psc/apps/$tool/$tool" "stage/Apps/$tool/$tool"
+            upx -q --best --lzma "stage/Apps/$tool/$tool" || true
+          done
+          tar -czf "out/console-tools-psc-$V.tar.gz" -C stage .
+          ls -l out
+      - uses: actions/upload-artifact@v7
+        with:
+          name: console-tools-psc
+          path: out/*.tar.gz
+          retention-days: 30
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [plan, psc]
+    runs-on: ubuntu-24.04
+    permissions: { contents: write }
+    steps:
+      - uses: actions/download-artifact@v8
+        with: { pattern: console-tools-psc, path: out, merge-multiple: true }
+      - name: Attach to the release
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          prerelease=""; case "${GITHUB_REF_NAME}" in *-*) prerelease="--prerelease";; esac
+          gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
+            --title "AutoBleem console tools ${GITHUB_REF_NAME}" --generate-notes $prerelease out/*.tar.gz || \
+          gh release upload "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" out/*.tar.gz --clobber
