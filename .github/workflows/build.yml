@@ -90,10 +90,21 @@ jobs:
           V="${{ needs.plan.outputs.version }}"
           rm -rf stage out && mkdir -p stage/Apps/pscbios stage/Apps/abflashkit out
           for tool in pscbios abflashkit; do
+            # payload/Apps/<tool>/ first: it holds what resources/ deliberately doesn't - abflashkit's
+            # kernel/ (boot.img, abrootfs.tgz, the recovery images, install_payload.sh), the release
+            # artefacts the tool flashes. Then resources/ over it (the maintained copy wins), then the
+            # fresh binary over the stale checked-in one.
+            cp -a "payload/Apps/$tool/." "stage/Apps/$tool/"
             cp -a "apps/$tool/resources/." "stage/Apps/$tool/"
             cp "build_psc/apps/$tool/$tool" "stage/Apps/$tool/$tool"
             upx -q --best --lzma "stage/Apps/$tool/$tool" || true
           done
+          # ABFlashKit is useless without its payload - never ship one that lacks it
+          for f in boot.img boot.md5 abrootfs.tgz install_payload.sh recovery-on.img recovery-off.img; do
+            test -s "stage/Apps/abflashkit/kernel/$f" || { echo "::error::Apps/abflashkit/kernel/$f missing"; exit 1; }
+          done
+          (cd stage/Apps/abflashkit/kernel && [ "$(md5sum boot.img | cut -c1-32)" = "$(head -c 32 boot.md5)" ]) \
+            || { echo "::error::kernel/boot.img does not match boot.md5"; exit 1; }
           tar -czf "out/console-tools-psc-$V.tar.gz" -C stage .
           ls -l out
       - uses: actions/upload-artifact@v7
