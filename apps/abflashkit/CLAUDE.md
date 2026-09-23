@@ -68,8 +68,10 @@ src/main.cpp          EnvironmentSetup::forTool, the flasher/led choice, logs
 resources/            app.ini, run.sh, readme.txt, icon.png, lang/ (Polski from the 2020 tool)
 ```
 The `kernel/` payload (`boot.img` 6.8 MB, `abrootfs.tgz` 22 MB, the recovery images, `install_payload.sh`,
-the md5 files) is **not** in `resources/` - it lives only in `payload/Apps/abflashkit/kernel/`, release
-artefacts that `make_psc.sh` leaves alone. `kernel/boot.md5` may be a bare hash or `md5sum`'s
+the md5 files) is **not** in `resources/` - it lives only in this repo's `payload/Apps/abflashkit/kernel/`,
+release artefacts no build touches; `.github/workflows/build.yml`'s Package step lays `payload/Apps/<tool>/`
+down first (then `resources/`, then the fresh binary) and refuses a package whose `kernel/` is incomplete or
+whose `boot.img` does not match `boot.md5`. `kernel/boot.md5` may be a bare hash or `md5sum`'s
 `<hash>  boot.img`; `abrootfs.md5` is not checked (it never was).
 
 ## Theme and language
