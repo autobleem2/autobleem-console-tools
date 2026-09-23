@@ -193,3 +193,19 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
             --title "AutoBleem console tools ${GITHUB_REF_NAME}" --generate-notes $prerelease out/*.tar.gz || \
           gh release upload "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" out/*.tar.gz --clobber
+
+  # the rolling development build: every successful build of develop replaces the assets of this repository's
+  # `nightly` pre-release (autobleem-build's nightly-release action), which autobleem-appliance's nightly
+  # assembly fetches the way it fetches a v* release. Never for a pull request or a tag.
+  nightly:
+    if: github.ref == 'refs/heads/develop' && github.event_name != 'pull_request'
+    needs: [plan, psc]
+    runs-on: ubuntu-24.04
+    permissions: { contents: write }
+    steps:
+      - uses: actions/download-artifact@v8
+        with: { pattern: console-tools-psc, path: out, merge-multiple: true }
+      - uses: autobleem2/autobleem-build/.github/actions/nightly-release@master
+        with:
+          files: out/*.tar.gz
+          version: ${{ needs.plan.outputs.version }}
