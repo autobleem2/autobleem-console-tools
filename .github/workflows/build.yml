@@ -46,6 +46,56 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           else echo "version=$(date -u +%Y%m%d)-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"; fi
 
+  kernel-payload:
+    # ABFlashKit's kernel/ (boot.img + abrootfs.tgz + recovery images + install_payload.sh) from
+    # autobleem2/psc-kernel-payload's releases - built from source there, the 2020 files checked in under
+    # payload/Apps/abflashkit/kernel only a fallback. A tag build takes the payload released under the same
+    # tag and fails without one (a release must not quietly ship the old payload); a branch build takes the
+    # newest payload release, or the checked-in files when there is none yet. Assets are listed by release
+    # id: GitHub's tag view can go on missing an asset uploaded after publishing.
+    if: vars.AB_CI_ENABLED == 'true'
+    needs: plan
+    runs-on: ubuntu-24.04
+    outputs:
+      source: ${{ steps.p.outputs.source }}
+    steps:
+      - id: p
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          R=autobleem2/psc-kernel-payload
+          mkdir -p kp
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            # gh prints the error body on stdout for a 404 - only a number is an id
+            id="$(gh api "repos/$R/releases/tags/$GITHUB_REF_NAME" --jq .id 2>/dev/null)" || id=""
+            [[ "$id" =~ ^[0-9]+$ ]] || { echo "::error::no $R release $GITHUB_REF_NAME - tag the payload first"; exit 1; }
+          else
+            ids="$(gh api "repos/$R/releases" --jq '.[] | select(.draft|not) | .id')"
+            id=""
+            for i in $ids; do
+              if gh api "repos/$R/releases/$i/assets" --jq '.[].name' | grep -q '^kernel-payload-psc-'; then id="$i"; break; fi
+            done
+            if [ -z "$id" ]; then
+              echo "::warning::no psc-kernel-payload release yet - the checked-in 2020 payload is used"
+              echo "source=checked-in" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+          fi
+          assets="$(gh api "repos/$R/releases/$id/assets" --paginate --jq '.[] | select(.name | startswith("kernel-payload-psc-")) | "\(.id) \(.name)"')"
+          [ -n "$assets" ] || { echo "::error::$R release $id has no kernel-payload-psc asset"; exit 1; }
+          aid="${assets%% *}"; name="${assets#* }"; name="${name%%$'\n'*}"
+          gh api -H 'Accept: application/octet-stream' "repos/$R/releases/assets/$aid" > "kp/$name"
+          tar -tzf "kp/$name" kernel/boot.img kernel/abrootfs.tgz > /dev/null
+          tag="$(gh api "repos/$R/releases/$id" --jq .tag_name)"
+          echo "payload: $name from $R@$tag"
+          echo "source=$tag" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        if: steps.p.outputs.source != 'checked-in'
+        with:
+          name: kernel-payload-psc
+          path: kp/*.tar.gz
+          retention-days: 7
+
   psc:
     # cross-compiles pscbios+abflashkit for the console (AB_TARGET=psc, ported into this repo + the
     # autobleem-core submodule 2026-09-23 - see their CMakeLists.txt comments) and publishes
@@ -53,7 +103,7 @@ jobs:
     # will extract straight into the payload. Uses the image's proven gcc-6 toolchain (/opt/psc), the same
     # one the launcher's own psc target builds with and that has run on real console hardware.
     if: vars.AB_CI_ENABLED == 'true'
-    needs: plan
+    needs: [plan, kernel-payload]
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/autobleem2/autobleem-build:latest
@@ -85,6 +135,11 @@ jobs:
         run: |
           bash tools/check_psc_binary.sh build_psc/apps/pscbios/pscbios /opt/psc
           bash tools/check_psc_binary.sh build_psc/apps/abflashkit/abflashkit /opt/psc
+      - uses: actions/download-artifact@v8
+        if: needs.kernel-payload.outputs.source != 'checked-in'
+        with:
+          name: kernel-payload-psc
+          path: kp
       - name: Package
         id: stage
         run: |
@@ -101,6 +156,14 @@ jobs:
             cp "build_psc/apps/$tool/$tool" "stage/Apps/$tool/$tool"
             upx -q --best --lzma "stage/Apps/$tool/$tool" || true
           done
+          # the kernel payload from psc-kernel-payload's release replaces the checked-in 2020 one (kernel-payload job)
+          if [ "${{ needs.kernel-payload.outputs.source }}" != checked-in ]; then
+            rm -rf stage/Apps/abflashkit/kernel
+            tar -xzf kp/kernel-payload-psc-*.tar.gz -C stage/Apps/abflashkit
+            echo "ABFlashKit kernel/: psc-kernel-payload ${{ needs.kernel-payload.outputs.source }}"
+          else
+            echo "ABFlashKit kernel/: the checked-in 2020 payload"
+          fi
           # ABFlashKit is useless without its payload - never ship one that lacks it
           for f in boot.img boot.md5 abrootfs.tgz install_payload.sh recovery-on.img recovery-off.img; do
             test -s "stage/Apps/abflashkit/kernel/$f" || { echo "::error::Apps/abflashkit/kernel/$f missing"; exit 1; }
