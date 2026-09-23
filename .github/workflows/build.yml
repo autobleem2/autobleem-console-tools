@@ -30,6 +30,8 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
       - name: Build
         run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure -j4
 
   plan:
     if: vars.AB_CI_ENABLED == 'true'
