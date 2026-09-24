@@ -14,6 +14,30 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  sdk-abi:
+    # PSC-Bios is an extension the launcher checks the AB_SDK_ABI of before loading it: one built against
+    # another ABI than the launcher it ships with is refused on the console. Our autobleem-core must be at
+    # the launcher's AB_SDK_ABI - the launcher's develop (a v* tag: its master, what a release ships). On the
+    # plain runner: the build image has no gh. The psc package waits for it.
+    if: vars.AB_CI_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - name: PSC-Bios matches the launcher's SDK
+        shell: bash
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          set -euo pipefail
+          ref=develop; [[ "$GITHUB_REF" == refs/tags/v* ]] && ref=master
+          core=$(gh api "repos/autobleem2/autobleem/contents/autobleem-core?ref=$ref" --jq .sha)
+          theirs=$(gh api -H 'Accept: application/vnd.github.raw' \
+            "repos/autobleem2/autobleem-core/contents/src/code/gui/extension.h?ref=$core" | sed -n 's/^#define AB_SDK_ABI \([0-9]*\).*/\1/p')
+          ours=$(sed -n 's/^#define AB_SDK_ABI \([0-9]*\).*/\1/p' autobleem-core/src/code/gui/extension.h)
+          echo "AB_SDK_ABI: ours $ours, the launcher's $ref (core $core) $theirs"
+          [ -n "$theirs" ] && [ "$ours" = "$theirs" ] || { echo "::error::bump autobleem-core to the launcher's (AB_SDK_ABI $theirs)"; exit 1; }
+
   build:
     if: vars.AB_CI_ENABLED == 'true'
     runs-on: ubuntu-24.04
@@ -27,21 +51,6 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
-      - name: PSC-Bios matches the launcher's SDK
-        # PSC-Bios is an extension the launcher checks the AB_SDK_ABI of before loading it: one built against
-        # another ABI than the launcher it ships with is refused on the console. Our autobleem-core must be at
-        # the launcher's AB_SDK_ABI - the launcher's develop (a v* tag: its master, what a release ships)
-        shell: bash
-        env: { GH_TOKEN: '${{ github.token }}' }
-        run: |
-          set -euo pipefail
-          ref=develop; [[ "$GITHUB_REF" == refs/tags/v* ]] && ref=master
-          core=$(gh api "repos/autobleem2/autobleem/contents/autobleem-core?ref=$ref" --jq .sha)
-          theirs=$(gh api -H 'Accept: application/vnd.github.raw' \
-            "repos/autobleem2/autobleem-core/contents/src/code/gui/extension.h?ref=$core" | sed -n 's/^#define AB_SDK_ABI \([0-9]*\).*/\1/p')
-          ours=$(sed -n 's/^#define AB_SDK_ABI \([0-9]*\).*/\1/p' autobleem-core/src/code/gui/extension.h)
-          echo "AB_SDK_ABI: ours $ours, the launcher's $ref (core $core) $theirs"
-          [ -n "$theirs" ] && [ "$ours" = "$theirs" ] || { echo "::error::bump autobleem-core to the launcher's (AB_SDK_ABI $theirs)"; exit 1; }
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
       - name: Build
@@ -119,7 +128,7 @@ jobs:
     # assembler extracts straight into the payload. Uses the image's proven gcc-6 toolchain (/opt/psc), the same
     # one the launcher's own psc target builds with and that has run on real console hardware.
     if: vars.AB_CI_ENABLED == 'true'
-    needs: [plan, kernel-payload]
+    needs: [plan, kernel-payload, sdk-abi]
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/autobleem2/autobleem-build:${{ startsWith(github.ref, 'refs/tags/v') && 'latest' || 'develop' }}
