@@ -2,7 +2,7 @@
 // GuiSsidScanMenu / GuiTimezoneSelect: the two pickers.
 //
 #include "gui_ssid_scan_menu.h"
-#include "../pscbios_app.h"
+#include "../pscbios.h"
 #include "gui/gui.h"
 
 using namespace std;

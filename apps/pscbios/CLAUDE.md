@@ -1,8 +1,12 @@
 # PSC-Bios - developer context
 
-The console's hardware configuration tool, started by the launcher's *Hardware Information* item
-(`SystemMenuAction::HardwareInfo` runs `Apps/pscbios/run.sh` on a PSC; a Pi or a PC gets the built-in
-`GuiHardwareInfo` instead). One screen of facts - the time and timezone, the WiFi/ethernet/Bluetooth
+The console's hardware configuration tool, **an extension of the launcher** since 2026-09-24 (the owner's
+call: a plugin the launcher loads, `Extensions/pscbios/bin/psc/pscbios.so`, shipped with the console package;
+it was an App - a program of its own in `Apps/pscbios/` - until then; ABFlashKit stays an App). The launcher's
+*Hardware Information* item runs it (`SystemMenuAction::HardwareInfo` -> `app.extensions().run("pscbios")`),
+and so does the Extensions list; where it cannot run - a Pi or a PC (it is built for the console only), a
+console without it, one built against another `AB_SDK_ABI`, or disabled by the crash guard - the item shows
+the built-in `GuiHardwareInfo` instead. One screen of facts - the time and timezone, the WiFi/ethernet/Bluetooth
 dongles with their addresses, the pads and whether SDL has a mapping for each - and three things it can
 do: **WiFi settings** (SSID typed or picked from a scan, password, driver mode, written for the kernel and
 the network restarted; the timezone), the **gamepad mapping wizard** (a pad tested raw, every standard
@@ -59,25 +63,33 @@ src/screens/    the screens, on ab_classic (GuiFactsPage, GuiStringMenu, GuiConf
                       stage's message and (while mapping) the entries in two columns down the left of the panel,
                       the DualShock picture at the right, the front buttons as RESET/OPEN/POWER chips in the footer;
                       pscbios_pages.* the static texts (the About credits with GuiAbout::HeadingMark headings)
-src/pscbios_app.*     PscBios : AppBase - holds the ConsoleBackend; run() shows the main screen
-src/main.cpp          EnvironmentSetup::forTool, the backend choice (FakeBackend under AB_DEBUG_HOST), logs
-resources/            what ships in Apps/pscbios next to the binary: app.ini, run.sh, readme.txt, icon.png,
-                      DS3.png (the wizard's picture), gamecontrollerdb.txt (the seed), lang/
+src/pscbios.*         PscBios - the running tool's shared part: the ConsoleBackend the screens reach as
+                      PscBios::get().console(), valid while its screens show
+src/pscbios_extension.cpp  PscBiosExtension (AB_EXTENSION): run() = the backend choice (FakeBackend under
+                      AB_DEBUG_HOST), Env::setAppDir(the extension's folder) for its duration, the main screen
+resources/            what ships in Extensions/pscbios/ next to bin/psc/pscbios.so: extension.ini (Network=none,
+                      no Background), readme.txt, icon.png, DS3.png (the wizard's picture), bt (the bluetoothctl
+                      wrapper), gamecontrollerdb.txt (the seed), lang/
 ```
 
-`main()` → `EnvironmentSetup::forTool(argc, argv, "pscbios")`: the root is `/media` on the console (run.sh
-passes nothing) or the argument on a dev host; the **working path** becomes the main GUI's
-`Autobleem/bin/autobleem` (its `config.ini` gives the theme and the language, its `lang/` the shared
-strings, its `themes/` fallback), the **app dir** stays the folder the tool was started from (run.sh `cd`s
-to `/media/Apps/pscbios`) - `Env::getAppDir()` is where `DS3.png` and the tool's own `lang/` are read.
+It runs **inside the launcher**: the launcher's `App` is the `AppBase` every screen has (config, theme,
+language, audio), its window and its pads; nothing of the SDK is in the plugin (`tools/check_extension.sh`
+checks the exports - `ab_add_extension` builds it with the SDK's headers only, and pscbios_core's sources are
+compiled into it rather than linked, since that library links ab_core). `Env::getAppDir()` - where `DS3.png`,
+`bt` and, off the console, `ssid.cfg` are read - is the extension's folder while `run()` runs and is put back
+after. Its log lines are the launcher's (`System/Logs/autobleem.log`, tagged `[pscbios]`).
+
+**Its `AB_SDK_ABI` must be the launcher's**, or the launcher refuses to load it (and Hardware Information
+falls back to the built-in screen): the CI's first step compares this repository's `autobleem-core` with the
+launcher's (its develop; for a v* tag its master) and fails when they differ - bump the submodule with every
+ABI bump in core.
 
 ## Theme and language
 
-The tool draws with whatever theme the main GUI's `config.ini` names, through `AppBase` (`Theme`,
-`ThemeAssets`, `TextRenderer`) - no theme files of its own any more (the 2020 package carried an 11 MB
-`sony/` tree and a `theme.ini`). `AppBase` loads the main GUI's language file, `PscBios`'s constructor
-`Lang::loadMore()`s the tool's `lang/<Language>.txt` on top: the shared classic screens' strings come from
-the main file, the tool's own from its file (an empty value there falls through to the main one).
+The tool draws with the launcher's theme and language - it is the launcher's process. The host loads the
+extension's `lang/<Language>.txt` over the launcher's table when the extension is loaded: the shared classic
+screens' strings (the keyboard's included) come from the launcher's file, the tool's own from its file (an
+empty value there falls through to the launcher's).
 `resources/lang/` is Key=Value; `English.txt` is generated from these sources:
 
 ```
@@ -104,16 +116,19 @@ else the main GUI's `gamecontrollerdb.txt` - which the launcher loads at its nex
 
 ## Build, run, test
 
-Part of the root build: `make_win.sh` builds `pscbios.exe` (target `pscbios`, `apps/pscbios/`), runs
-`tests/apps/test_pscbios_core.cpp` under ctest, validates the language files, formats and lints `apps/`.
-`make_psc.sh` builds it for the console next to the launcher, runs `check_psc_binary.sh` and UPX on it and
-copies the binary plus `resources/` into `payload/Apps/pscbios/`. Not built for the Pi.
+- **This repository** (Linux: the host build and the console): `ab_add_extension` without a HOST builds
+  `<build>/extensions/pscbios/`; the host build also runs `tests/apps/test_pscbios_core.cpp`. The CI's psc
+  job checks the plugin (`check_psc_binary.sh`, `check_extension.sh`) and packs the folder into
+  `console-tools-psc-<v>.tar.gz` as `Extensions/pscbios/`, next to `Apps/abflashkit/`; autobleem-appliance
+  extracts that tarball onto the stick. Not built for the Pi. Not UPX-packed (a shared library).
+- **Windows** needs the launcher's import library, so there it is built **with the launcher**:
+  `cmake ... -DAB_EXTENSION_DIRS=<this repo>/apps/pscbios` in the launcher's build, then its
+  `tools/make_usb.py usb` puts `build_win/extensions/pscbios/` on the dev stick.
 
-Visual test on Windows: `python tools/make_usb.py usb` stages `usb/Apps/pscbios/` (resources + the exe);
-`python tools/ab_drive.py start --tool pscbios` then `run "press select; wait_screen GuiNetworkMenu; shot
-a.png"` drives it through the DebugDriver (AppBase starts it for every program since 2026-09-21; the
-screen names are `GuiPscBiosMain`, `GuiNetworkMenu`, `GuiSsidScanMenu`, `GuiTimezoneSelect`,
-`GuiGamepadMenu`, `GuiPadConfig`, `GuiTextPage`, `GuiAbout`); logs in `usb/System/Logs/pscbios.log`. The FakeBackend answers everything; a
+Visual test on Windows: the launcher's `tools/ab_drive.py start`, then the System menu's Hardware Information
+(`down l2; press r2; up l2; wait_screen GuiSystemMenu`, four `press down`, `press x`) - the screen names are
+`GuiPscBiosMain`, `GuiNetworkMenu`, `GuiSsidScanMenu`, `GuiTimezoneSelect`, `GuiGamepadMenu`,
+`GuiPadConfig`, `GuiTextPage`, `GuiAbout`, `GuiKeyboard`. The FakeBackend answers everything; a
 `configure`/`restart`/`setTimezone` is logged and reflected in what it then reports. The wizard needs a
 real pad (the keyboard-as-pad is not a joystick) - it shows "NO GAME CONTROLLERS OPENED" without one.
 
