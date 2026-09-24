@@ -1,5 +1,7 @@
-# autobleem-console-tools: PSC-Bios and ABFlashKit, the on-console apps. They draw with the classic UI and
-# link the AutoBleem SDK (ab_core + ab_classic) from the autobleem-core submodule.
+# autobleem-console-tools: PSC-Bios (an extension of the launcher, Extensions/pscbios) and ABFlashKit (an App,
+# Apps/abflashkit), the console's own tools. They draw with the classic UI and
+# use the AutoBleem SDK (ab_core + ab_classic) from the autobleem-core submodule - ABFlashKit links it, PSC-Bios
+# is built with its headers and binds to the launcher's copy when it is loaded.
 cmake_minimum_required(VERSION 3.12)
 project(autobleem-console-tools)
 

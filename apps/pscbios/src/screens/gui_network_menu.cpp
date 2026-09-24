@@ -3,7 +3,7 @@
 //
 #include "gui_network_menu.h"
 #include "gui_ssid_scan_menu.h" // and GuiTimezoneSelect
-#include "../pscbios_app.h"
+#include "../pscbios.h"
 #include "gui/gui.h"
 #include "gui/screens/gui_confirm.h"
 #include "gui/screens/gui_keyboard.h"

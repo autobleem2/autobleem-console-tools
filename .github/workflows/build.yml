@@ -1,6 +1,7 @@
-# autobleem-console-tools CI: build pscbios + abflashkit against the autobleem-core submodule in the shared
-# image. NOTE: the submodule checkout needs autobleem-core to be public (a repo's GITHUB_TOKEN cannot read
-# other private org repos) - as libpicofe is public for pcsx-abnxt. Gated by AB_CI_ENABLED.
+# autobleem-console-tools CI: PSC-Bios (an extension of the launcher) and ABFlashKit (an App), built against
+# the autobleem-core submodule in the shared image. NOTE: the submodule checkout needs autobleem-core to be
+# public (a repo's GITHUB_TOKEN cannot read other private org repos) - as libpicofe is public for
+# pcsx-abnxt. Gated by AB_CI_ENABLED.
 name: build
 on:
   push:
@@ -26,6 +27,21 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
+      - name: PSC-Bios matches the launcher's SDK
+        # PSC-Bios is an extension the launcher checks the AB_SDK_ABI of before loading it: one built against
+        # another ABI than the launcher it ships with is refused on the console. Our autobleem-core must be at
+        # the launcher's AB_SDK_ABI - the launcher's develop (a v* tag: its master, what a release ships)
+        shell: bash
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          set -euo pipefail
+          ref=develop; [[ "$GITHUB_REF" == refs/tags/v* ]] && ref=master
+          core=$(gh api "repos/autobleem2/autobleem/contents/autobleem-core?ref=$ref" --jq .sha)
+          theirs=$(gh api -H 'Accept: application/vnd.github.raw' \
+            "repos/autobleem2/autobleem-core/contents/src/code/gui/extension.h?ref=$core" | sed -n 's/^#define AB_SDK_ABI \([0-9]*\).*/\1/p')
+          ours=$(sed -n 's/^#define AB_SDK_ABI \([0-9]*\).*/\1/p' autobleem-core/src/code/gui/extension.h)
+          echo "AB_SDK_ABI: ours $ours, the launcher's $ref (core $core) $theirs"
+          [ -n "$theirs" ] && [ "$ours" = "$theirs" ] || { echo "::error::bump autobleem-core to the launcher's (AB_SDK_ABI $theirs)"; exit 1; }
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
       - name: Build
@@ -99,8 +115,8 @@ jobs:
   psc:
     # cross-compiles pscbios+abflashkit for the console (AB_TARGET=psc, ported into this repo + the
     # autobleem-core submodule 2026-09-23 - see their CMakeLists.txt comments) and publishes
-    # console-tools-psc-<version>.tar.gz, laid out as Apps/{pscbios,abflashkit}/ - what the PSC assembler
-    # will extract straight into the payload. Uses the image's proven gcc-6 toolchain (/opt/psc), the same
+    # console-tools-psc-<version>.tar.gz, laid out as Extensions/pscbios/ + Apps/abflashkit/ - what the PSC
+    # assembler extracts straight into the payload. Uses the image's proven gcc-6 toolchain (/opt/psc), the same
     # one the launcher's own psc target builds with and that has run on real console hardware.
     if: vars.AB_CI_ENABLED == 'true'
     needs: [plan, kernel-payload]
@@ -133,8 +149,10 @@ jobs:
         run: ninja -C build_psc
       - name: Check the binaries against the console's glibc 2.24 / GLIBCXX 3.4.22, no RPATH
         run: |
-          bash tools/check_psc_binary.sh build_psc/apps/pscbios/pscbios /opt/psc
+          bash tools/check_psc_binary.sh build_psc/extensions/pscbios/bin/psc/pscbios.so /opt/psc
           bash tools/check_psc_binary.sh build_psc/apps/abflashkit/abflashkit /opt/psc
+          # a plugin carries none of the SDK (the launcher's copy is the one) and exports its two entry points
+          bash tools/check_extension.sh build_psc/extensions/pscbios/bin/psc/pscbios.so /opt/psc
       - uses: actions/download-artifact@v8
         if: needs.kernel-payload.outputs.source != 'checked-in'
         with:
@@ -145,17 +163,17 @@ jobs:
         run: |
           set -e
           V="${{ needs.plan.outputs.version }}"
-          rm -rf stage out && mkdir -p stage/Apps/pscbios stage/Apps/abflashkit out
-          for tool in pscbios abflashkit; do
-            # payload/Apps/<tool>/ first: it holds what resources/ deliberately doesn't - abflashkit's
-            # kernel/ (boot.img, abrootfs.tgz, the recovery images, install_payload.sh), the release
-            # artefacts the tool flashes. Then resources/ over it (the maintained copy wins), then the
-            # fresh binary over the stale checked-in one.
-            cp -a "payload/Apps/$tool/." "stage/Apps/$tool/"
-            cp -a "apps/$tool/resources/." "stage/Apps/$tool/"
-            cp "build_psc/apps/$tool/$tool" "stage/Apps/$tool/$tool"
-            upx -q --best --lzma "stage/Apps/$tool/$tool" || true
-          done
+          rm -rf stage out && mkdir -p stage/Extensions stage/Apps/abflashkit out
+          # PSC-Bios, an extension (2026-09-24): the folder ab_add_extension staged - extension.ini, the icon,
+          # lang/, its files and bin/psc/pscbios.so. Not UPX-packed: a packed shared library does not load.
+          cp -a build_psc/extensions/pscbios stage/Extensions/pscbios
+          # ABFlashKit, an App: payload/Apps/abflashkit/ first - it holds what resources/ deliberately doesn't,
+          # the kernel/ (boot.img, abrootfs.tgz, the recovery images, install_payload.sh) the tool flashes. Then
+          # resources/ over it (the maintained copy wins), then the fresh binary over the stale checked-in one.
+          cp -a payload/Apps/abflashkit/. stage/Apps/abflashkit/
+          cp -a apps/abflashkit/resources/. stage/Apps/abflashkit/
+          cp build_psc/apps/abflashkit/abflashkit stage/Apps/abflashkit/abflashkit
+          upx -q --best --lzma stage/Apps/abflashkit/abflashkit || true
           # the kernel payload from psc-kernel-payload's release replaces the checked-in 2020 one (kernel-payload job)
           if [ "${{ needs.kernel-payload.outputs.source }}" != checked-in ]; then
             rm -rf stage/Apps/abflashkit/kernel

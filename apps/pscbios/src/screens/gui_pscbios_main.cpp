@@ -5,10 +5,10 @@
 #include "gui_gamepad_menu.h"
 #include "gui_network_menu.h"
 #include "pscbios_pages.h"
-#include "../pscbios_app.h"
+#include "../pscbios.h"
 #include "gui/gui.h"
 #include "gui/screens/gui_about.h"
-#include "core/version.h"
+#include "core/services/environment.h"
 
 #include <ableem/ui/joystick.h>
 
@@ -47,7 +47,8 @@ vector<InfoSection> GuiPscBiosMain::collect() {
         return text;
     };
     vector<InfoSection> sections;
-    sections.push_back({plain(_("AutoBleem")), {{plain(_("Version")), Version::FULL_VERSION}}});
+    // the package the user installed (the launcher's VERSION), the version every screen shows
+    sections.push_back({plain(_("AutoBleem")), {{plain(_("Version")), Env::productVersion()}}});
     if (kernel) {
         status.refresh(PscBios::get().console());
         sections.push_back(

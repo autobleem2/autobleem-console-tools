@@ -4,7 +4,7 @@
 #include "gui_bt_pairing.h"
 #include "gui/gui.h"
 #include "gui/screens/gui_confirm.h"
-#include "pscbios_app.h"
+#include "pscbios.h"
 
 using namespace std;
 
