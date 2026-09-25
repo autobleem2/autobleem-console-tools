@@ -21,6 +21,13 @@ PAIR_SECONDS="${AB_BT_PAIR_SECONDS:-20}"
 LOGDIR="$(cd "$(dirname "$0")/../../System/Logs" 2>/dev/null && pwd)"
 [ -n "$LOGDIR" ] || LOGDIR=/tmp
 LOG="$LOGDIR/bt.log"
+# ... and /tmp too when the stick cannot be written: every step below sends its output to $LOG, and a
+# redirection that fails makes the shell skip the whole command - the pairing never ran and `pair` returned
+# at once, while the stick sat read-only after a FAT error (2026-09-25)
+if ! { : >>"$LOG"; } 2>/dev/null; then
+    LOGDIR=/tmp
+    LOG=/tmp/pscbios-bt.log
+fi
 
 paired_yes() {
     "$BT" info "$1" 2>/dev/null | grep -q "Paired: yes"
