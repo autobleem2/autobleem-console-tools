@@ -187,8 +187,9 @@ bool WpaCtrlClient::scan(int timeoutMs) {
         wpa_ctrl_detach(monitor);
         wpa_ctrl_close(monitor);
     }
-    if (!finished && started)
+    if (!finished && started) {
         PLOG_WARNING << "wpa_supplicant on " << iface_ << ": " << lastError_ << " - using the results it has";
+    }
     return finished;
 }
 

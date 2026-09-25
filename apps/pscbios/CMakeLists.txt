@@ -7,6 +7,9 @@
 # pscbios_core library (linking ab_core) is what the tests link.
 
 set(PSCBIOS_CORE_SOURCES
+        src/core/bluez_bus.h
+        src/core/bluez_client.cpp
+        src/core/bluez_client.h
         src/core/console_backend.cpp
         src/core/console_backend.h
         src/core/game_controller_db.cpp
@@ -33,10 +36,50 @@ if (NOT WIN32)
     set_source_files_properties(third_party/wpa_ctrl/wpa_ctrl.c PROPERTIES
             COMPILE_DEFINITIONS "CONFIG_CTRL_IFACE;CONFIG_CTRL_IFACE_UNIX"
             COMPILE_OPTIONS "-w")
+
+    # BlueZ over D-Bus: libdbus-1 (the owner's choice - every console has libdbus-1.so.3, stock included; its
+    # headers are in the build image's console sysroot). BluezClient itself is built everywhere and tested with a
+    # fake bus; only its libdbus transport needs the library. The console build must have it; a host without the
+    # dev package builds the rest, and NativeBackend's Bluetooth then answers "built without libdbus-1".
+    # dbus-arch-deps.h is under lib/<multiarch>/dbus-1.0/include, which neither pkg-config (pointed at the
+    # sysroot's usr/lib/pkgconfig by the console toolchain) nor find_path's defaults reach - so it is looked for
+    # there, relative to the sysroot (find_path re-roots the paths into it).
+    file(GLOB _pscbios_dbus_multiarch RELATIVE "${CMAKE_SYSROOT}/" "${CMAKE_SYSROOT}/usr/lib/*/dbus-1.0/include")
+    set(_pscbios_dbus_arch_paths /usr/lib/dbus-1.0/include /usr/lib64/dbus-1.0/include)
+    set(_pscbios_dbus_lib_suffixes "")
+    foreach (_dir ${_pscbios_dbus_multiarch})
+        list(APPEND _pscbios_dbus_arch_paths "/${_dir}")
+        string(REGEX REPLACE "^usr/lib/([^/]+)/.*" "\\1" _arch "${_dir}")
+        list(APPEND _pscbios_dbus_lib_suffixes "${_arch}")
+    endforeach ()
+    find_path(PSCBIOS_DBUS_INCLUDE_DIR dbus/dbus.h PATH_SUFFIXES dbus-1.0)
+    find_path(PSCBIOS_DBUS_ARCH_INCLUDE_DIR dbus/dbus-arch-deps.h PATHS ${_pscbios_dbus_arch_paths})
+    find_library(PSCBIOS_DBUS_LIBRARY dbus-1 PATH_SUFFIXES ${_pscbios_dbus_lib_suffixes})
+    if (PSCBIOS_DBUS_INCLUDE_DIR AND PSCBIOS_DBUS_ARCH_INCLUDE_DIR AND PSCBIOS_DBUS_LIBRARY)
+        message(STATUS "pscbios: libdbus-1 ${PSCBIOS_DBUS_LIBRARY} - Bluetooth through BlueZ")
+        set(PSCBIOS_HAVE_DBUS ON)
+        list(APPEND PSCBIOS_CORE_SOURCES src/core/bluez_dbus_bus.cpp src/core/bluez_dbus_bus.h)
+    elseif (AB_TARGET STREQUAL "psc")
+        message(FATAL_ERROR "pscbios: no libdbus-1 in the console sysroot (headers ${PSCBIOS_DBUS_INCLUDE_DIR}, "
+                "${PSCBIOS_DBUS_ARCH_INCLUDE_DIR}, library ${PSCBIOS_DBUS_LIBRARY}) - the build image's psc stage has it")
+    else ()
+        message(STATUS "pscbios: no libdbus-1 dev files - built without the D-Bus transport (Bluetooth unavailable)")
+        set(PSCBIOS_HAVE_DBUS OFF)
+    endif ()
 endif ()
+# PSCBIOS_HAVE_DBUS: the definition, include dirs and library, for pscbios_core and the plugin alike (the
+# plugin links with the keyword signature, as ab_add_extension does)
+function(pscbios_use_dbus target)
+    if (PSCBIOS_HAVE_DBUS)
+        target_compile_definitions(${target} PRIVATE PSCBIOS_HAVE_DBUS)
+        target_include_directories(${target} PRIVATE ${PSCBIOS_DBUS_INCLUDE_DIR} ${PSCBIOS_DBUS_ARCH_INCLUDE_DIR})
+        target_link_libraries(${target} ${ARGN} ${PSCBIOS_DBUS_LIBRARY}) # ARGN: PRIVATE for the plugin
+    endif ()
+endfunction()
 add_library(pscbios_core STATIC ${PSCBIOS_CORE_SOURCES})
 target_include_directories(pscbios_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src PRIVATE ${PSCBIOS_WPA_CTRL_DIR})
 target_link_libraries(pscbios_core ab_core)
+pscbios_use_dbus(pscbios_core)
 
 if (NOT COMMAND ab_add_extension)
     include(${CMAKE_SOURCE_DIR}/autobleem-core/cmake/ab_extension.cmake)
@@ -73,6 +116,7 @@ ab_add_extension(pscbios ${pscbios_host}
         ICON ${CMAKE_CURRENT_SOURCE_DIR}/resources/icon.png
         LANG ${CMAKE_CURRENT_SOURCE_DIR}/resources/lang)
 target_include_directories(pscbios PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${PSCBIOS_WPA_CTRL_DIR})
+pscbios_use_dbus(pscbios PRIVATE)
 
 # the tool's other files next to the library, found through Env::getAppDir() (the extension's folder while it runs)
 set(pscbios_stage "${CMAKE_BINARY_DIR}/extensions/pscbios")

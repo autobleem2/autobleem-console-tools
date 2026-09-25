@@ -1,11 +1,14 @@
 //
 // pscbios_core's native backend (Unix only): WpaCtrlClient's parsing and its requests against a fake
 // wpa_supplicant - a Unix datagram socket in a temp dir answering canned replies - and NativeBackend's
-// interfaces from a fake sysfs tree, its WiFi set-up with and without a running wpa_supplicant.
+// interfaces from a fake sysfs tree, its WiFi set-up with and without a running wpa_supplicant, and its
+// Bluetooth over a scripted BlueZ (fake_bluez_bus.h).
 //
 #include "doctest/doctest.h"
 
 #include "support/temp_dir.h"
+
+#include "fake_bluez_bus.h"
 
 #include "core/native_backend.h"
 #include "core/wpa_ctrl_client.h"
@@ -323,8 +326,9 @@ TEST_CASE("NativeBackend finds the interfaces in sysfs, a wireless one by any na
     CHECK(backend.ipOf("no-such-interface").empty());
     CHECK(backend.ipOf("lo") == "127.0.0.1"); // getifaddrs: the machine's own loopback
 
-    // Bluetooth and the timezone are the other backend's
-    CHECK(backend.btUp());
+    // the timezone is the other backend's; Bluetooth is BlueZ's, and without a bus there is none
+    CHECK_FALSE(backend.btUp());
+    CHECK(backend.btLastError() == "no Bluetooth support");
     CHECK(backend.timezone() == "Europe/Warsaw");
     CHECK(backend.kernelInstalled());
 }
@@ -414,4 +418,103 @@ TEST_CASE("NativeBackend without a WiFi interface scans nothing and only writes 
     backend.configureWifi("Home Network", "secret123", "wext");
     CHECK(ableem::DirEntry::exists(paths.wpaSupplicantConf)); // for the dongle plugged in later
     CHECK(runs.lines.empty());
+}
+
+//*******************************
+// NativeBackend: Bluetooth
+//*******************************
+TEST_CASE("NativeBackend's Bluetooth goes through BlueZ") {
+    TempDir tmp("native_bt");
+    NativePaths paths = pathsIn(tmp);
+    paths.powerSupplyDir = tmp.at("ps");
+    paths.btScanMs = 20;
+    paths.btTimeouts.discoverMs = 300;
+    paths.btTimeouts.pairedWaitMs = 300;
+    paths.btTimeouts.pollMs = 1;
+    tmp.makeSubDir("ps/sony_controller_battery_1c:a0:b8:12:34:56");
+    tmp.writeFile("ps/sony_controller_battery_1c:a0:b8:12:34:56/capacity", "60\n");
+
+    auto state = std::make_shared<fakebluez::State>();
+    state->objects["/org/bluez"]["org.bluez.AgentManager1"];
+    state->objects[fakebluez::Adapter] = fakebluez::adapter("00:1A:7D:DA:71:13", false);
+    state->objects[fakebluez::devicePath("A0:AB:51:33:44:55")] =
+        fakebluez::device("A0:AB:51:33:44:55", "Xbox Wireless Controller", true, true);
+    state->discoverable[fakebluez::devicePath("1C:A0:B8:12:34:56")] =
+        fakebluez::device("1C:A0:B8:12:34:56", "Wireless Controller");
+    int connects = 0;
+    RecordedRuns runs;
+    NativeBackend backend(paths, runs.runner(), std::make_unique<FakeBackend>(), [&](BusError &) {
+        ++connects;
+        return fakebluez::makeBus(state);
+    });
+
+    CHECK(backend.btUp()); // off: powered on, once
+    CHECK(state->calls == vector<string>{"Set Powered=true /org/bluez/hci0"});
+    CHECK(backend.btName() == "hci0 PSC 00:1A:7D:DA:71:13");
+
+    vector<BtDevice> paired = backend.btPairedDevices();
+    REQUIRE(paired.size() == 1);
+    CHECK(paired[0].mac == "A0:AB:51:33:44:55");
+    CHECK(paired[0].name == "Xbox Wireless Controller");
+    CHECK(paired[0].connected);
+
+    vector<BtDevice> found = backend.btScan();
+    REQUIRE(found.size() == 2);
+    CHECK(found[0].mac == "1C:A0:B8:12:34:56");
+    CHECK_FALSE(found[0].paired);
+
+    CHECK(backend.btPair("1C:A0:B8:12:34:56"));
+    CHECK(backend.btLastError().empty());
+    CHECK(backend.btPairedDevices().size() == 2);
+    CHECK(backend.btBattery("1C:A0:B8:12:34:56").percent == 60);
+
+    state->errors["Pair"] = {"org.bluez.Error.AuthenticationTimeout", "Authentication Timeout"};
+    state->objects[fakebluez::devicePath("E4:17:D8:AA:BB:CC")] = fakebluez::device("E4:17:D8:AA:BB:CC", "8BitDo");
+    CHECK_FALSE(backend.btPair("E4:17:D8:AA:BB:CC"));
+    CHECK(backend.btLastError() ==
+          "pairing E4:17:D8:AA:BB:CC failed: org.bluez.Error.AuthenticationTimeout: Authentication Timeout");
+
+    CHECK(backend.btRemove("A0:AB:51:33:44:55"));
+    CHECK_FALSE(backend.btRemove("A0:AB:51:33:44:55"));
+    CHECK(backend.btLastError() == "A0:AB:51:33:44:55 is not known");
+    CHECK(connects == 1); // one connection for all of it
+
+    // the adapter switched off behind our back: not powered on again, and said so
+    (*state->props(fakebluez::Adapter, "org.bluez.Adapter1"))["Powered"] = DbusValue::ofBool(false);
+    state->calls.clear();
+    CHECK_FALSE(backend.btUp());
+    CHECK(backend.btLastError() == "the Bluetooth adapter is off");
+    CHECK(state->calls.empty());
+
+    // bluetoothd stopped
+    state->errors["GetManagedObjects"] = {"org.freedesktop.DBus.Error.ServiceUnknown",
+                                          "The name org.bluez was not "
+                                          "provided by any .service files"};
+    CHECK_FALSE(backend.btUp());
+    CHECK(backend.btLastError() == "BlueZ does not answer: org.freedesktop.DBus.Error.ServiceUnknown: The name "
+                                   "org.bluez was not provided by any .service files");
+    CHECK(backend.btScan().empty());
+    CHECK(backend.btPairedDevices().empty());
+}
+
+TEST_CASE("NativeBackend without a system bus: no Bluetooth, and why") {
+    TempDir tmp("native_nobus");
+    NativePaths paths = pathsIn(tmp);
+    RecordedRuns runs;
+    int attempts = 0;
+    NativeBackend backend(paths, runs.runner(), std::make_unique<FakeBackend>(), [&](BusError &error) {
+        ++attempts;
+        error.name = "org.freedesktop.DBus.Error.FileNotFound";
+        error.message = "Failed to connect to socket /var/run/dbus/system_bus_socket: No such file or directory";
+        return std::unique_ptr<BluezBus>();
+    });
+    CHECK_FALSE(backend.btUp());
+    CHECK(backend.btLastError() ==
+          "the system bus cannot be reached: org.freedesktop.DBus.Error.FileNotFound: Failed to connect to socket "
+          "/var/run/dbus/system_bus_socket: No such file or directory");
+    CHECK(backend.btName().empty());
+    CHECK_FALSE(backend.btPair("1C:A0:B8:12:34:56"));
+    CHECK_FALSE(backend.btRemove("1C:A0:B8:12:34:56"));
+    CHECK(backend.btScan().empty());
+    CHECK(attempts == 5); // tried again each time: dbus-daemon may come up later
 }

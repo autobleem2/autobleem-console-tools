@@ -1,7 +1,10 @@
 //
-// NativeBackend: sysfs, getifaddrs and wpa_supplicant's control socket.
+// NativeBackend: sysfs, getifaddrs, wpa_supplicant's control socket and BlueZ over D-Bus.
 //
 #include "native_backend.h"
+#ifdef PSCBIOS_HAVE_DBUS
+#include "bluez_dbus_bus.h"
+#endif
 #include "core/main.h"
 #include "core/services/system.h"
 
@@ -29,15 +32,27 @@ namespace {
 int runViaSystem(const string &exe, const vector<string> &args) {
     return System::runAndWait(exe, args);
 }
+
+unique_ptr<BluezBus> systemBus(BusError &error) {
+#ifdef PSCBIOS_HAVE_DBUS
+    return DbusBluezBus::connectSystem(error);
+#else
+    error.message = "PSC-Bios was built without libdbus-1";
+    return nullptr;
+#endif
+}
 } // namespace
 
 //*******************************
 // NativeBackend::NativeBackend
 //*******************************
-NativeBackend::NativeBackend() : run_(runViaSystem), rest_(make_unique<AbnetBackend>()) {}
+NativeBackend::NativeBackend() : run_(runViaSystem), rest_(make_unique<AbnetBackend>()), bluezFactory_(systemBus) {}
 
-NativeBackend::NativeBackend(NativePaths paths, CommandRunner run, unique_ptr<ConsoleBackend> rest)
-    : paths_(std::move(paths)), run_(std::move(run)), rest_(std::move(rest)) {}
+NativeBackend::NativeBackend(NativePaths paths, CommandRunner run, unique_ptr<ConsoleBackend> rest,
+                             BluezBusFactory bluez)
+    : paths_(std::move(paths)), run_(std::move(run)), rest_(std::move(rest)), bluezFactory_(std::move(bluez)) {}
+
+NativeBackend::~NativeBackend() = default;
 
 //*******************************
 // NativeBackend::interfaces / isWireless / wirelessInterfaces / wifiInterface
@@ -266,8 +281,9 @@ void NativeBackend::selectDriverMode(const string &driverMode) {
         PLOG_WARNING << "no " << source << " - the driver mode is left as it is";
         return;
     }
-    if (!DirEntry::copyFile(source, paths_.dhcpcdConf))
+    if (!DirEntry::copyFile(source, paths_.dhcpcdConf)) {
         PLOG_WARNING << "cannot copy " << source << " to " << paths_.dhcpcdConf;
+    }
 }
 
 //*******************************
@@ -275,8 +291,9 @@ void NativeBackend::selectDriverMode(const string &driverMode) {
 //*******************************
 void NativeBackend::rebindDhcpcd(const string &iface) {
     int status = run_("dhcpcd", {"-n", iface});
-    if (status != 0)
+    if (status != 0) {
         PLOG_WARNING << "dhcpcd -n " << iface << ": " << status;
+    }
 }
 
 bool NativeBackend::waitForSupplicant(const string &iface) {
@@ -292,4 +309,134 @@ bool NativeBackend::waitForSupplicant(const string &iface) {
         this_thread::sleep_for(chrono::milliseconds(100));
     }
     return true;
+}
+
+//*******************************
+// NativeBackend: Bluetooth
+//*******************************
+BluezClient *NativeBackend::bluez() {
+    if (bluez_)
+        return bluez_.get();
+    if (!bluezFactory_) {
+        btError_ = "no Bluetooth support";
+        return nullptr;
+    }
+    BusError error;
+    unique_ptr<BluezBus> bus = bluezFactory_(error);
+    if (!bus) {
+        btError_ = "the system bus cannot be reached" + (error.empty() ? string() : ": " + error.text());
+        return nullptr;
+    }
+    bluez_ = make_unique<BluezClient>(std::move(bus), paths_.powerSupplyDir, paths_.btTimeouts);
+    return bluez_.get();
+}
+
+void NativeBackend::takeBtError() {
+    if (!bluez_)
+        return;
+    btError_ = bluez_->lastError();
+    // the bus went away (dbus-daemon restarted): a new connection next time
+    const string &name = bluez_->lastBusError().name;
+    if (name == "org.freedesktop.DBus.Error.Disconnected" || name == "org.freedesktop.DBus.Error.NoServer")
+        bluez_.reset();
+}
+
+BtDevice NativeBackend::toBtDevice(const BluezDevice &device) {
+    BtDevice d;
+    d.mac = device.address;
+    d.name = device.displayName();
+    d.paired = device.paired;
+    d.connected = device.connected;
+    return d;
+}
+
+bool NativeBackend::btUp() {
+    btError_.clear();
+    BluezClient *client = bluez();
+    if (client == nullptr)
+        return false;
+    if (!client->refresh()) {
+        takeBtError();
+        return false;
+    }
+    if (!client->hasAdapter()) {
+        btError_ = "no Bluetooth adapter";
+        return false;
+    }
+    if (!client->adapter().powered && !triedPowerOn_) {
+        // once: an adapter that is off is switched on, but one that will not come on is not asked every refresh
+        triedPowerOn_ = true;
+        if (!client->setPowered(true))
+            takeBtError();
+    }
+    if (!client->adapter().powered && btError_.empty())
+        btError_ = "the Bluetooth adapter is off";
+    return client->adapter().powered;
+}
+
+string NativeBackend::btName() {
+    BluezClient *client = bluez();
+    if (client == nullptr || !client->hasAdapter())
+        return "";
+    const BluezAdapter &adapter = client->adapter();
+    string alias = adapter.alias.empty() ? adapter.name : adapter.alias;
+    return adapter.hciName() + " " + (alias.empty() ? string() : alias + " ") + adapter.address;
+}
+
+vector<BtDevice> NativeBackend::btScan() {
+    btError_.clear();
+    BluezClient *client = bluez();
+    if (client == nullptr)
+        return {};
+    if (!client->scan(paths_.btScanMs)) {
+        takeBtError();
+        return {};
+    }
+    vector<BtDevice> out;
+    for (const BluezDevice &device : client->devices())
+        out.push_back(toBtDevice(device));
+    return out;
+}
+
+vector<BtDevice> NativeBackend::btPairedDevices() {
+    btError_.clear();
+    BluezClient *client = bluez();
+    if (client == nullptr)
+        return {};
+    if (!client->refresh()) {
+        takeBtError();
+        return {};
+    }
+    vector<BtDevice> out;
+    for (const BluezDevice &device : client->devices())
+        if (device.paired)
+            out.push_back(toBtDevice(device));
+    return out;
+}
+
+bool NativeBackend::btPair(const string &mac) {
+    btError_.clear();
+    BluezClient *client = bluez();
+    if (client == nullptr)
+        return false;
+    bool paired = client->pair(mac);
+    takeBtError(); // after a pairing that did not connect, too: it says why
+    return paired;
+}
+
+bool NativeBackend::btRemove(const string &mac) {
+    btError_.clear();
+    BluezClient *client = bluez();
+    if (client == nullptr)
+        return false;
+    bool removed = client->removeDevice(mac);
+    takeBtError();
+    return removed;
+}
+
+BtBattery NativeBackend::btBattery(const string &mac) {
+    BluezClient *client = bluez();
+    if (client == nullptr)
+        return BluezClient::readSysfsBattery(paths_.powerSupplyDir, mac);
+    return client->battery(mac);
 }

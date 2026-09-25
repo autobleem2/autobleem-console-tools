@@ -1,12 +1,13 @@
 //
 // NativeBackend: the console asked directly instead of through the kernel's /bin/abnet - the network
 // interfaces from sysfs, their addresses from getifaddrs, WiFi through wpa_supplicant's control socket
-// (WpaCtrlClient). Any interface name, not only wlan0: a wireless interface is one sysfs gives a `wireless`
-// or `phy80211` entry. Bluetooth and the timezone are still another backend's (AbnetBackend on the console)
-// until BlueZ is spoken to over D-Bus (docs/native-backend-plan.md, step 2). Linux only.
+// (WpaCtrlClient), Bluetooth through BlueZ over D-Bus (BluezClient). Any interface name, not only wlan0: a
+// wireless interface is one sysfs gives a `wireless` or `phy80211` entry. The timezone and kernelInstalled() are
+// still another backend's (AbnetBackend on the console) - docs/native-backend-plan.md. Linux only.
 //
 #pragma once
 
+#include "bluez_client.h"
 #include "console_backend.h"
 #include "wpa_ctrl_client.h"
 
@@ -29,6 +30,9 @@ struct NativePaths {
     // group (wpa_supplicant refuses an unknown one), and when empty
     std::string ctrlGroup = "netdev";
     int supplicantStartMs = 6000; // how long a started wpa_supplicant is waited for (its socket appearing)
+    std::string powerSupplyDir = "/sys/class/power_supply"; // the pads' batteries (hid-sony, hid-playstation)
+    int btScanMs = 8000;                                    // btScan()'s discovery
+    BluezTimeouts btTimeouts;
 };
 
 //******************
@@ -39,9 +43,14 @@ public:
     // runs a program and waits: System::runAndWait on the console, a recording fake in the tests
     using CommandRunner = std::function<int(const std::string &exe, const std::vector<std::string> &args)>;
 
-    // the console: its paths, System::runAndWait, an AbnetBackend for Bluetooth and the timezone
+    // the console: its paths, System::runAndWait, the system bus (DbusBluezBus - where libdbus was found at build
+    // time), an AbnetBackend for the timezone
     NativeBackend();
-    NativeBackend(NativePaths paths, CommandRunner run, std::unique_ptr<ConsoleBackend> rest);
+    // bluez connects the BluezClient's bus when Bluetooth is first asked for (and again after a failure);
+    // none = Bluetooth unavailable, with that as the reason
+    NativeBackend(NativePaths paths, CommandRunner run, std::unique_ptr<ConsoleBackend> rest,
+                  BluezBusFactory bluez = nullptr);
+    ~NativeBackend() override;
 
     bool kernelInstalled() override { return rest_->kernelInstalled(); }
 
@@ -54,13 +63,21 @@ public:
     void configureWifi(const std::string &ssid, const std::string &password, const std::string &driverMode) override;
     void restartNetwork() override;
 
-    // bluetooth and time: the other backend's
-    bool btUp() override { return rest_->btUp(); }
-    std::string btName() override { return rest_->btName(); }
-    std::vector<BtDevice> btScan() override { return rest_->btScan(); }
-    std::vector<BtDevice> btPairedDevices() override { return rest_->btPairedDevices(); }
-    bool btPair(const std::string &mac) override { return rest_->btPair(mac); }
-    bool btRemove(const std::string &mac) override { return rest_->btRemove(mac); }
+    // bluetooth, through BlueZ: an adapter that is there and powered (powered on once, if it is not);
+    // "hci0 <alias> <address>"; btScan discovers for btScanMs; btPair pairs, trusts and connects (blocking - the
+    // screens of step 4 drive bluez() themselves); each false/empty with the reason in btLastError()
+    bool btUp() override;
+    std::string btName() override;
+    std::vector<BtDevice> btScan() override;
+    std::vector<BtDevice> btPairedDevices() override;
+    bool btPair(const std::string &mac) override;
+    bool btRemove(const std::string &mac) override;
+    BtBattery btBattery(const std::string &mac);
+    // the client, connected on first use; nullptr (and btLastError()) when the system bus cannot be reached
+    BluezClient *bluez();
+    const std::string &btLastError() const { return btError_; }
+
+    // time: the other backend's
     std::string timezone() override { return rest_->timezone(); }
     void setTimezone(const std::string &zone) override { rest_->setTimezone(zone); }
     std::vector<std::string> listTimezones() override { return rest_->listTimezones(); }
@@ -74,7 +91,7 @@ public:
     // the connection's state from wpa_supplicant; false when it is not running on the interface
     bool wifiStatus(const std::string &iface, WpaStatus &out);
 
-    // why the last WiFi action did not do what was asked ("" after one that did)
+    // why the last WiFi action did not do what was asked ("" after one that did); Bluetooth's is btLastError()
     const std::string &lastError() const { return lastError_; }
 
     // the file written when no wpa_supplicant is running: ctrl_interface, update_config=1 and the network
@@ -88,9 +105,16 @@ private:
     void rebindDhcpcd(const std::string &iface);
     bool waitForSupplicant(const std::string &iface);
     std::string readSys(const std::string &iface, const std::string &file);
+    // the client's error as btLastError(); drops the client when the bus went away, so the next call reconnects
+    void takeBtError();
+    static BtDevice toBtDevice(const BluezDevice &device);
 
     NativePaths paths_;
     CommandRunner run_;
     std::unique_ptr<ConsoleBackend> rest_;
+    BluezBusFactory bluezFactory_;
+    std::unique_ptr<BluezClient> bluez_;
+    bool triedPowerOn_ = false;
     std::string lastError_;
+    std::string btError_;
 };

@@ -3,6 +3,8 @@
 include(${CMAKE_SOURCE_DIR}/autobleem-core/tests/harness.cmake)
 
 ab_add_test(test_pscbios_core apps/test_pscbios_core.cpp LIBS pscbios_core)
+# BluezClient against a scripted BlueZ - no bus involved, so every host
+ab_add_test(test_pscbios_bluez apps/test_pscbios_bluez.cpp apps/fake_bluez_bus.h LIBS pscbios_core)
 ab_add_test(test_abflashkit_core apps/test_abflashkit_core.cpp LIBS abflashkit_core)
 # the native backend (sysfs, getifaddrs, wpa_supplicant's control socket) is Unix only, like the code it tests
 if (NOT WIN32)

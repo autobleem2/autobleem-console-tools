@@ -77,3 +77,18 @@ The timezone (`settime`), the pad mapping wizard, `ssid.cfg`.
   instead of `killall`, then `systemctl restart dhclient`). To check on the console: `dhcpcd -n` against the
   running `dhcpcd -B` starting wpa_supplicant through the hook, and whether the console has a `netdev` group
   (`GROUP=` is written only when it does).
+- Step 2 done (2026-09-25): `BluezClient` (`src/core/bluez_client.*`) over a `BluezBus` interface, `DbusBluezBus`
+  (libdbus-1, `src/core/bluez_dbus_bus.*`) the console's transport, `NativeBackend`'s Bluetooth half through it;
+  `tests/apps/test_pscbios_bluez.cpp` (every host, a scripted BlueZ in `tests/apps/fake_bluez_bus.h`) and the
+  Bluetooth cases in `test_pscbios_native.cpp`. Choices of its own: the first adapter by path (not `hci0` by name);
+  pairing is a state machine (`beginPair`/`pump`) for step 4's screens, `pair()` its blocking form for today's
+  `btPair`; a Connect that fails after a successful pairing still counts as paired (the old script's rule - the
+  pad connects itself on its PS button) with the reason in `lastError()`; the agent is registered for the whole
+  pairing (discovery included) but says yes only to that device, and answers `RequestPinCode` with 0000 and
+  `RequestPasskey` with 0; `btUp()` powers an adapter that is off on once per backend; discovery that someone else
+  started (InProgress) is joined and left running. The libdbus layer is built only where the dev files are - the
+  build image has them in both the psc sysroot and the native stage, so the CI builds it everywhere it builds
+  PSC-Bios. To check on the console (step 5): `abbtagent` becomes the default agent again after our
+  UnregisterAgent (BlueZ keeps the earlier defaults in a queue - to be seen on 5.50); a DS4 pairs with Trusted set first and no
+  AuthorizeService reaching our agent; `SetDiscoveryFilter` accepted by the console's bluetoothd; the battery file
+  names hid-sony uses on the 4.4 kernel; the system bus's policy lets root export an agent and call `org.bluez`.

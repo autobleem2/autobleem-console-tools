@@ -50,11 +50,27 @@ src/core/       pscbios_core (SDL-free, links ab_core; the tests link it)
   native_backend.*    NativeBackend (Unix only, not used yet - docs/native-backend-plan.md): interfaces from
                       /sys/class/net (wireless = a `wireless`/`phy80211` entry, any name), IPv4 by getifaddrs, WiFi
                       through WpaCtrlClient, or - with no wpa_supplicant running - wpa_supplicant.conf written and
-                      `dhcpcd -n <iface>` (its 10-wpa_supplicant hook starts it); Bluetooth/timezone delegated to an
-                      AbnetBackend until step 2. Every path in NativePaths, the programs through a CommandRunner
+                      `dhcpcd -n <iface>` (its 10-wpa_supplicant hook starts it); Bluetooth through BluezClient (the
+                      bus connected on first use, again after a failure; btLastError() says why when there is none);
+                      the timezone delegated to an AbnetBackend until step 3. Every path in NativePaths, the programs
+                      through a CommandRunner
   wpa_ctrl_client.*   WpaCtrlClient: /var/run/wpa_supplicant/<iface> over third_party/wpa_ctrl (hostap 2.10's client,
                       BSD, README.autobleem.txt lists our two changes) - SCAN (waits for the event), SCAN_RESULTS,
                       STATUS, the one-network configure, TERMINATE; a timeout on every request
+  bluez_client.*      BluezClient (every host): the first adapter from GetManagedObjects and its devices (name, paired,
+                      trusted, connected, modalias, icon, class, RSSI, Battery1), discovery (BR/EDR filter; someone
+                      else's InProgress joined, not stopped), RemoveDevice/Disconnect, the battery (power_supply's
+                      sony_controller_battery_<mac> / ps-controller-battery-<mac>, else Battery1), and the pairing as a
+                      state machine - beginPair() then pump() (a screen's frame loop) or pair() (blocking): discover
+                      until known, Trusted=true, Pair (AlreadyExists fine), wait for Paired, Connect (a failed Connect
+                      still counts as paired, lastError() says why). Its own agent for the pairing's duration
+                      (NoInputNoOutput, RequestDefaultAgent; yes only to the device being paired, PIN 0000/passkey 0),
+                      unregistered after - abbtagent is the default again. Every failure: the D-Bus error in lastError()
+  bluez_bus.h         BluezBus - the D-Bus operations it needs, values already unpacked (DbusValue); the seam the tests
+                      script (tests/apps/fake_bluez_bus.h)
+  bluez_dbus_bus.*    DbusBluezBus - that over libdbus-1: a private system-bus connection, no main loop (blocking calls
+                      with a timeout, pump() = read_write_dispatch for Pair/Connect and the agent's calls). Built where
+                      libdbus-1's dev files are (PSCBIOS_HAVE_DBUS): required for the console, optional on a host
   ssid_config.*       SsidConfig - ssid.cfg load/save, the wpa_supplicant.conf fallback, the paths
   game_controller_db.* GameControllerDb - gamecontrollerdb.txt with one mapping replaced under "#AutoBleem"
   pad_mapping.*       PadMapping - the wizard's logic: the 25 standard elements, detectChange(), the stick-half
@@ -125,8 +141,10 @@ else the main GUI's `gamecontrollerdb.txt` - which the launcher loads at its nex
 ## Build, run, test
 
 - **This repository** (Linux: the host build and the console): `ab_add_extension` without a HOST builds
-  `<build>/extensions/pscbios/`; the host build also runs `tests/apps/test_pscbios_core.cpp` (and, on Linux,
-  `test_pscbios_native.cpp`: a fake wpa_supplicant on a Unix datagram socket in a temp dir, a fake sysfs). The CI's psc
+  `<build>/extensions/pscbios/`; the host build also runs `tests/apps/test_pscbios_core.cpp`, `test_pscbios_bluez.cpp` (BluezClient over a
+  scripted BlueZ, every host) and, on Linux, `test_pscbios_native.cpp` (a fake wpa_supplicant on a Unix datagram
+  socket in a temp dir, a fake sysfs, the Bluetooth half over the scripted BlueZ). The plugin links
+  `libdbus-1.so.3` (the console's own, stock included; the build image's psc sysroot has the dev files). The CI's psc
   job checks the plugin (`check_psc_binary.sh`, `check_extension.sh`) and packs the folder into
   `console-tools-psc-<v>.tar.gz` as `Extensions/pscbios/`, next to `Apps/abflashkit/`; autobleem-appliance
   extracts that tarball onto the stick. Not built for the Pi. Not UPX-packed (a shared library).
