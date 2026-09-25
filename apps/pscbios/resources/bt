@@ -32,7 +32,12 @@ diag() {
     {
         echo "== diag ($1)"
         echo "-- dmesg"
-        dmesg 2>/dev/null | tail -n 120
+        # the display driver's per-frame chatter (mtk_fb_wait, ...) left out: it filled the whole tail
+        dmesg 2>/dev/null | grep -vE 'mtk_fb_wait|mtk_plane_atomic|xocap|nvram read|MTK_V4L2|afe_dais_trigger' | tail -n 120
+        echo "-- hid devices (driver, modalias)"
+        for h in /sys/bus/hid/devices/*; do
+            [ -d "$h" ] && echo "$(basename "$h") driver=$(basename "$(readlink "$h/driver" 2>/dev/null)" 2>/dev/null) $(cat "$h/modalias" 2>/dev/null)"
+        done
         echo "-- usb"
         for d in /sys/bus/usb/devices/*; do
             [ -f "$d/idVendor" ] || continue
@@ -56,6 +61,9 @@ diag() {
         done
         echo "-- input"
         cat /proc/bus/input/devices 2>/dev/null | grep -E "^N:|^H:"
+        echo "-- journal: bluetoothd, abbtagent"
+        journalctl --no-pager -n 80 -u bluetooth 2>/dev/null | grep -vE 'Unknown key|D-Bus'
+        journalctl --no-pager -n 30 -u abbtagent 2>/dev/null
         echo "== end diag"
     } >>"$LOG" 2>&1
 }
@@ -85,6 +93,27 @@ case "$1" in
         # - trust BEFORE pair: a DualShock 4 opens its HID channels the moment it is paired, and an untrusted
         #   device makes bluetoothctl's agent ask "Authorize service (yes/no)" on stdin, which nobody answers
         # - then wait for "Paired: yes" (asked from a second bluetoothctl) before connect and quit
+        # btmon (when the kernel payload has it) records the HCI traffic for AB_BT_BTMON_SECONDS from here - the
+        # pairing and whatever follows it (the pad reconnecting on its PS button): the text next to bt.log, the HID
+        # report hex dumps left out, and the btsnoop file for Wireshark. It must hold NOTHING on the stick while it
+        # runs - a first version ran from the script's own shell (cwd and the script's descriptor on /media) and
+        # the console's standby could not unmount the stick: a reboot and a dirty stick. So: a script of its own in
+        # /tmp, started from /tmp by a fresh sh (bash marks its script descriptor close-on-exec), every standard
+        # descriptor closed, and the results copied to the stick only if it is still mounted at the end.
+        if command -v btmon >/dev/null 2>&1; then
+            cat >/tmp/pscbios-btcap.sh <<EOF
+btmon -w /tmp/pscbios-bt.snoop >/tmp/pscbios-btmon.txt 2>&1 &
+p=\$!
+sleep ${AB_BT_BTMON_SECONDS:-45}
+kill "\$p"
+if grep -q ' /media ' /proc/mounts && [ -d "$LOGDIR" ]; then
+    grep -vE '^ +([0-9a-f]{2} )+' /tmp/pscbios-btmon.txt | head -n 6000 >"$LOGDIR/btmon.txt"
+    cp -f /tmp/pscbios-bt.snoop "$LOGDIR/bt.snoop"
+fi
+rm -f /tmp/pscbios-btmon.txt /tmp/pscbios-bt.snoop /tmp/pscbios-btcap.sh
+EOF
+            (cd /tmp && exec sh /tmp/pscbios-btcap.sh) </dev/null >/dev/null 2>&1 &
+        fi
         {
             echo "== pair $mac"
             {
