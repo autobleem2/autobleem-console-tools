@@ -44,6 +44,7 @@ ConsoleBackend &GuiBtPairing::backend() {
 void GuiBtPairing::init() {
     GuiMenuBase::init();
     hasAdapter_ = backend().btUp();
+    adapterError_ = hasAdapter_ ? "" : backend().btLastError();
     devices_ = hasAdapter_ ? backend().btPairedDevices() : vector<BtDevice>{};
     rebuild();
 }
@@ -56,6 +57,8 @@ void GuiBtPairing::rebuild() {
     if (!hasAdapter_) {
         lines.push_back(_("No Bluetooth adapter found."));
         lines.push_back(_("Plug a USB Bluetooth dongle into the console, then open this screen again."));
+        if (!adapterError_.empty())
+            lines.push_back(adapterError_); // why: no adapter, or the system bus / BlueZ not answering
     } else {
         lines.push_back(_("Scan for controllers"));
         for (const BtDevice &d : devices_) {
@@ -83,8 +86,11 @@ void GuiBtPairing::scan() {
     app.audio().cursor.play();
     gui->drawText(_("Scanning for controllers..."), _("Put your controller in pairing mode"));
     devices_ = backend().btScan();
+    const string scanError = backend().btLastError();
     mergePaired(devices_, backend().btPairedDevices());
     rebuild();
+    if (!scanError.empty())
+        showFailure(_("Bluetooth scan failed"), scanError);
 }
 
 //*******************************
@@ -107,8 +113,11 @@ void GuiBtPairing::doCross_Pressed() {
     }
     app.audio().cursor.play();
     gui->drawText(_("Pairing") + " " + d.name + "...", _("Keep the controller in pairing mode"));
-    backend().btPair(d.mac);
+    const bool paired = backend().btPair(d.mac);
+    const string pairError = backend().btLastError(); // also after a pairing that did not connect
     refreshPaired(); // the row now shows [paired]/[connected], or stays [new] on failure
+    if (!paired)
+        showFailure(_("Pairing failed"), pairError);
 }
 
 //*******************************
@@ -129,8 +138,20 @@ void GuiBtPairing::doTriangle_Pressed() {
     if (!confirm.result)
         return;
     gui->drawText(_("Removing") + " " + d.name + "...");
-    backend().btRemove(d.mac);
+    const bool removed = backend().btRemove(d.mac);
+    const string removeError = backend().btLastError();
     refreshPaired();
+    if (!removed)
+        showFailure(_("Removing the pairing failed"), removeError);
+}
+
+//*******************************
+// GuiBtPairing::showFailure
+//*******************************
+// what went wrong and why (the D-Bus error), for a moment - step 4 of docs/native-backend-plan.md shows it live
+void GuiBtPairing::showFailure(const string &message, const string &reason) {
+    gui->drawText(message, reason);
+    gui->platform().delay(3000);
 }
 
 //*******************************

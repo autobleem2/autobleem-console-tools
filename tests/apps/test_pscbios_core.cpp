@@ -1,5 +1,5 @@
 //
-// pscbios_core: the console backend's command lines and parsing, ssid.cfg, gamecontrollerdb.txt editing
+// pscbios_core: the dev host's backend and the main screen's facts, ssid.cfg, gamecontrollerdb.txt editing
 // and the mapping wizard's logic - everything PSC-Bios does that is not a screen.
 //
 #include "doctest/doctest.h"
@@ -13,130 +13,11 @@
 #include "core/pad_mapping.h"
 #include "core/ssid_config.h"
 
-#include <map>
 #include <string>
 #include <vector>
 
 using std::string;
 using std::vector;
-
-//*******************************
-// a scripted shell for AbnetBackend
-//*******************************
-namespace {
-std::map<string, string> answers;          // command -> one-line answer
-std::map<string, vector<string>> listings; // command -> lines
-vector<string> ran;                        // every command, in order
-
-string scriptedRun(const string &cmd) {
-    ran.push_back(cmd);
-    auto it = answers.find(cmd);
-    return it == answers.end() ? "" : it->second;
-}
-vector<string> scriptedRunLines(const string &cmd) {
-    ran.push_back(cmd);
-    auto it = listings.find(cmd);
-    return it == listings.end() ? vector<string>() : it->second;
-}
-struct ScriptedShell {
-    ScriptedShell() {
-        answers.clear();
-        listings.clear();
-        ran.clear();
-    }
-};
-} // namespace
-
-TEST_CASE("AbnetBackend asks the kernel's scripts the way the 2020 tool did") {
-    ScriptedShell shell;
-    answers["/bin/abnet list_ifaces"] = "lo eth0 wlan0";
-    answers["/bin/abnet wlan_on"] = "yes";
-    answers["/bin/abnet is_up wlan0"] = "yes";
-    answers["/bin/abnet is_up eth0"] = "no";
-    answers["/bin/abnet show_ip wlan0"] = "192.168.68.144";
-    answers["/bin/abnet bt_up "] = "yes";
-    answers["/bin/abnet bt_name "] = "hci0 00:11:22:33:44:55";
-    answers["/bin/settime tz"] = "Europe/Warsaw";
-    listings["/bin/abnet scan"] = {"Zeta", "Alpha", "Zeta", "Mid"};
-    listings["timedatectl list-timezones"] = {"UTC", "Europe/Warsaw", "Africa/Cairo", "UTC"};
-    AbnetBackend backend(scriptedRun, scriptedRunLines, true);
-
-    CHECK(backend.kernelInstalled());
-    CHECK(backend.interfaceFound("wlan0"));
-    CHECK(backend.interfaceFound("eth0"));
-    CHECK_FALSE(backend.interfaceFound("usb0"));
-    CHECK(backend.wlanOn());
-    CHECK(backend.isUp("wlan0"));
-    CHECK_FALSE(backend.isUp("eth0"));
-    CHECK(backend.ipOf("wlan0") == "192.168.68.144");
-    CHECK(backend.ipOf("usb0") == ""); // no such interface: show_ip is never asked
-    CHECK(backend.btUp());
-    CHECK(backend.btName() == "hci0 00:11:22:33:44:55");
-    CHECK(backend.timezone() == "Europe/Warsaw");
-    CHECK(backend.scanSsids() == vector<string>{"Alpha", "Mid", "Zeta"}); // sorted, unique
-    CHECK(backend.listTimezones() == vector<string>{"Africa/Cairo", "Europe/Warsaw", "UTC"});
-
-    ran.clear();
-    backend.configureWifi("My \"Net\"", "pa$s", "nl80211");
-    REQUIRE(ran.size() == 2);
-    CHECK(ran[0] == "/bin/abnet configure \"My \\\"Net\\\"\" \"pa\\$s\"");
-    CHECK(ran[1] == "/bin/abnet driver_mode nl80211");
-    ran.clear();
-    backend.setTimezone("Europe/Warsaw");
-    CHECK(ran == vector<string>{"/bin/settime tzone \"Europe/Warsaw\""});
-    ran.clear();
-    backend.restartNetwork();
-    CHECK(ran == vector<string>{"/bin/abnet restart"});
-}
-
-TEST_CASE("AbnetBackend does not scan without a WiFi interface that is up") {
-    ScriptedShell shell;
-    answers["/bin/abnet list_ifaces"] = "lo eth0";
-    listings["/bin/abnet scan"] = {"Alpha"};
-    AbnetBackend backend(scriptedRun, scriptedRunLines, true);
-    CHECK(backend.scanSsids().empty());
-    for (const string &cmd : ran)
-        CHECK(cmd != "/bin/abnet scan");
-}
-
-TEST_CASE("AbnetBackend pairs via the bt bluetoothctl helper and parses the device lines") {
-    ScriptedShell shell;
-    answers["/bin/abnet bt_up "] = "yes"; // adapter check stays on abnet (works on the old kernel too)
-    listings["sh bt scan"] = {"00:1B:DC:0F:11:22 Wireless Controller", "E4:17:D8:AA:BB:CC 8BitDo Pro 2",
-                              "not a device line", "AA:BB:CC:DD:EE:FF"};
-    listings["sh bt paired"] = {"A0:AB:51:33:44:55 Xbox Wireless Controller"};
-    answers["sh bt pair \"00:1B:DC:0F:11:22\""] = "ok";
-    answers["sh bt remove \"A0:AB:51:33:44:55\""] = "ok";
-    AbnetBackend backend(scriptedRun, scriptedRunLines, true, "bt");
-
-    auto scanned = backend.btScan();
-    REQUIRE(scanned.size() == 3); // the line without a mac is dropped
-    CHECK(scanned[0].mac == "00:1B:DC:0F:11:22");
-    CHECK(scanned[0].name == "Wireless Controller");
-    CHECK_FALSE(scanned[0].paired);
-    CHECK(scanned[2].mac == "AA:BB:CC:DD:EE:FF");
-    CHECK(scanned[2].name == "AA:BB:CC:DD:EE:FF"); // a mac with no name keeps the mac as its name
-
-    auto paired = backend.btPairedDevices();
-    REQUIRE(paired.size() == 1);
-    CHECK(paired[0].paired);
-    CHECK(paired[0].name == "Xbox Wireless Controller");
-
-    CHECK(backend.btPair("00:1B:DC:0F:11:22"));
-    CHECK(backend.btRemove("A0:AB:51:33:44:55"));
-    CHECK_FALSE(backend.btPair("de:ad:be:ef:00:00")); // no scripted "ok" -> failure
-}
-
-TEST_CASE("AbnetBackend does not touch Bluetooth without an adapter") {
-    ScriptedShell shell;
-    answers["/bin/abnet bt_up "] = "no";
-    listings["sh bt scan"] = {"00:1B:DC:0F:11:22 Something"};
-    AbnetBackend backend(scriptedRun, scriptedRunLines, true, "bt");
-    CHECK(backend.btScan().empty());
-    CHECK(backend.btPairedDevices().empty());
-    for (const string &cmd : ran)
-        CHECK(cmd != "sh bt scan");
-}
 
 TEST_CASE("FakeBackend pairs and removes Bluetooth controllers, and can report no adapter") {
     FakeBackend fake;
@@ -154,6 +35,7 @@ TEST_CASE("FakeBackend pairs and removes Bluetooth controllers, and can report n
     fake.btAdapter_ = false;
     CHECK_FALSE(fake.btUp());
     CHECK(fake.btName().empty());
+    CHECK(fake.btLastError() == "no Bluetooth adapter");
     CHECK(fake.btScan().size() == 3); // the fake still lists its devices; the screen gates on btUp()
 }
 
@@ -161,16 +43,31 @@ TEST_CASE("NetworkStatus gathers the main screen's facts from the backend") {
     FakeBackend fake;
     NetworkStatus status;
     status.refresh(fake);
+    CHECK(status.wirelessIface == "wlan0"); // the backend's WiFi interface, whatever its name
     CHECK(status.wirelessFound);
     CHECK(status.wirelessActive);
     CHECK(status.wirelessAddr == "192.168.1.23");
     CHECK_FALSE(status.ethFound);
+    CHECK(status.ethIface.empty());
     CHECK(status.btActive);
+    CHECK(status.btStatusText() == "Found/Active");
+    CHECK(status.btDetails() == "hci0 PSC-BT 00:11:22:33:44:55");
     CHECK(status.timezone == "Europe/Warsaw");
     CHECK(NetworkStatus::dongleStatus(true, false) == "Found/Not active");
     CHECK(NetworkStatus::addressText(false, "") == "-");
     CHECK(NetworkStatus::addressText(true, "") == "Waiting for IP Address...");
     CHECK(NetworkStatus::addressText(true, "10.0.0.2") == "10.0.0.2");
+
+    // no adapter: "Not found", and the reason as the details
+    fake.btAdapter_ = false;
+    status.refresh(fake);
+    CHECK(status.btStatusText() == "Not found/Not active");
+    CHECK(status.btDetails() == "no Bluetooth adapter");
+    // the bus or BlueZ not answering: unavailable, with the reason
+    status.btError = "BlueZ does not answer: org.freedesktop.DBus.Error.ServiceUnknown";
+    CHECK(status.btStatusText() == "Unavailable");
+    CHECK(status.btDetails() == status.btError);
+    fake.btAdapter_ = true;
 
     fake.setTimezone("UTC");
     fake.configureWifi("Home Network", "secret", "wext");

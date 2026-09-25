@@ -12,48 +12,63 @@ do: **WiFi settings** (SSID typed or picked from a scan, password, driver mode, 
 the network restarted; the timezone), the **gamepad mapping wizard** (a pad tested raw, every standard
 input asked for in turn, the result written to the `gamecontrollerdb.txt` the launcher loads), a DualShock 3
 USB-pairing page, and an interactive **Bluetooth pairing screen** (`GuiBtPairing`, 2026-09-22) - scan, pick,
-pair/remove a DualShock 4 or other standard Bluetooth gamepad via a shipped `bt` bluetoothctl wrapper, so it
-works on the original flashed kernel too (not just a freshly built one).
+pair/remove a DualShock 4 or other standard Bluetooth gamepad through BlueZ over D-Bus, so it works on the
+original flashed kernel too (its overlay has bluez 5.50 + bluetoothd), not only a freshly built one.
 Ported on 2026-09-18 from the 2020 standalone tool (a fork of the
 old AutoBleem GUI, kept in git history under `psctools/pscbios`) onto `lib_ableem` + `ab_core` +
 `ab_classic`; the root CLAUDE.md covers those and the build.
 
 ## What the console provides
 
-Everything console-specific goes through two scripts the **AutoBleem kernel** ships in `/bin` - they are
-not in this repository:
+**No shell script is run** (since 2026-09-25, docs/native-backend-plan.md step 3 - the owner's call: native
+only, no fallback). `NativeBackend` asks the console itself:
 
-- `/bin/abnet list_ifaces | wlan_on | is_up <iface> | show_ip <iface> | scan | configure "<ssid>" "<pw>"
-  | driver_mode <wext|nl80211> | restart | bt_up | bt_name`
-- `bluetoothctl` (and a running `bluetoothd`) for the Bluetooth pairing screen (`GuiBtPairing`). PSC-Bios
-  ships its own `bt` wrapper (`resources/bt`, run from `Env::getAppDir()`) that drives bluetoothctl:
-  `bt scan | paired | pair "<mac>" | remove "<mac>"` - `scan`/`paired` print `<mac> <name>` per line,
-  `pair`/`remove` print `ok`. **This deliberately does NOT use a new abnet subcommand**, so pairing works on
-  the ORIGINAL flashed kernel too (its overlay already carries bluez 5.50 + bluetoothd + the sixaxis
-  plugin), not only on a freshly built one. Only `bt_up`/`bt_name` (the adapter facts) go through abnet, and
-  those already exist. DualShock 3 is NOT here - it pairs over USB through the sixaxis BlueZ plugin.
-- `/bin/settime tz` (the current zone) and `settime tzone "<zone>"`; the zone list is `timedatectl list-timezones`.
+- the network interfaces from `/sys/class/net` under any name (a wireless one has a `wireless`/`phy80211`
+  entry; the wired one is ARPHRD_ETHER with a `device`, not `rndis*` - the AutoBleem kernel's USB gadget - nor
+  `bnep*`), addresses by `getifaddrs`;
+- WiFi through **wpa_supplicant's control socket** (`/var/run/wpa_supplicant/<iface>`); with none running,
+  `/etc/wpa_supplicant.conf` written and `dhcpcd -n <iface>` (its `10-wpa_supplicant` hook starts it); the
+  driver mode is `/etc/autobleem/dhcpcd.conf.<wext|nl80211>` copied over `/etc/dhcpcd.conf`; a restart is
+  TERMINATE + `systemctl restart dhclient`;
+- Bluetooth through **BlueZ over D-Bus** (libdbus-1, the system bus) - adapter, discovery, pairing with an agent
+  of its own, removal, battery. DualShock 3 is NOT here - it pairs over USB through the sixaxis BlueZ plugin;
+- the timezone: `/etc/timezone` (what `settime tz` printed), else `/etc/localtime`'s link; the list from
+  `/usr/share/zoneinfo/zone1970.tab` + `zone.tab` (what `timedatectl list-timezones` answered) plus UTC; a change
+  is the kernel's `/bin/settime tzone <zone>`, run directly through `System::runAndWait` (no `sh -c`), for a
+  zone from that list only.
 
-Plus two files: `/etc/autobleem/ssid.cfg` (three lines: SSID, password, driver mode - what `abnet
-configure` is fed from) and `/etc/wpa_supplicant.conf` (read only, for the SSID an earlier setup left
-there; its `"1"` means none). `/etc/autobleem` is `Env::getPathToKernelConfigDir()`, set by
-`EnvironmentSetup::fromRoot()` on the console only; off the console `SsidConfig` keeps `ssid.cfg` next to
-the tool. Without the kernel (`/bin/abnet` missing) the network rows and WiFi settings are off and the
-pad wizard still works - the 2020 tool exited after "Custom Firmware Kernel Not Found".
+The programs it starts (`dhcpcd`, `systemctl`, `settime`) go through `NativeBackend::CommandRunner`
+(`System::runAndWait`, the tests record them). When something does not answer - no WiFi interface,
+wpa_supplicant not starting, the system bus or bluetoothd down, no adapter - the call fails at once or after its
+timeout and the reason is `lastError()` (WiFi, timezone) / `btLastError()` (Bluetooth), both on the
+`ConsoleBackend` interface: the main screen shows Bluetooth as "Unavailable" with the reason as its details
+row, the SSID scan, the WiFi write/restart, the timezone and the pairing screen show the reason under their
+message (`drawText`, 3 s - step 4 makes that live). The fixed reasons NativeBackend and the two clients produce
+at the top of those paths go through `_()`; the D-Bus/wpa_supplicant error text after them is shown as it is.
+
+Plus two files: `/etc/autobleem/ssid.cfg` (three lines: SSID, password, driver mode - what the WiFi settings
+screen keeps) and `/etc/wpa_supplicant.conf` (read, for the SSID an earlier setup left there; its `"1"` means
+none). `/etc/autobleem` is `Env::getPathToKernelConfigDir()`, set by `EnvironmentSetup::fromRoot()` on the
+console only; off the console `SsidConfig` keeps `ssid.cfg` next to the tool. Without the AutoBleem kernel
+(`kernelInstalled()`: `/bin/abnet` exists - only looked at, as the 2020 tool did; the kernel's overlay brings
+settime, dhcpcd's hook and the driver variants too) the network rows and WiFi settings are off and the pad
+wizard still works - the 2020 tool exited after "Custom Firmware Kernel Not Found".
 
 ## Layout
 
 ```
 src/core/       pscbios_core (SDL-free, links ab_core; the tests link it)
-  console_backend.*   ConsoleBackend interface; AbnetBackend (the popens above, through System::execUnixCommand[Lines])
-                      and FakeBackend (a dev host: wlan0 on 192.168.1.23, three SSIDs, Europe/Warsaw, 16 zones)
-  native_backend.*    NativeBackend (Unix only, not used yet - docs/native-backend-plan.md): interfaces from
-                      /sys/class/net (wireless = a `wireless`/`phy80211` entry, any name), IPv4 by getifaddrs, WiFi
-                      through WpaCtrlClient, or - with no wpa_supplicant running - wpa_supplicant.conf written and
+  console_backend.*   ConsoleBackend interface (wifiInterface()/ethernetInterface() by what they are, lastError() and
+                      btLastError() - the reasons) and FakeBackend (a dev host: wlan0 on 192.168.1.23, three SSIDs,
+                      Europe/Warsaw, 16 zones)
+  native_backend.*    NativeBackend, the console's (Unix only - docs/native-backend-plan.md): interfaces from
+                      /sys/class/net (wireless = a `wireless`/`phy80211` entry, any name; ethernetInterface() the first
+                      ARPHRD_ETHER one with a `device`, rndis*/bnep* left out), IPv4 by getifaddrs, WiFi through
+                      WpaCtrlClient, or - with no wpa_supplicant running - wpa_supplicant.conf written and
                       `dhcpcd -n <iface>` (its 10-wpa_supplicant hook starts it); Bluetooth through BluezClient (the
                       bus connected on first use, again after a failure; btLastError() says why when there is none);
-                      the timezone delegated to an AbnetBackend until step 3. Every path in NativePaths, the programs
-                      through a CommandRunner
+                      the timezone from /etc/timezone and the zoneinfo tables, set with `settime tzone`; the kernel
+                      is /bin/abnet existing. Every path in NativePaths, the programs through a CommandRunner
   wpa_ctrl_client.*   WpaCtrlClient: /var/run/wpa_supplicant/<iface> over third_party/wpa_ctrl (hostap 2.10's client,
                       BSD, README.autobleem.txt lists our two changes) - SCAN (waits for the event), SCAN_RESULTS,
                       STATUS, the one-network configure, TERMINATE; a timeout on every request
@@ -75,7 +90,9 @@ src/core/       pscbios_core (SDL-free, links ab_core; the tests link it)
   game_controller_db.* GameControllerDb - gamecontrollerdb.txt with one mapping replaced under "#AutoBleem"
   pad_mapping.*       PadMapping - the wizard's logic: the 25 standard elements, detectChange(), the stick-half
                       merge (finalElements), the mapping line; the 2020 right-stick bug is fixed here
-  network_status.*    NetworkStatus - the main screen's facts, one refresh() per RefreshInterval
+  network_status.*    NetworkStatus - the main screen's facts, one refresh() per RefreshInterval: the dongles by
+                      the backend's wifiInterface()/ethernetInterface() (their names are an "Interface details" row),
+                      Bluetooth's btStatusText()/btDetails() (Unavailable + the reason when BlueZ does not answer)
 src/screens/    the screens, on ab_classic (GuiFactsPage, GuiStringMenu, GuiConfirm, GuiKeyboard, GuiTextPage, GuiAbout)
   gui_pscbios_main.*  the opening screen, a GuiFactsPage (sections: time, WiFi, ethernet, Bluetooth, the controllers
                       with their mapping and the mapping file); Select = WiFi (kernel only), Square = gamepads,
@@ -89,18 +106,19 @@ src/screens/    the screens, on ab_classic (GuiFactsPage, GuiStringMenu, GuiConf
                       pscbios_pages.* the static texts (the About credits with GuiAbout::HeadingMark headings)
 src/pscbios.*         PscBios - the running tool's shared part: the ConsoleBackend the screens reach as
                       PscBios::get().console(), valid while its screens show
-src/pscbios_extension.cpp  PscBiosExtension (AB_EXTENSION): run() = the backend choice (FakeBackend under
-                      AB_DEBUG_HOST), Env::setAppDir(the extension's folder) for its duration, the main screen
+src/pscbios_extension.cpp  PscBiosExtension (AB_EXTENSION): run() = the backend choice (NativeBackend where it is
+                      built - PSCBIOS_NATIVE_BACKEND, not Windows - FakeBackend under AB_DEBUG_HOST),
+                      Env::setAppDir(the extension's folder) for its duration, the main screen
 resources/            what ships in Extensions/pscbios/ next to bin/psc/pscbios.so: extension.ini (Network=none,
-                      no Background), readme.txt, icon.png, DS3.png (the wizard's picture), bt (the bluetoothctl
-                      wrapper), gamecontrollerdb.txt (the seed), lang/
+                      no Background), readme.txt, icon.png, DS3.png (the wizard's picture), gamecontrollerdb.txt
+                      (the seed), lang/
 ```
 
 It runs **inside the launcher**: the launcher's `App` is the `AppBase` every screen has (config, theme,
 language, audio), its window and its pads; nothing of the SDK is in the plugin (`tools/check_extension.sh`
 checks the exports - `ab_add_extension` builds it with the SDK's headers only, and pscbios_core's sources are
-compiled into it rather than linked, since that library links ab_core). `Env::getAppDir()` - where `DS3.png`,
-`bt` and, off the console, `ssid.cfg` are read - is the extension's folder while `run()` runs and is put back
+compiled into it rather than linked, since that library links ab_core). `Env::getAppDir()` - where `DS3.png`
+and, off the console, `ssid.cfg` are read - is the extension's folder while `run()` runs and is put back
 after. Its log lines are the launcher's (`System/Logs/autobleem.log`, tagged `[pscbios]`).
 
 **Its `AB_SDK_ABI` must be the launcher's**, or the launcher refuses to load it (and Hardware Information
@@ -121,7 +139,9 @@ python tools/lang_tools.py --src-dir apps/pscbios/src --lang-dir apps/pscbios/re
 python tools/lang_tools.py --src-dir apps/pscbios/src --lang-dir apps/pscbios/resources/lang update
 ```
 `make_win.sh` runs `validate` on it. Five translations came over from the 2020 tool (Italiano, Polski,
-Portuguese_BR, Slovak, Spanish); about half their strings changed with the port and are empty.
+Portuguese_BR, Slovak, Spanish); about half their strings changed with the port and are empty. Every language
+file has every key since 2026-09-25 (the pairing screen's strings were added then); `AutoBleem`/`Version` are
+empty on purpose - the launcher's file has them.
 
 ## The wizard
 
@@ -141,9 +161,10 @@ else the main GUI's `gamecontrollerdb.txt` - which the launcher loads at its nex
 ## Build, run, test
 
 - **This repository** (Linux: the host build and the console): `ab_add_extension` without a HOST builds
-  `<build>/extensions/pscbios/`; the host build also runs `tests/apps/test_pscbios_core.cpp`, `test_pscbios_bluez.cpp` (BluezClient over a
-  scripted BlueZ, every host) and, on Linux, `test_pscbios_native.cpp` (a fake wpa_supplicant on a Unix datagram
-  socket in a temp dir, a fake sysfs, the Bluetooth half over the scripted BlueZ). The plugin links
+  `<build>/extensions/pscbios/`; the host build also runs `tests/apps/test_pscbios_core.cpp` (FakeBackend, NetworkStatus, ssid.cfg, the
+  mapping), `test_pscbios_bluez.cpp` (BluezClient over a scripted BlueZ, every host) and, on Linux,
+  `test_pscbios_native.cpp` (a fake wpa_supplicant on a Unix datagram socket in a temp dir, a fake sysfs, the
+  Bluetooth half over the scripted BlueZ, the timezone over a fake zoneinfo tree). The plugin links
   `libdbus-1.so.3` (the console's own, stock included; the build image's psc sysroot has the dev files). The CI's psc
   job checks the plugin (`check_psc_binary.sh`, `check_extension.sh`) and packs the folder into
   `console-tools-psc-<v>.tar.gz` as `Extensions/pscbios/`, next to `Apps/abflashkit/`; autobleem-appliance

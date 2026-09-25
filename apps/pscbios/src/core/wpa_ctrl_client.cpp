@@ -159,7 +159,7 @@ bool WpaCtrlClient::scan(int timeoutMs) {
     while (started && monitor != nullptr && !finished) {
         long long left = timeoutMs - millisecondsSince(start);
         if (left <= 0) {
-            lastError_ = "the scan did not finish in time";
+            lastError_ = _("the scan did not finish in time");
             break;
         }
         int fd = wpa_ctrl_get_fd(monitor);
@@ -179,7 +179,7 @@ bool WpaCtrlClient::scan(int timeoutMs) {
         if (text.find("CTRL-EVENT-SCAN-RESULTS") != string::npos) {
             finished = true;
         } else if (text.find("CTRL-EVENT-SCAN-FAILED") != string::npos) {
-            lastError_ = "the scan failed";
+            lastError_ = _("the scan failed");
             break;
         }
     }

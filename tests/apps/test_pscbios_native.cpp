@@ -158,6 +158,11 @@ NativePaths pathsIn(const TempDir &tmp) {
     paths.kernelConfigDir = tmp.at("etc/autobleem");
     paths.ctrlGroup = "";
     paths.supplicantStartMs = 300;
+    paths.kernelMarker = tmp.at("bin/abnet");
+    paths.settime = tmp.at("bin/settime");
+    paths.timezoneFile = tmp.at("etc/timezone");
+    paths.localtime = tmp.at("etc/localtime");
+    paths.zoneinfoDir = tmp.at("zoneinfo");
     return paths;
 }
 
@@ -306,7 +311,7 @@ TEST_CASE("NativeBackend finds the interfaces in sysfs, a wireless one by any na
     makeInterface(tmp, "wlx00c0ca112233", "0x1003", "wireless"); // up
     makeInterface(tmp, "wlan1", "0x1002", "phy80211");           // down
     RecordedRuns runs;
-    NativeBackend backend(paths, runs.runner(), std::make_unique<FakeBackend>());
+    NativeBackend backend(paths, runs.runner());
 
     CHECK(backend.interfaces() == vector<string>{"eth0", "lo", "wlan1", "wlx00c0ca112233"});
     CHECK(backend.wirelessInterfaces() == vector<string>{"wlan1", "wlx00c0ca112233"});
@@ -326,11 +331,77 @@ TEST_CASE("NativeBackend finds the interfaces in sysfs, a wireless one by any na
     CHECK(backend.ipOf("no-such-interface").empty());
     CHECK(backend.ipOf("lo") == "127.0.0.1"); // getifaddrs: the machine's own loopback
 
-    // the timezone is the other backend's; Bluetooth is BlueZ's, and without a bus there is none
+    // Bluetooth is BlueZ's, and without a bus there is none
     CHECK_FALSE(backend.btUp());
     CHECK(backend.btLastError() == "no Bluetooth support");
-    CHECK(backend.timezone() == "Europe/Warsaw");
+}
+
+TEST_CASE("NativeBackend picks the ethernet dongle by what it is, under any name") {
+    TempDir tmp("native_eth");
+    NativePaths paths = pathsIn(tmp);
+    RecordedRuns runs;
+    NativeBackend backend(paths, runs.runner());
+    CHECK(backend.ethernetInterface().empty());
+    makeInterface(tmp, "lo", "0x9");
+    makeInterface(tmp, "rndis0", "0x1003"); // the AutoBleem kernel's USB gadget: not a dongle
+    tmp.makeSubDir("net/rndis0/device");
+    makeInterface(tmp, "sit0", "0x80"); // a tunnel: no device, not ARPHRD_ETHER
+    tmp.writeFile("net/sit0/type", "776\n");
+    makeInterface(tmp, "wlan0", "0x1003", "wireless"); // the WiFi dongle is not the wired one
+    tmp.makeSubDir("net/wlan0/device");
+    CHECK(backend.ethernetInterface().empty());
+    makeInterface(tmp, "enx00e04c680001", "0x1003"); // a USB ethernet dongle, named by its address
+    tmp.writeFile("net/enx00e04c680001/type", "1\n");
+    tmp.makeSubDir("net/enx00e04c680001/device");
+    CHECK(backend.ethernetInterface() == "enx00e04c680001");
+    CHECK(backend.wifiInterface() == "wlan0");
+}
+
+TEST_CASE("NativeBackend: the kernel, and the timezone without timedatectl or a shell") {
+    TempDir tmp("native_tz");
+    NativePaths paths = pathsIn(tmp);
+    RecordedRuns runs;
+    NativeBackend backend(paths, runs.runner());
+    CHECK_FALSE(backend.kernelInstalled());
+    tmp.writeFile("bin/abnet", "#!/bin/bash\n"); // only looked at, never run
     CHECK(backend.kernelInstalled());
+
+    // the zones: both tables, only those whose file is there, and UTC
+    tmp.writeFile("zoneinfo/zone1970.tab", "# comment\n"
+                                           "PL\t+5215+02100\tEurope/Warsaw\n"
+                                           "JP\t+353916+1394441\tAsia/Tokyo\n"
+                                           "XX\t+0000+00000\tNowhere/Gone\tno file\n");
+    tmp.writeFile("zoneinfo/zone.tab", "IE\t+5320-00615\tEurope/Dublin\nPL\t+5215+02100\tEurope/Warsaw\n");
+    for (const char *zone : {"Europe/Warsaw", "Asia/Tokyo", "Europe/Dublin", "UTC"})
+        tmp.writeFile(string("zoneinfo/") + zone, "TZif");
+    CHECK(backend.listTimezones() == vector<string>{"Asia/Tokyo", "Europe/Dublin", "Europe/Warsaw", "UTC"});
+
+    // the current one: /etc/timezone (what `settime tz` printed), else /etc/localtime's link
+    CHECK(backend.timezone().empty());
+    REQUIRE(symlink((paths.zoneinfoDir + "/Europe/Dublin").c_str(), paths.localtime.c_str()) == 0);
+    CHECK(backend.timezone() == "Europe/Dublin");
+    tmp.writeFile("etc/timezone", "Europe/Warsaw\n");
+    CHECK(backend.timezone() == "Europe/Warsaw");
+
+    // set through the kernel's settime, run directly - a zone from the list only
+    backend.setTimezone("Asia/Tokyo");
+    CHECK(backend.lastError().empty());
+    CHECK(runs.lines == vector<string>{paths.settime + " tzone Asia/Tokyo"});
+    runs.lines.clear();
+    backend.setTimezone("../../etc/passwd");
+    backend.setTimezone("Nowhere/Gone");
+    CHECK(runs.lines.empty());
+    CHECK(backend.lastError() == "unknown timezone Nowhere/Gone");
+}
+
+TEST_CASE("NativeBackend says why settime failed") {
+    TempDir tmp("native_tzfail");
+    NativePaths paths = pathsIn(tmp);
+    tmp.writeFile("zoneinfo/zone.tab", "PL\t+5215+02100\tEurope/Warsaw\n");
+    tmp.writeFile("zoneinfo/Europe/Warsaw", "TZif");
+    NativeBackend backend(paths, [](const string &, const vector<string> &) { return 1; });
+    backend.setTimezone("Europe/Warsaw");
+    CHECK(backend.lastError() == paths.settime + " tzone Europe/Warsaw: 1");
 }
 
 TEST_CASE("NativeBackend configures WiFi through a running wpa_supplicant") {
@@ -341,7 +412,7 @@ TEST_CASE("NativeBackend configures WiFi through a running wpa_supplicant") {
     REQUIRE(fake.bound());
     fake.reply("SCAN_RESULTS", ScanResults);
     RecordedRuns runs;
-    NativeBackend backend(paths, runs.runner(), std::make_unique<FakeBackend>());
+    NativeBackend backend(paths, runs.runner());
 
     vector<string> expected{"Home Network", "Cafe Corner", "Caf\xc3\xa9 \"Bar\"\\"};
     std::sort(expected.begin(), expected.end()); // sorted as std::string sorts (char's sign differs per CPU)
@@ -373,7 +444,7 @@ TEST_CASE("NativeBackend writes wpa_supplicant.conf and has dhcpcd start it when
     NativePaths paths = pathsIn(tmp);
     makeInterface(tmp, "wlan0", "0x1003", "wireless");
     RecordedRuns runs;
-    NativeBackend backend(paths, runs.runner(), std::make_unique<FakeBackend>());
+    NativeBackend backend(paths, runs.runner());
 
     backend.configureWifi("Home Network", "secret123", "nl80211");
     CHECK(backend.lastError().empty());
@@ -412,7 +483,7 @@ TEST_CASE("NativeBackend without a WiFi interface scans nothing and only writes 
     NativePaths paths = pathsIn(tmp);
     makeInterface(tmp, "eth0", "0x1003");
     RecordedRuns runs;
-    NativeBackend backend(paths, runs.runner(), std::make_unique<FakeBackend>());
+    NativeBackend backend(paths, runs.runner());
     CHECK_FALSE(backend.wlanOn());
     CHECK(backend.scanSsids().empty());
     backend.configureWifi("Home Network", "secret123", "wext");
@@ -443,7 +514,7 @@ TEST_CASE("NativeBackend's Bluetooth goes through BlueZ") {
         fakebluez::device("1C:A0:B8:12:34:56", "Wireless Controller");
     int connects = 0;
     RecordedRuns runs;
-    NativeBackend backend(paths, runs.runner(), std::make_unique<FakeBackend>(), [&](BusError &) {
+    NativeBackend backend(paths, runs.runner(), [&](BusError &) {
         ++connects;
         return fakebluez::makeBus(state);
     });
@@ -502,7 +573,7 @@ TEST_CASE("NativeBackend without a system bus: no Bluetooth, and why") {
     NativePaths paths = pathsIn(tmp);
     RecordedRuns runs;
     int attempts = 0;
-    NativeBackend backend(paths, runs.runner(), std::make_unique<FakeBackend>(), [&](BusError &error) {
+    NativeBackend backend(paths, runs.runner(), [&](BusError &error) {
         ++attempts;
         error.name = "org.freedesktop.DBus.Error.FileNotFound";
         error.message = "Failed to connect to socket /var/run/dbus/system_bus_socket: No such file or directory";

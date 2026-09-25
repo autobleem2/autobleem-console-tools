@@ -15,7 +15,8 @@ void GuiSsidScanMenu::init() {
     gui->drawText(_("Scanning networks"));
     lines = PscBios::get().console().scanSsids();
     if (lines.empty()) {
-        gui->drawText(_("No networks found"));
+        // the reason, when there is one: no WiFi dongle, wpa_supplicant not starting or not answering
+        gui->drawText(_("No networks found"), PscBios::get().console().lastError());
         gui->platform().delay(2000);
     }
 }

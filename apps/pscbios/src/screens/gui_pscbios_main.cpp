@@ -53,18 +53,26 @@ vector<InfoSection> GuiPscBiosMain::collect() {
         status.refresh(PscBios::get().console());
         sections.push_back(
             {_("System"), {{plain(_("Current Time:")), clockText()}, {plain(_("Timezone:")), status.timezone}}});
-        sections.push_back(
-            {plain(_("WiFi information:")),
-             {{plain(_("Dongle status:")), NetworkStatus::dongleStatus(status.wirelessFound, status.wirelessActive)},
-              {plain(_("IP configuration:")), NetworkStatus::addressText(status.wirelessFound, status.wirelessAddr)}}});
-        sections.push_back(
-            {plain(_("Ethernet information:")),
-             {{plain(_("Dongle status:")), NetworkStatus::dongleStatus(status.ethFound, status.ethActive)},
-              {plain(_("IP configuration:")), NetworkStatus::addressText(status.ethFound, status.ethAddr)}}});
-        sections.push_back(
-            {plain(_("Bluetooth information:")),
-             {{plain(_("Dongle status:")), NetworkStatus::dongleStatus(status.btActive, status.btActive)},
-              {plain(_("Interface details:")), status.btName}}});
+        // the dongles under whatever name the kernel gave them (the interface row), Bluetooth with the reason
+        // it is not there when BlueZ or the system bus does not answer
+        InfoSection wifi{
+            plain(_("WiFi information:")),
+            {{plain(_("Dongle status:")), NetworkStatus::dongleStatus(status.wirelessFound, status.wirelessActive)}}};
+        if (status.wirelessFound)
+            wifi.rows.push_back({plain(_("Interface details:")), status.wirelessIface});
+        wifi.rows.push_back(
+            {plain(_("IP configuration:")), NetworkStatus::addressText(status.wirelessFound, status.wirelessAddr)});
+        sections.push_back(wifi);
+        InfoSection eth{plain(_("Ethernet information:")),
+                        {{plain(_("Dongle status:")), NetworkStatus::dongleStatus(status.ethFound, status.ethActive)}}};
+        if (status.ethFound)
+            eth.rows.push_back({plain(_("Interface details:")), status.ethIface});
+        eth.rows.push_back(
+            {plain(_("IP configuration:")), NetworkStatus::addressText(status.ethFound, status.ethAddr)});
+        sections.push_back(eth);
+        sections.push_back({plain(_("Bluetooth information:")),
+                            {{plain(_("Dongle status:")), status.btStatusText()},
+                             {plain(_("Interface details:")), status.btDetails()}}});
     }
 
     const int joysticks = ableem::Joystick::count();

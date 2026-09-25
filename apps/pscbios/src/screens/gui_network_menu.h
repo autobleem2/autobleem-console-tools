@@ -42,13 +42,14 @@ private:
     std::vector<std::string> values; // one per row of `lines`, "" for an action row
     unsigned int lastRefresh = 0;
 
-    void refresh(); // the address and the timezone from the console
-    void fill();    // the rows from the current values
-    void writeConfig();
+    void refresh();     // the address and the timezone from the console
+    void fill();        // the rows from the current values
+    bool writeConfig(); // false when nothing was written, or the console refused it (said on screen)
     void restartNetwork();
     void editSsid();
     void editPassword();
     void scanSsid();
     void pickTimezone();
-    void showBusy(const std::string &message, int ms); // the spinner over this screen, for `ms`
+    void showBusy(const std::string &message, int ms);                       // the spinner over this screen, for `ms`
+    void showFailure(const std::string &message, const std::string &reason); // for 3 s, the reason on top
 };

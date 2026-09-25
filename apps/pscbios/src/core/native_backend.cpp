@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <memory>
 #include <thread>
@@ -25,6 +26,7 @@
 #include <net/if.h>
 #include <netinet/in.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 using namespace std;
 
@@ -46,13 +48,19 @@ unique_ptr<BluezBus> systemBus(BusError &error) {
 //*******************************
 // NativeBackend::NativeBackend
 //*******************************
-NativeBackend::NativeBackend() : run_(runViaSystem), rest_(make_unique<AbnetBackend>()), bluezFactory_(systemBus) {}
+NativeBackend::NativeBackend() : run_(runViaSystem), bluezFactory_(systemBus) {}
 
-NativeBackend::NativeBackend(NativePaths paths, CommandRunner run, unique_ptr<ConsoleBackend> rest,
-                             BluezBusFactory bluez)
-    : paths_(std::move(paths)), run_(std::move(run)), rest_(std::move(rest)), bluezFactory_(std::move(bluez)) {}
+NativeBackend::NativeBackend(NativePaths paths, CommandRunner run, BluezBusFactory bluez)
+    : paths_(std::move(paths)), run_(std::move(run)), bluezFactory_(std::move(bluez)) {}
 
 NativeBackend::~NativeBackend() = default;
+
+//*******************************
+// NativeBackend::kernelInstalled
+//*******************************
+bool NativeBackend::kernelInstalled() {
+    return DirEntry::exists(paths_.kernelMarker);
+}
 
 //*******************************
 // NativeBackend::interfaces / isWireless / wirelessInterfaces / wifiInterface
@@ -91,6 +99,25 @@ string NativeBackend::wifiInterface() {
         if (isUp(iface))
             return iface;
     return wireless.empty() ? "" : wireless.front();
+}
+
+//*******************************
+// NativeBackend::ethernetInterface
+//*******************************
+string NativeBackend::ethernetInterface() {
+    auto startsWith = [](const string &name, const char *prefix) {
+        return name.compare(0, strlen(prefix), prefix) == 0;
+    };
+    for (const string &iface : interfaces()) {
+        if (iface == "lo" || startsWith(iface, "rndis") || startsWith(iface, "bnep") || isWireless(iface))
+            continue;
+        string type = readSys(iface, "type");
+        if (!type.empty() && type != "1") // ARPHRD_ETHER
+            continue;
+        if (DirEntry::exists(paths_.sysClassNet + sep + iface + sep + "device"))
+            return iface;
+    }
+    return "";
 }
 
 //*******************************
@@ -155,7 +182,7 @@ vector<string> NativeBackend::scanSsids() {
     lastError_.clear();
     string iface = wifiInterface();
     if (iface.empty()) {
-        lastError_ = "no WiFi interface";
+        lastError_ = _("no WiFi interface");
         return {};
     }
     WpaCtrlClient client(iface, paths_.wpaRunDir);
@@ -243,11 +270,11 @@ string NativeBackend::supplicantConfText(const string &runDir, const string &gro
 
 bool NativeBackend::writeSupplicantConf(const string &ssid, const string &password) {
     if (!ssid.empty() && WpaCtrlClient::ssidValue(ssid).empty()) {
-        lastError_ = "an SSID is 1 to 32 bytes";
+        lastError_ = _("an SSID is 1 to 32 bytes");
         return false;
     }
     if (!password.empty() && WpaCtrlClient::pskValue(password).empty()) {
-        lastError_ = "a WiFi password is 8 to 63 letters, digits or signs";
+        lastError_ = _("a WiFi password is 8 to 63 letters, digits or signs");
         return false;
     }
     string group = paths_.ctrlGroup;
@@ -255,14 +282,14 @@ bool NativeBackend::writeSupplicantConf(const string &ssid, const string &passwo
         group.clear(); // wpa_supplicant would refuse the whole control interface over an unknown group
     ofstream out(paths_.wpaSupplicantConf, ios::binary | ios::trunc);
     if (!DirEntry::checkWritable(out, paths_.wpaSupplicantConf)) {
-        lastError_ = "cannot write " + paths_.wpaSupplicantConf;
+        lastError_ = _("cannot write") + " " + paths_.wpaSupplicantConf;
         return false;
     }
     out << supplicantConfText(paths_.wpaRunDir, group, ssid, password);
     out.close();
     chmod(paths_.wpaSupplicantConf.c_str(), 0600); // it holds the password
     if (!out) {
-        lastError_ = "cannot write " + paths_.wpaSupplicantConf;
+        lastError_ = _("cannot write") + " " + paths_.wpaSupplicantConf;
         return false;
     }
     PLOG_INFO << "wrote " << paths_.wpaSupplicantConf << (ssid.empty() ? " (no network)" : " for \"" + ssid + "\"");
@@ -302,7 +329,7 @@ bool NativeBackend::waitForSupplicant(const string &iface) {
     while (!client.socketExists()) {
         auto waited = chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - start).count();
         if (waited >= paths_.supplicantStartMs) {
-            lastError_ = "wpa_supplicant did not start on " + iface;
+            lastError_ = _("wpa_supplicant did not start on") + " " + iface;
             PLOG_WARNING << lastError_;
             return false;
         }
@@ -324,7 +351,7 @@ BluezClient *NativeBackend::bluez() {
     BusError error;
     unique_ptr<BluezBus> bus = bluezFactory_(error);
     if (!bus) {
-        btError_ = "the system bus cannot be reached" + (error.empty() ? string() : ": " + error.text());
+        btError_ = _("the system bus cannot be reached") + (error.empty() ? string() : ": " + error.text());
         return nullptr;
     }
     bluez_ = make_unique<BluezClient>(std::move(bus), paths_.powerSupplyDir, paths_.btTimeouts);
@@ -360,7 +387,7 @@ bool NativeBackend::btUp() {
         return false;
     }
     if (!client->hasAdapter()) {
-        btError_ = "no Bluetooth adapter";
+        btError_ = _("no Bluetooth adapter");
         return false;
     }
     if (!client->adapter().powered && !triedPowerOn_) {
@@ -370,7 +397,7 @@ bool NativeBackend::btUp() {
             takeBtError();
     }
     if (!client->adapter().powered && btError_.empty())
-        btError_ = "the Bluetooth adapter is off";
+        btError_ = _("the Bluetooth adapter is off");
     return client->adapter().powered;
 }
 
@@ -439,4 +466,70 @@ BtBattery NativeBackend::btBattery(const string &mac) {
     if (client == nullptr)
         return BluezClient::readSysfsBattery(paths_.powerSupplyDir, mac);
     return client->battery(mac);
+}
+
+//*******************************
+// NativeBackend: the timezone
+//*******************************
+// what `settime tz` printed: it is `cat /etc/timezone`. A console where that file says nothing still has the
+// zone in /etc/localtime's link (settime makes both).
+string NativeBackend::timezone() {
+    ifstream in(paths_.timezoneFile);
+    string zone;
+    getline(in, zone);
+    zone = Strings::trim(zone);
+    if (!zone.empty())
+        return zone;
+    char target[512] = {};
+    ssize_t n = readlink(paths_.localtime.c_str(), target, sizeof(target) - 1);
+    if (n <= 0)
+        return "";
+    string link(target, static_cast<size_t>(n));
+    const string prefix = paths_.zoneinfoDir + "/";
+    size_t at = link.find(prefix);
+    return at == string::npos ? "" : link.substr(at + prefix.size());
+}
+
+// `settime tzone <zone>`, the kernel's script, run as a program (its #! line) - it replaces /etc/localtime's
+// link and writes /etc/timezone. Only a zone the list offers: the script puts it in a path unchecked.
+void NativeBackend::setTimezone(const string &zone) {
+    lastError_.clear();
+    vector<string> zones = listTimezones();
+    if (zone.empty() || zone.find("..") != string::npos || !binary_search(zones.begin(), zones.end(), zone)) {
+        lastError_ = _("unknown timezone") + " " + zone;
+        PLOG_WARNING << lastError_;
+        return;
+    }
+    int status = run_(paths_.settime, {"tzone", zone});
+    if (status != 0) {
+        lastError_ = paths_.settime + " tzone " + zone + ": " + to_string(status);
+        PLOG_WARNING << lastError_;
+    }
+}
+
+// timedatectl list-timezones, without timedatectl: the third column of the zoneinfo tables (zone1970.tab, and
+// zone.tab, which older systemd read and which has the links too), each only while its file is there, and UTC
+vector<string> NativeBackend::listTimezones() {
+    vector<string> zones;
+    for (const char *table : {"zone1970.tab", "zone.tab"}) {
+        ifstream in(paths_.zoneinfoDir + sep + table);
+        string line;
+        while (getline(in, line)) {
+            if (line.empty() || line[0] == '#')
+                continue;
+            size_t first = line.find('\t');
+            size_t second = first == string::npos ? string::npos : line.find('\t', first + 1);
+            if (second == string::npos)
+                continue;
+            size_t end = line.find('\t', second + 1);
+            string zone = Strings::trim(line.substr(second + 1, end == string::npos ? string::npos : end - second - 1));
+            if (!zone.empty() && zone.find("..") == string::npos && DirEntry::exists(paths_.zoneinfoDir + sep + zone))
+                zones.push_back(zone);
+        }
+    }
+    if (DirEntry::exists(paths_.zoneinfoDir + sep + "UTC"))
+        zones.emplace_back("UTC");
+    sort(zones.begin(), zones.end());
+    zones.erase(unique(zones.begin(), zones.end()), zones.end());
+    return zones;
 }

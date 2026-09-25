@@ -2,8 +2,9 @@
 // NativeBackend: the console asked directly instead of through the kernel's /bin/abnet - the network
 // interfaces from sysfs, their addresses from getifaddrs, WiFi through wpa_supplicant's control socket
 // (WpaCtrlClient), Bluetooth through BlueZ over D-Bus (BluezClient). Any interface name, not only wlan0: a
-// wireless interface is one sysfs gives a `wireless` or `phy80211` entry. The timezone and kernelInstalled() are
-// still another backend's (AbnetBackend on the console) - docs/native-backend-plan.md. Linux only.
+// wireless interface is one sysfs gives a `wireless` or `phy80211` entry. The timezone is /etc/timezone and the
+// zoneinfo tables, set through the kernel's settime (run directly, no shell). No script of any kind is asked -
+// docs/native-backend-plan.md. Linux only.
 //
 #pragma once
 
@@ -33,6 +34,13 @@ struct NativePaths {
     std::string powerSupplyDir = "/sys/class/power_supply"; // the pads' batteries (hid-sony, hid-playstation)
     int btScanMs = 8000;                                    // btScan()'s discovery
     BluezTimeouts btTimeouts;
+    // the AutoBleem kernel: its overlay's /bin/abnet is what the 2020 tool (and AbnetBackend) checked - only
+    // looked at, never run; the overlay also brings settime, dhcpcd's wpa_supplicant hook and the driver variants
+    std::string kernelMarker = "/bin/abnet";
+    std::string settime = "/bin/settime";            // the kernel's `settime tzone <zone>` (a bash script)
+    std::string timezoneFile = "/etc/timezone";      // what `settime tz` printed (it is a cat of this file)
+    std::string localtime = "/etc/localtime";        // the zone's link, when /etc/timezone says nothing
+    std::string zoneinfoDir = "/usr/share/zoneinfo"; // zone1970.tab / zone.tab - timedatectl's list
 };
 
 //******************
@@ -44,19 +52,18 @@ public:
     using CommandRunner = std::function<int(const std::string &exe, const std::vector<std::string> &args)>;
 
     // the console: its paths, System::runAndWait, the system bus (DbusBluezBus - where libdbus was found at build
-    // time), an AbnetBackend for the timezone
+    // time)
     NativeBackend();
     // bluez connects the BluezClient's bus when Bluetooth is first asked for (and again after a failure);
     // none = Bluetooth unavailable, with that as the reason
-    NativeBackend(NativePaths paths, CommandRunner run, std::unique_ptr<ConsoleBackend> rest,
-                  BluezBusFactory bluez = nullptr);
+    NativeBackend(NativePaths paths, CommandRunner run, BluezBusFactory bluez = nullptr);
     ~NativeBackend() override;
 
-    bool kernelInstalled() override { return rest_->kernelInstalled(); }
+    bool kernelInstalled() override;
 
     // network
     bool interfaceFound(const std::string &iface) override;
-    bool wlanOn() override; // some wireless interface exists and is up
+    bool wlanOn(); // some wireless interface exists and is up
     bool isUp(const std::string &iface) override;
     std::string ipOf(const std::string &iface) override;
     std::vector<std::string> scanSsids() override;
@@ -75,24 +82,30 @@ public:
     BtBattery btBattery(const std::string &mac);
     // the client, connected on first use; nullptr (and btLastError()) when the system bus cannot be reached
     BluezClient *bluez();
-    const std::string &btLastError() const { return btError_; }
+    std::string btLastError() const override { return btError_; }
 
-    // time: the other backend's
-    std::string timezone() override { return rest_->timezone(); }
-    void setTimezone(const std::string &zone) override { rest_->setTimezone(zone); }
-    std::vector<std::string> listTimezones() override { return rest_->listTimezones(); }
+    // time: /etc/timezone (else the zone /etc/localtime links to); the kernel's `settime tzone <zone>` - run
+    // directly, a zone from the list only; the zones of zone1970.tab and zone.tab whose file is there, and UTC -
+    // what timedatectl list-timezones answered
+    std::string timezone() override;
+    void setTimezone(const std::string &zone) override;
+    std::vector<std::string> listTimezones() override;
 
     // every interface sysfs lists ("lo" included), sorted
     std::vector<std::string> interfaces();
     bool isWireless(const std::string &iface);
     std::vector<std::string> wirelessInterfaces(); // sorted
     // the one WiFi is set up on: the first wireless interface that is up, else the first there is; "" for none
-    std::string wifiInterface();
+    std::string wifiInterface() override;
+    // a wired interface: the first (sorted) that is ARPHRD_ETHER, has a `device` (hardware, not a bridge or a
+    // tunnel), is not wireless and is not the AutoBleem kernel's USB gadget (rndis*) or Bluetooth PAN (bnep*)
+    std::string ethernetInterface() override;
     // the connection's state from wpa_supplicant; false when it is not running on the interface
     bool wifiStatus(const std::string &iface, WpaStatus &out);
 
-    // why the last WiFi action did not do what was asked ("" after one that did); Bluetooth's is btLastError()
-    const std::string &lastError() const { return lastError_; }
+    // why the last WiFi or timezone action did not do what was asked ("" after one that did); Bluetooth's is
+    // btLastError()
+    std::string lastError() const override { return lastError_; }
 
     // the file written when no wpa_supplicant is running: ctrl_interface, update_config=1 and the network
     static std::string supplicantConfText(const std::string &runDir, const std::string &group, const std::string &ssid,
@@ -111,7 +124,6 @@ private:
 
     NativePaths paths_;
     CommandRunner run_;
-    std::unique_ptr<ConsoleBackend> rest_;
     BluezBusFactory bluezFactory_;
     std::unique_ptr<BluezClient> bluez_;
     bool triedPowerOn_ = false;

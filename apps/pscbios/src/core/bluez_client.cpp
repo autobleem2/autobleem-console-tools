@@ -2,6 +2,7 @@
 // BluezClient: the adapter, the device list, discovery and the pairing's state machine over a BluezBus.
 //
 #include "bluez_client.h"
+#include "core/main.h"
 
 #include <ableem/engine/log.h>
 
@@ -284,7 +285,7 @@ bool BluezClient::refresh() {
     if (!bus_->getManagedObjects(objects, error)) {
         adapter_ = BluezAdapter();
         devices_.clear();
-        return fail("BlueZ does not answer", error);
+        return fail(_("BlueZ does not answer"), error);
     }
     if (!parseAdapter(objects, adapter_)) {
         devices_.clear();
@@ -309,7 +310,7 @@ bool BluezClient::setPowered(bool on) {
     if (!hasAdapter() && !refresh())
         return false;
     if (!hasAdapter())
-        return fail("no Bluetooth adapter");
+        return fail(_("no Bluetooth adapter"));
     BusError error;
     if (!bus_->setBool(adapter_.path, Adapter1, "Powered", on, error))
         return fail(string("cannot power the adapter ") + (on ? "on" : "off"), error);
@@ -322,7 +323,7 @@ bool BluezClient::startDiscovery() {
     if (!hasAdapter() && !refresh())
         return false;
     if (!hasAdapter())
-        return fail("no Bluetooth adapter");
+        return fail(_("no Bluetooth adapter"));
     if (!adapter_.powered && !setPowered(true))
         return false;
     BusError error;
@@ -488,7 +489,7 @@ bool BluezClient::beginPair(const string &mac) {
 
     if (!refresh() || !hasAdapter()) {
         if (lastError_.empty())
-            fail("no Bluetooth adapter");
+            fail(_("no Bluetooth adapter"));
         stage_ = BtPairStage::Failed;
         return false;
     }

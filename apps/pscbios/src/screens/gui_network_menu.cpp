@@ -28,7 +28,8 @@ void GuiNetworkMenu::init() {
 void GuiNetworkMenu::refresh() {
     lastRefresh = gui->platform().ticks();
     ConsoleBackend &console = PscBios::get().console();
-    ipAddress = NetworkStatus::addressText(console.interfaceFound("wlan0"), console.ipOf("wlan0"));
+    const string iface = console.wifiInterface(); // any name, not only wlan0
+    ipAddress = NetworkStatus::addressText(!iface.empty(), iface.empty() ? "" : console.ipOf(iface));
     timezone = console.timezone();
 }
 
@@ -120,7 +121,8 @@ void GuiNetworkMenu::doCross_Pressed() {
         config.driverMode = config.driverMode == "wext" ? "nl80211" : "wext";
         break;
     case WriteFile: {
-        writeConfig();
+        if (!writeConfig())
+            break;
         GuiConfirm confirm(*gui);
         confirm.label = _("Restart Networking Now?");
         confirm.show();
@@ -171,18 +173,35 @@ void GuiNetworkMenu::scanSsid() {
     fill();
 }
 
-void GuiNetworkMenu::writeConfig() {
+bool GuiNetworkMenu::writeConfig() {
     if (!config.save(SsidConfig::defaultPath()))
-        return; // an empty SSID or password: nothing to hand the kernel
-    PscBios::get().console().configureWifi(config.ssid, config.password, config.driverMode);
+        return false; // an empty SSID or password: nothing to hand the console
+    ConsoleBackend &console = PscBios::get().console();
+    console.configureWifi(config.ssid, config.password, config.driverMode);
+    if (!console.lastError().empty()) {
+        showFailure(_("WiFi configuration failed"), console.lastError());
+        return false;
+    }
+    return true;
 }
 
-// the two messages are the only feedback abnet gives: the spinner over this screen, with each in turn
+// the spinner over this screen, with each message in turn; the reason when the restart failed (step 4 of
+// docs/native-backend-plan.md makes this live: the connection's state from wpa_supplicant)
 void GuiNetworkMenu::restartNetwork() {
     showBusy(_("Reinitializing Network"), 2000);
-    PscBios::get().console().restartNetwork();
-    showBusy(_("Restarted Wi-Fi  With SSID:") + " " + config.ssid, 2000);
+    ConsoleBackend &console = PscBios::get().console();
+    console.restartNetwork();
+    if (!console.lastError().empty())
+        showFailure(_("Network restart failed"), console.lastError());
+    else
+        showBusy(_("Restarted Wi-Fi  With SSID:") + " " + config.ssid, 2000);
     refresh();
+}
+
+// what went wrong and why, for a moment
+void GuiNetworkMenu::showFailure(const string &message, const string &reason) {
+    gui->drawText(message, reason);
+    gui->platform().delay(3000);
 }
 
 void GuiNetworkMenu::showBusy(const string &message, int ms) {
@@ -199,7 +218,10 @@ void GuiNetworkMenu::pickTimezone() {
     GuiTimezoneSelect zones(*gui);
     zones.show();
     if (!zones.cancelled) {
-        PscBios::get().console().setTimezone(zones.newTimezone);
+        ConsoleBackend &console = PscBios::get().console();
+        console.setTimezone(zones.newTimezone);
+        if (!console.lastError().empty())
+            showFailure(_("Timezone change failed"), console.lastError());
         refresh();
     }
 }

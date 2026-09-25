@@ -1,8 +1,8 @@
 //
 // ConsoleBackend: everything PSC-Bios asks the console for - the network interfaces, WiFi, Bluetooth, the
-// timezone - through the AutoBleem kernel's /bin/abnet and /bin/settime scripts. The interface is what the
-// screens use; AbnetBackend is the console, FakeBackend a dev host with canned answers (the ProcessRunner
-// pattern: main() picks one, nothing else knows the difference).
+// timezone. The interface is what the screens use; NativeBackend (native_backend.h: sysfs, wpa_supplicant's
+// control socket, BlueZ over D-Bus, the kernel's settime) is the console, FakeBackend a dev host with canned
+// answers (the ProcessRunner pattern: the extension picks one, nothing else knows the difference).
 //
 #pragma once
 
@@ -28,75 +28,39 @@ class ConsoleBackend {
 public:
     virtual ~ConsoleBackend() = default;
 
-    virtual bool kernelInstalled() = 0; // the AutoBleem kernel, which brings abnet/settime along
+    virtual bool kernelInstalled() = 0; // the AutoBleem kernel, whose overlay the network set-up and settime need
 
-    // network
-    virtual bool interfaceFound(const std::string &iface) = 0; // "eth0", "wlan0"
-    virtual bool wlanOn() = 0;                                 // a WiFi dongle is there and up
+    // network - the interfaces by what they are, under whatever name the kernel gave them
+    virtual std::string wifiInterface() = 0;     // the WiFi dongle's interface ("wlan0", "wlx00c0ca..."); "" for none
+    virtual std::string ethernetInterface() = 0; // a wired dongle's ("eth0", "usb0", "enx..."); "" for none
+    virtual bool interfaceFound(const std::string &iface) = 0;
     virtual bool isUp(const std::string &iface) = 0;
     virtual std::string ipOf(const std::string &iface) = 0; // "" while there is none
     virtual std::vector<std::string> scanSsids() = 0;       // sorted, unique; empty without WiFi
     virtual void configureWifi(const std::string &ssid, const std::string &password, const std::string &driverMode) = 0;
     virtual void restartNetwork() = 0;
+    // why the last WiFi or timezone action (scanSsids, configureWifi, restartNetwork, setTimezone) did not do
+    // what was asked; "" after one that did
+    virtual std::string lastError() const { return ""; }
 
     // bluetooth
     virtual bool btUp() = 0; // a Bluetooth adapter (usually a USB dongle) is present and up
     virtual std::string btName() = 0;
 
-    // bluetooth controller pairing (needs btUp(); the kernel's abnet bt_* subcommands). DualShock 3 pairs
-    // over USB through the sixaxis plugin and is not listed here - this is for DualShock 4 and other
-    // standard Bluetooth gamepads.
+    // bluetooth controller pairing (needs btUp()). DualShock 3 pairs over USB through the sixaxis plugin and is
+    // not listed here - this is for DualShock 4 and other standard Bluetooth gamepads.
     virtual std::vector<BtDevice> btScan() = 0;          // discover nearby devices (blocks a few seconds)
     virtual std::vector<BtDevice> btPairedDevices() = 0; // devices already paired/known
     virtual bool btPair(const std::string &mac) = 0;     // pair + trust + connect; true on success
     virtual bool btRemove(const std::string &mac) = 0;   // unpair/forget; true on success
+    // why the last Bluetooth call failed or found no adapter ("" after one that worked): no adapter, the system
+    // bus or BlueZ not answering, a pairing refused - shown with the Bluetooth rows
+    virtual std::string btLastError() const { return ""; }
 
     // time
     virtual std::string timezone() = 0;
     virtual void setTimezone(const std::string &zone) = 0;
     virtual std::vector<std::string> listTimezones() = 0; // sorted, unique
-};
-
-//******************
-// AbnetBackend
-//******************
-// the console: each call is one popen of the kernel's scripts. `run(cmd)` and `runLines(cmd)` are what it
-// shells through - System::execUnixCommand by default, replaced by the tests with a scripted stand-in.
-class AbnetBackend : public ConsoleBackend {
-public:
-    AbnetBackend();
-    using Runner = std::string (*)(const std::string &cmd);
-    using LinesRunner = std::vector<std::string> (*)(const std::string &cmd);
-    // btHelper is the path to the shipped `bt` bluetoothctl wrapper (defaults to the app dir's copy);
-    // the tests pass a fixed name so the command strings are predictable.
-    AbnetBackend(Runner run, LinesRunner runLines, bool kernel, std::string btHelper = "bt");
-
-    bool kernelInstalled() override { return kernel_; }
-    bool interfaceFound(const std::string &iface) override;
-    bool wlanOn() override;
-    bool isUp(const std::string &iface) override;
-    std::string ipOf(const std::string &iface) override;
-    std::vector<std::string> scanSsids() override;
-    void configureWifi(const std::string &ssid, const std::string &password, const std::string &driverMode) override;
-    void restartNetwork() override;
-    bool btUp() override;
-    std::string btName() override;
-    std::vector<BtDevice> btScan() override;
-    std::vector<BtDevice> btPairedDevices() override;
-    bool btPair(const std::string &mac) override;
-    bool btRemove(const std::string &mac) override;
-    std::string timezone() override;
-    void setTimezone(const std::string &zone) override;
-    std::vector<std::string> listTimezones() override;
-
-    static const char *const Abnet;   // "/bin/abnet"
-    static const char *const Settime; // "/bin/settime"
-
-private:
-    Runner run_;
-    LinesRunner runLines_;
-    bool kernel_;
-    std::string btHelper_; // the shipped `bt` bluetoothctl wrapper (app dir), for pairing on any kernel
 };
 
 //******************
@@ -108,8 +72,9 @@ private:
 class FakeBackend : public ConsoleBackend {
 public:
     bool kernelInstalled() override { return true; }
+    std::string wifiInterface() override { return "wlan0"; }
+    std::string ethernetInterface() override { return ""; }
     bool interfaceFound(const std::string &iface) override { return iface == "wlan0"; }
-    bool wlanOn() override { return true; }
     bool isUp(const std::string &iface) override { return iface == "wlan0"; }
     std::string ipOf(const std::string &iface) override { return iface == "wlan0" ? "192.168.1.23" : ""; }
     std::vector<std::string> scanSsids() override { return {"Cafe Corner", "Home Network", "Neighbour 5G"}; }
@@ -121,6 +86,7 @@ public:
     std::vector<BtDevice> btPairedDevices() override;
     bool btPair(const std::string &mac) override;
     bool btRemove(const std::string &mac) override;
+    std::string btLastError() const override; // "no Bluetooth adapter" while btAdapter_ is cleared
     std::string timezone() override { return timezone_; }
     void setTimezone(const std::string &zone) override;
     std::vector<std::string> listTimezones() override;

@@ -92,3 +92,22 @@ The timezone (`settime`), the pad mapping wizard, `ssid.cfg`.
   UnregisterAgent (BlueZ keeps the earlier defaults in a queue - to be seen on 5.50); a DS4 pairs with Trusted set first and no
   AuthorizeService reaching our agent; `SetDiscoveryFilter` accepted by the console's bluetoothd; the battery file
   names hid-sony uses on the 4.4 kernel; the system bus's policy lets root export an agent and call `org.bluez`.
+- Step 3 done (2026-09-25): `PscBiosExtension` makes a `NativeBackend` wherever it is built (not Windows) and not
+  `AB_DEBUG_HOST`; `AbnetBackend`, `resources/bt` and their tests are gone. What was still delegated went native:
+  `kernelInstalled()` is `/bin/abnet` existing (the same check, the file only looked at); the timezone is
+  `/etc/timezone` (all `settime tz` did was cat it) else `/etc/localtime`'s link, the list the zoneinfo tables
+  (`zone1970.tab` + `zone.tab`, each zone only while its file is there, plus UTC - `timedatectl list-timezones`
+  without timedatectl), and a change `settime tzone <zone>` through the `CommandRunner` (no `sh -c`), for a zone
+  of that list only (settime puts it into a path unchecked). `ConsoleBackend` gained `wifiInterface()`,
+  `ethernetInterface()` (the first ARPHRD_ETHER interface with a `device`, not wireless, not the kernel's `rndis*`
+  gadget nor `bnep*`), `lastError()` and `btLastError()`, and lost `wlanOn()`; `NetworkStatus` and the WiFi screen
+  ask for the interfaces by what they are. Minimal surfacing until step 4: Bluetooth "Unavailable" with the reason
+  as the main screen's details row (no adapter stays "Not found"), the pairing screen's reason under its two
+  info rows, and a 3 s message with the reason after a failed SSID scan, WiFi write, restart, timezone change,
+  Bluetooth scan, pairing or removal. The fixed reasons at the top of those paths are translated; the D-Bus /
+  wpa_supplicant text after them is shown as it is. To check on the console (step 5): a stick that had the
+  old extension - the installer replaces `Extensions/pscbios/` whole, so no `bt` is left behind; `/bin/settime`
+  runs through its `#!/bin/bash` when exec'd directly (it has to keep its x bit); `/etc/timezone` exists on the
+  flashed overlay (`reference/abrootfs.manifest.txt` says so) and matches `/etc/localtime`; the zone list is as
+  long as timedatectl's was; a console without a WiFi dongle, with a USB ethernet dongle (its name), and with
+  bluetoothd stopped (`systemctl stop bluetooth`: the main screen says Unavailable and why, nothing hangs).

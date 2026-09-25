@@ -32,7 +32,9 @@ private:
     void rebuild();       // lines from hasAdapter_ + devices_
     void scan();          // busy scan, then merge the paired flags
     void refreshPaired(); // re-read which of devices_ are paired/connected
+    void showFailure(const std::string &message, const std::string &reason); // for 3 s, the reason on top
 
     bool hasAdapter_ = false;
+    std::string adapterError_;      // why there is no adapter (btLastError()), shown under the two info rows
     std::vector<BtDevice> devices_; // rows 1..N (row 0 is the Scan action)
 };

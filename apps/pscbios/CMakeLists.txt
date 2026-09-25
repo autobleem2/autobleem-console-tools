@@ -117,10 +117,14 @@ ab_add_extension(pscbios ${pscbios_host}
         LANG ${CMAKE_CURRENT_SOURCE_DIR}/resources/lang)
 target_include_directories(pscbios PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${PSCBIOS_WPA_CTRL_DIR})
 pscbios_use_dbus(pscbios PRIVATE)
+# the console (and a Linux host) gets NativeBackend; Windows only has the FakeBackend (AB_DEBUG_HOST uses it anyway)
+if (NOT WIN32)
+    target_compile_definitions(pscbios PRIVATE PSCBIOS_NATIVE_BACKEND)
+endif ()
 
 # the tool's other files next to the library, found through Env::getAppDir() (the extension's folder while it runs)
 set(pscbios_stage "${CMAKE_BINARY_DIR}/extensions/pscbios")
 add_custom_command(TARGET pscbios POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/resources/DS3.png
-                ${CMAKE_CURRENT_SOURCE_DIR}/resources/bt ${CMAKE_CURRENT_SOURCE_DIR}/resources/gamecontrollerdb.txt
+                ${CMAKE_CURRENT_SOURCE_DIR}/resources/gamecontrollerdb.txt
                 ${CMAKE_CURRENT_SOURCE_DIR}/resources/readme.txt ${pscbios_stage})

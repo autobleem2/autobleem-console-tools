@@ -20,4 +20,3 @@ pcsx-ab binary
 *.bin binary
 *.iso binary
 *.chd binary
-apps/pscbios/resources/bt text eol=lf
