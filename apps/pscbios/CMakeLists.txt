@@ -18,8 +18,24 @@ set(PSCBIOS_CORE_SOURCES
         src/core/ssid_config.cpp
         src/core/ssid_config.h
 )
+# the native backend (docs/native-backend-plan.md): sysfs, getifaddrs and wpa_supplicant's control socket through
+# hostap's vendored client - Unix only; the Windows dev build has the FakeBackend
+set(PSCBIOS_WPA_CTRL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/wpa_ctrl)
+if (NOT WIN32)
+    list(APPEND PSCBIOS_CORE_SOURCES
+            src/core/native_backend.cpp
+            src/core/native_backend.h
+            src/core/wpa_ctrl_client.cpp
+            src/core/wpa_ctrl_client.h
+            third_party/wpa_ctrl/wpa_ctrl.c
+            third_party/wpa_ctrl/wpa_ctrl.h)
+    # the Unix-socket client only (third_party/wpa_ctrl/README.autobleem.txt); vendored, so no warnings
+    set_source_files_properties(third_party/wpa_ctrl/wpa_ctrl.c PROPERTIES
+            COMPILE_DEFINITIONS "CONFIG_CTRL_IFACE;CONFIG_CTRL_IFACE_UNIX"
+            COMPILE_OPTIONS "-w")
+endif ()
 add_library(pscbios_core STATIC ${PSCBIOS_CORE_SOURCES})
-target_include_directories(pscbios_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(pscbios_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src PRIVATE ${PSCBIOS_WPA_CTRL_DIR})
 target_link_libraries(pscbios_core ab_core)
 
 if (NOT COMMAND ab_add_extension)
@@ -56,7 +72,7 @@ ab_add_extension(pscbios ${pscbios_host}
         INI ${CMAKE_CURRENT_SOURCE_DIR}/resources/extension.ini
         ICON ${CMAKE_CURRENT_SOURCE_DIR}/resources/icon.png
         LANG ${CMAKE_CURRENT_SOURCE_DIR}/resources/lang)
-target_include_directories(pscbios PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(pscbios PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${PSCBIOS_WPA_CTRL_DIR})
 
 # the tool's other files next to the library, found through Env::getAppDir() (the extension's folder while it runs)
 set(pscbios_stage "${CMAKE_BINARY_DIR}/extensions/pscbios")

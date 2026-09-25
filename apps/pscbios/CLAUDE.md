@@ -47,6 +47,14 @@ pad wizard still works - the 2020 tool exited after "Custom Firmware Kernel Not 
 src/core/       pscbios_core (SDL-free, links ab_core; the tests link it)
   console_backend.*   ConsoleBackend interface; AbnetBackend (the popens above, through System::execUnixCommand[Lines])
                       and FakeBackend (a dev host: wlan0 on 192.168.1.23, three SSIDs, Europe/Warsaw, 16 zones)
+  native_backend.*    NativeBackend (Unix only, not used yet - docs/native-backend-plan.md): interfaces from
+                      /sys/class/net (wireless = a `wireless`/`phy80211` entry, any name), IPv4 by getifaddrs, WiFi
+                      through WpaCtrlClient, or - with no wpa_supplicant running - wpa_supplicant.conf written and
+                      `dhcpcd -n <iface>` (its 10-wpa_supplicant hook starts it); Bluetooth/timezone delegated to an
+                      AbnetBackend until step 2. Every path in NativePaths, the programs through a CommandRunner
+  wpa_ctrl_client.*   WpaCtrlClient: /var/run/wpa_supplicant/<iface> over third_party/wpa_ctrl (hostap 2.10's client,
+                      BSD, README.autobleem.txt lists our two changes) - SCAN (waits for the event), SCAN_RESULTS,
+                      STATUS, the one-network configure, TERMINATE; a timeout on every request
   ssid_config.*       SsidConfig - ssid.cfg load/save, the wpa_supplicant.conf fallback, the paths
   game_controller_db.* GameControllerDb - gamecontrollerdb.txt with one mapping replaced under "#AutoBleem"
   pad_mapping.*       PadMapping - the wizard's logic: the 25 standard elements, detectChange(), the stick-half
@@ -117,7 +125,8 @@ else the main GUI's `gamecontrollerdb.txt` - which the launcher loads at its nex
 ## Build, run, test
 
 - **This repository** (Linux: the host build and the console): `ab_add_extension` without a HOST builds
-  `<build>/extensions/pscbios/`; the host build also runs `tests/apps/test_pscbios_core.cpp`. The CI's psc
+  `<build>/extensions/pscbios/`; the host build also runs `tests/apps/test_pscbios_core.cpp` (and, on Linux,
+  `test_pscbios_native.cpp`: a fake wpa_supplicant on a Unix datagram socket in a temp dir, a fake sysfs). The CI's psc
   job checks the plugin (`check_psc_binary.sh`, `check_extension.sh`) and packs the folder into
   `console-tools-psc-<v>.tar.gz` as `Extensions/pscbios/`, next to `Apps/abflashkit/`; autobleem-appliance
   extracts that tarball onto the stick. Not built for the Pi. Not UPX-packed (a shared library).

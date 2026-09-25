@@ -67,3 +67,13 @@ The timezone (`settime`), the pad mapping wizard, `ssid.cfg`.
    The pairing screen: live state (pairing... / paired / connected / dropped, battery), the error text; the
    WiFi screen: signal strength, the connection state, the reason a connection failed.
 5. On the console over SSH: DS4, DS3 (cable, abbtagent), a WiFi join from nothing, a wrong password.
+
+## Progress
+
+- Step 1 done (2026-09-25): `WpaCtrlClient`, `NativeBackend`'s WiFi half (Bluetooth and the timezone delegated
+  to an `AbnetBackend` for now), `tests/apps/test_pscbios_native.cpp`. Two choices of its own: a scan with no
+  wpa_supplicant running starts it the same way (the minimal file when there is none, `dhcpcd -n <iface>`), so a
+  console with nothing configured yet can pick its network from a list; `restartNetwork` is abnet's (TERMINATE
+  instead of `killall`, then `systemctl restart dhclient`). To check on the console: `dhcpcd -n` against the
+  running `dhcpcd -B` starting wpa_supplicant through the hook, and whether the console has a `netdev` group
+  (`GROUP=` is written only when it does).
