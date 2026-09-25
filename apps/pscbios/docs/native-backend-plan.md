@@ -111,3 +111,36 @@ The timezone (`settime`), the pad mapping wizard, `ssid.cfg`.
   flashed overlay (`reference/abrootfs.manifest.txt` says so) and matches `/etc/localtime`; the zone list is as
   long as timedatectl's was; a console without a WiFi dongle, with a USB ethernet dongle (its name), and with
   bluetoothd stopped (`systemctl stop bluetooth`: the main screen says Unavailable and why, nothing hangs).
+- Step 4 done (2026-09-26): nothing freezes a screen. A **wait hook** on `ConsoleBackend` (`setWaitHook`), called
+  every few tens of ms by every wait the backend does, is the screens' `BusyWork` (`src/screens/pscbios_busy.*`: the
+  standard `Gui::beginBusy` spinner over the screen, the pad read, Circle ends the waits where that means something,
+  a Quit ends any and is passed on). Behind it: `DbusBluezBus` no longer calls `dbus_connection_send_with_reply_and_block`
+  - a call waits for its reply reading the connection in 40 ms slices (main thread only, its own deadline, a
+  stopped wait fails as `org.autobleem.Error.Cancelled`); `WpaCtrlClient::scan` waits for its event in 50 ms slices
+  (`WpaEventMonitor`); `waitForSupplicant` and the programs run (`System::runAndWait`'s `whileWaiting`) ask it too.
+  No worker thread anywhere. The pairing screen pumps `btBeginPair`/`btPumpPair` once a frame (the spinner says the
+  stage) and shows every device's live state (`BtDeviceList`: new / discovering / pairing / connecting / paired /
+  connected / dropped / failed, the battery) re-read every 2 s, the last failure as a row; the WiFi screen scans
+  under the spinner (the picker shows each network's signal and "open"), has a Connection row (wpa_state + address,
+  every 2 s) and follows a connection after a write or a restart with `WifiConnectWatch` (`src/core/wifi_connect.*`:
+  STATUS every 500 ms, the events on an attached connection, the address) to Connected or the reason - wrong password
+  (`CTRL-EVENT-SSID-TEMP-DISABLED reason=WRONG_KEY`, or "4-Way Handshake failed"), network not found (three
+  `CTRL-EVENT-NETWORK-NOT-FOUND`, or the time running out while still scanning), refused (ASSOC-/AUTH-REJECT,
+  `reason=CONN_FAILED/AUTH_FAILED`), no DHCP address, a timeout (45 s in all). Status reads are short:
+  GetManagedObjects 1.5 s, and after one without a reply BlueZ is not asked for 15 s (the reason shown meanwhile);
+  STATUS 1 s. Every reason is a translated sentence with the technical detail in brackets (`BluezClient::reasonFor`
+  maps the D-Bus errors). Choices of its own: `btPair` stays, as `ConsoleBackend`'s blocking form over the state
+  machine; a cancelled pairing leaves the row "new", not "failed"; after "Write" the connection is followed whether or
+  not the network is restarted (wpa_supplicant takes the network at once); the drawText + 3 s failure messages are
+  gone - a failure is a row of the screen it happened on. The FakeBackend's `slow` mode (the extension's on a dev host)
+  plays every action out in the console's time. To check on the console (step 5), besides the list above: the spinner
+  turns through a whole pairing and a whole WiFi join, and Circle ends a Bluetooth scan, a pairing (the agent
+  unregistered - `bluetoothctl` shows abbtagent as default again) and the following of a connection; a wrong password
+  says "wrong password" (does the console's wpa_supplicant emit `reason=WRONG_KEY`? - older ones only log the 4-way
+  handshake line, which the watch takes too; if neither comes, it ends as "wrong password (4WAY_HANDSHAKE)" on the
+  timeout); a network out of range ends as "the network was not found" (NETWORK-NOT-FOUND is wpa_supplicant 2.10+;
+  older ones reach it on the 45 s timeout); the Connection row during `systemctl restart dhclient` (the watch sees the
+  socket vanish and re-attaches); a DS4 dropped by its PS button hold shows "dropped" within 2 s and "connected" again
+  after the PS button; its battery from `sony_controller_battery_<mac>`; `systemctl stop bluetooth` while the pairing
+  screen is open (one stall of at most 1.5 s, then the reason, no further stalls for 15 s); `kill -STOP` of bluetoothd
+  (the hung case: the same, the main screen keeps its 2 s clock).

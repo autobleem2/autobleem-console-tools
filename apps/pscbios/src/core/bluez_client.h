@@ -18,6 +18,7 @@
 #pragma once
 
 #include "bluez_bus.h"
+#include "console_backend.h" // BtBattery, BtPairStage
 
 #include <chrono>
 #include <cstdint>
@@ -27,7 +28,7 @@
 #include <vector>
 
 //******************
-// BluezAdapter / BluezDevice / BtBattery
+// BluezAdapter / BluezDevice
 //******************
 struct BluezAdapter {
     std::string path;    // "/org/bluez/hci0"
@@ -58,12 +59,6 @@ struct BluezDevice {
     std::string displayName() const;
 };
 
-struct BtBattery {
-    int percent = -1;   // -1: nothing known
-    std::string status; // sysfs's "Charging", "Discharging", "Full", ... ("" from BlueZ)
-    bool known() const { return percent >= 0; }
-};
-
 //******************
 // BluezTimeouts
 //******************
@@ -74,12 +69,6 @@ struct BluezTimeouts {
     int connectMs = 15000;   // Device1.Connect's reply
     int pollMs = 500;        // how often the device list is read again while waiting for it
 };
-
-//******************
-// BtPairStage
-//******************
-enum class BtPairStage { Idle, Discovering, Trusting, Pairing, WaitingForPaired, Connecting, Done, Failed };
-const char *btPairStageName(BtPairStage stage); // "Discovering", ... for the log
 
 //******************
 // BluezClient
@@ -97,8 +86,9 @@ public:
     BluezClient &operator=(const BluezClient &) = delete;
 
     // GetManagedObjects: the first adapter (by path) and its devices. False, with lastError(), when BlueZ does
-    // not answer; true with no adapter when it answers without one (hasAdapter() says which)
-    bool refresh();
+    // not answer; true with no adapter when it answers without one (hasAdapter() says which). timeoutMs > 0: the
+    // bus waits no longer than that for this one call (a status read a screen repeats)
+    bool refresh(int timeoutMs = 0);
     bool hasAdapter() const { return !adapter_.path.empty(); }
     const BluezAdapter &adapter() const { return adapter_; }
     const std::vector<BluezDevice> &devices() const { return devices_; } // sorted by address
@@ -110,8 +100,9 @@ public:
     bool startDiscovery();
     bool stopDiscovery();
     bool discoveryIsOurs() const { return ourDiscovery_; }
-    // discovery for durationMs, pumped (progress each round), then stopped and the list read
-    bool scan(int durationMs, const std::function<void()> &progress = nullptr);
+    // discovery for durationMs, pumped (keepGoing asked each round - false ends it early), then stopped and the
+    // list read
+    bool scan(int durationMs, const std::function<bool()> &keepGoing = nullptr);
     bool removeDevice(const std::string &mac);
     bool disconnect(const std::string &mac);
     BtBattery battery(const std::string &mac) const;
@@ -141,9 +132,16 @@ public:
     static BtBattery readSysfsBattery(const std::string &powerSupplyDir, const std::string &mac);
     // "AA:BB:..." -> "/dev_AA_BB_..." (the end of the device's object path)
     static std::string devicePathSuffix(const std::string &mac);
+    // what a D-Bus error from BlueZ or the bus means to the user ("the controller refused the pairing"),
+    // translated; "" for one it does not know (the step's own reason is used then)
+    static std::string reasonFor(const BusError &error);
+    // the error name a wait the user stopped ends with
+    static const char *const CancelledError; // "org.autobleem.Error.Cancelled"
 
 private:
-    bool fail(const std::string &what, const BusError &error = BusError());
+    // lastError() = the reason for the user (reasonFor(error), else `reason`) + " (" + the D-Bus error + ")";
+    // `subject` (the device's address) goes into the log line only. Always false, for `return fail(...)`
+    bool fail(const std::string &reason, const BusError &error = BusError(), const std::string &subject = "");
     void finishPair();
     void enter(BtPairStage stage);
     long long msSince(std::chrono::steady_clock::time_point start) const;

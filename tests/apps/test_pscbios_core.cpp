@@ -7,12 +7,14 @@
 #include "support/env_fixture.h"
 #include "support/temp_dir.h"
 
+#include "core/bt_device_list.h"
 #include "core/console_backend.h"
 #include "core/game_controller_db.h"
 #include "core/network_status.h"
 #include "core/pad_mapping.h"
 #include "core/ssid_config.h"
 
+#include <chrono>
 #include <string>
 #include <vector>
 
@@ -73,6 +75,303 @@ TEST_CASE("NetworkStatus gathers the main screen's facts from the backend") {
     fake.configureWifi("Home Network", "secret", "wext");
     CHECK(fake.configuredSsid == "Home Network");
     CHECK(fake.timezone() == "UTC");
+}
+
+//*******************************
+// FakeBackend: the state machines and the wait hook
+//*******************************
+TEST_CASE("FakeBackend pairs through the pumped state machine, and refuses the 8BitDo pad with a reason") {
+    FakeBackend fake;
+    REQUIRE(fake.btBeginPair("00:1B:DC:0F:11:22"));
+    CHECK(fake.btPumpPair() == BtPairStage::Done);
+    CHECK(fake.btPairConnected());
+    CHECK(fake.btBattery("00:1B:DC:0F:11:22").percent == 80);
+
+    REQUIRE(fake.btBeginPair("E4:17:D8:AA:BB:CC"));
+    CHECK(fake.btPumpPair() == BtPairStage::Failed);
+    CHECK(fake.btLastError() ==
+          "the controller refused the pairing (org.bluez.Error.AuthenticationFailed: Authentication Failed)");
+
+    CHECK_FALSE(fake.btBeginPair("no:such:mac"));
+    CHECK(fake.btLastError() == "the controller is not known (no:such:mac)");
+}
+
+TEST_CASE("FakeBackend: a wait hook that says stop cancels a slow pairing and a slow scan") {
+    FakeBackend fake(true); // the dev host's: every action takes its time
+    int asked = 0;
+    fake.setWaitHook([&]() { return ++asked < 2; });
+    const auto start = std::chrono::steady_clock::now();
+    CHECK_FALSE(fake.btPair("00:1B:DC:0F:11:22"));
+    CHECK(fake.btLastError() == "cancelled");
+    CHECK(fake.scanNetworks().empty());
+    CHECK(fake.lastError() == "cancelled");
+    const auto waited =
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+    CHECK(waited < 1500); // neither ran its full time
+}
+
+TEST_CASE("FakeBackend plays a WiFi connection out: connected, or a wrong password for Neighbour 5G") {
+    FakeBackend fake;
+    vector<WifiNetwork> networks = fake.scanNetworks();
+    REQUIRE(networks.size() == 3);
+    CHECK(networks[0].ssid == "Home Network");
+    CHECK(networks[0].secured());
+    CHECK_FALSE(networks[1].secured()); // Cafe Corner is open
+
+    fake.beginWifiConnect("Home Network");
+    const WifiConnectWatch &ok = fake.pumpWifiConnect();
+    CHECK(ok.stage() == WifiConnectStage::Connected);
+    CHECK(ok.text() == "Connected, 192.168.1.23");
+
+    fake.beginWifiConnect("Neighbour 5G");
+    const WifiConnectWatch &wrong = fake.pumpWifiConnect();
+    CHECK(wrong.stage() == WifiConnectStage::Failed);
+    CHECK(wrong.failure() == WifiFailure::WrongPassword);
+    CHECK(wrong.text().compare(0, 16, "wrong password (") == 0);
+    WpaStatus status;
+    REQUIRE(fake.wifiStatus(status));
+    CHECK(status.wpaState == "DISCONNECTED");
+}
+
+//*******************************
+// WifiConnectWatch
+//*******************************
+TEST_CASE("WifiConnectWatch follows wpa_supplicant's states to Connected") {
+    WifiConnectWatch watch("Home", 0);
+    CHECK(watch.stage() == WifiConnectStage::Starting);
+    watch.supplicantRunning(true, 100);
+    CHECK(watch.stage() == WifiConnectStage::Searching);
+    WpaStatus status;
+    status.wpaState = "ASSOCIATING";
+    watch.onStatus(status, "", 600);
+    CHECK(watch.stage() == WifiConnectStage::Associating);
+    status.wpaState = "4WAY_HANDSHAKE";
+    watch.onStatus(status, "", 1100);
+    CHECK(watch.stage() == WifiConnectStage::Handshake);
+    CHECK(watch.text() == "Checking the password");
+    status.wpaState = "COMPLETED";
+    status.ssid = "Home";
+    watch.onStatus(status, "", 1600);
+    CHECK(watch.stage() == WifiConnectStage::GettingAddress);
+    CHECK_FALSE(watch.finished());
+    watch.onStatus(status, "192.168.1.40", 2100); // getifaddrs' address
+    CHECK(watch.stage() == WifiConnectStage::Connected);
+    CHECK(watch.address() == "192.168.1.40");
+    CHECK(watch.text() == "Connected, 192.168.1.40");
+    watch.onEvent("<3>CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\"Home\" reason=WRONG_KEY", 2200);
+    CHECK(watch.stage() == WifiConnectStage::Connected); // finished is finished
+
+    // COMPLETED on another network (what an earlier set-up left) is not ours
+    WifiConnectWatch other("Home", 0);
+    status.ssid = "Neighbour";
+    other.onStatus(status, "10.0.0.2", 100);
+    CHECK(other.stage() == WifiConnectStage::Associating);
+    // STATUS's own ip_address will do when getifaddrs has none yet
+    status.ssid = "Home";
+    status.ipAddress = "10.0.0.3";
+    other.onStatus(status, "", 200);
+    CHECK(other.address() == "10.0.0.3");
+}
+
+TEST_CASE("WifiConnectWatch knows a wrong password from wpa_supplicant's events") {
+    std::string detail;
+    CHECK(WifiConnectWatch::failureOfEvent(
+              "<3>CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\"Home\" auth_failures=1 duration=10 reason=WRONG_KEY",
+              detail) == WifiFailure::WrongPassword);
+    CHECK(detail == "CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\"Home\" auth_failures=1 duration=10 reason=WRONG_KEY");
+    CHECK(WifiConnectWatch::failureOfEvent("<3>WPA: 4-Way Handshake failed - pre-shared key may be incorrect",
+                                           detail) == WifiFailure::WrongPassword);
+    CHECK(WifiConnectWatch::failureOfEvent("<3>CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\"x\" reason=CONN_FAILED",
+                                           detail) == WifiFailure::AssociationRejected);
+    CHECK(WifiConnectWatch::failureOfEvent("<3>CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\"x\" reason=AUTH_FAILED",
+                                           detail) == WifiFailure::AuthenticationRejected);
+    CHECK(WifiConnectWatch::failureOfEvent("<3>CTRL-EVENT-SCAN-RESULTS ", detail) == WifiFailure::None);
+    CHECK(WifiConnectWatch::eventText("<2>CTRL-EVENT-CONNECTED - Connection to aa:bb completed\n") ==
+          "CTRL-EVENT-CONNECTED - Connection to aa:bb completed");
+
+    WifiConnectWatch watch("Home", 0);
+    watch.supplicantRunning(true, 10);
+    watch.onEvent("<3>CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\"Home\" auth_failures=1 duration=10 reason=WRONG_KEY",
+                  500);
+    CHECK(watch.stage() == WifiConnectStage::Failed);
+    CHECK(watch.failure() == WifiFailure::WrongPassword);
+    CHECK(watch.text() == "wrong password (CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\"Home\" auth_failures=1 "
+                          "duration=10 reason=WRONG_KEY)");
+}
+
+TEST_CASE("WifiConnectWatch gives each way of not connecting its reason") {
+    WifiConnectTimeouts t;
+    t.startMs = 100;
+    t.totalMs = 1000;
+    t.notFoundEvents = 2;
+
+    WifiConnectWatch never("Home", 0, t); // wpa_supplicant never came up
+    never.tick(99);
+    CHECK_FALSE(never.finished());
+    never.tick(100);
+    CHECK(never.failure() == WifiFailure::NoSupplicant);
+
+    WifiConnectWatch notFound("Home", 0, t); // the network is not there
+    notFound.supplicantRunning(true, 10);
+    notFound.onEvent("<3>CTRL-EVENT-NETWORK-NOT-FOUND", 200);
+    CHECK_FALSE(notFound.finished());
+    notFound.onEvent("<3>CTRL-EVENT-NETWORK-NOT-FOUND", 400);
+    CHECK(notFound.failure() == WifiFailure::NetworkNotFound);
+
+    WifiConnectWatch searching("Home", 0, t); // an older wpa_supplicant says nothing: the time runs out searching
+    searching.supplicantRunning(true, 10);
+    searching.tick(1000);
+    CHECK(searching.failure() == WifiFailure::NetworkNotFound);
+
+    WifiConnectWatch rejected("Home", 0, t); // refused, tried again, never in
+    rejected.supplicantRunning(true, 10);
+    rejected.onEvent("<3>CTRL-EVENT-ASSOC-REJECT bssid=aa:bb:cc:dd:ee:ff status_code=17", 300);
+    CHECK_FALSE(rejected.finished());
+    rejected.tick(1000);
+    CHECK(rejected.failure() == WifiFailure::AssociationRejected);
+    CHECK(rejected.detail() == "CTRL-EVENT-ASSOC-REJECT bssid=aa:bb:cc:dd:ee:ff status_code=17");
+
+    WifiConnectWatch noDhcp("Home", 0, t); // in, but no address
+    WpaStatus completed;
+    completed.wpaState = "COMPLETED";
+    noDhcp.onStatus(completed, "", 50);
+    noDhcp.tick(1000);
+    CHECK(noDhcp.failure() == WifiFailure::NoAddress);
+    CHECK(noDhcp.text() == "no address from the network (DHCP)");
+
+    WifiConnectWatch stuck("Home", 0, t); // associating for ever
+    WpaStatus associating;
+    associating.wpaState = "ASSOCIATING";
+    stuck.onStatus(associating, "", 50);
+    stuck.tick(1000);
+    CHECK(stuck.failure() == WifiFailure::Timeout);
+
+    WifiConnectWatch cancelled("Home", 0, t);
+    cancelled.cancel();
+    CHECK(cancelled.failure() == WifiFailure::Cancelled);
+
+    // a restart under the watch: back to Starting until it is up again, not a failure
+    WifiConnectWatch restarted("Home", 0, t);
+    restarted.supplicantRunning(true, 10);
+    restarted.supplicantRunning(false, 50);
+    CHECK(restarted.stage() == WifiConnectStage::Starting);
+    restarted.supplicantRunning(true, 90);
+    CHECK(restarted.stage() == WifiConnectStage::Searching);
+}
+
+TEST_CASE("The WiFi texts: the connection row, the signal, the stages") {
+    CHECK(wpaStateText("COMPLETED") == "Connected");
+    CHECK(wpaStateText("SCANNING") == "Looking for the network");
+    CHECK(wpaStateText("4WAY_HANDSHAKE") == "Checking the password");
+    CHECK(wpaStateText("ASSOCIATING") == "Connecting");
+    CHECK(wpaStateText("DISCONNECTED") == "Not connected");
+    CHECK(wpaStateText("INTERFACE_DISABLED") == "WiFi is off");
+    CHECK(wpaStateText("").empty());
+    CHECK(WifiNetwork::signalText(-40) == "Excellent");
+    CHECK(WifiNetwork::signalText(-60) == "Good");
+    CHECK(WifiNetwork::signalText(-70) == "Fair");
+    CHECK(WifiNetwork::signalText(-85) == "Weak");
+    WifiNetwork n;
+    n.flags = "[WPA2-PSK-CCMP][ESS]";
+    CHECK(n.secured());
+    n.flags = "[WEP][ESS]";
+    CHECK(n.secured());
+    n.flags = "[ESS]";
+    CHECK_FALSE(n.secured());
+    CHECK(wifiFailureText(WifiFailure::WrongPassword) == "wrong password");
+    CHECK(wifiStageText(WifiConnectStage::GettingAddress) == "Getting an address");
+}
+
+//*******************************
+// BtDeviceList
+//*******************************
+namespace {
+BtDevice btDevice(const string &mac, const string &name, bool paired, bool connected, int battery = -1) {
+    BtDevice d;
+    d.mac = mac;
+    d.name = name;
+    d.paired = paired;
+    d.connected = connected;
+    d.battery.percent = battery;
+    d.battery.status = battery >= 0 ? "Discharging" : "";
+    return d;
+}
+} // namespace
+
+TEST_CASE("BtDeviceList merges the scan with the paired pads, and sees one drop") {
+    BtDeviceList list;
+    list.updatePaired({btDevice("AA", "Xbox", true, true, 55)});
+    REQUIRE(list.rows().size() == 1);
+    CHECK(list.rows()[0].state == BtRowState::Connected);
+    CHECK(BtDeviceList::stateText(list.rows()[0]) == "connected, battery 55%");
+
+    list.setScanned({btDevice("BB", "Wireless Controller", false, false)});
+    REQUIRE(list.rows().size() == 2); // the paired pad the scan missed stays
+    CHECK(list.find("BB")->state == BtRowState::New);
+    CHECK(BtDeviceList::stateText(*list.find("BB")) == "new");
+
+    // the Xbox pad goes out of range: dropped; back again: connected
+    list.updatePaired({btDevice("AA", "Xbox", true, false)});
+    CHECK(list.find("AA")->state == BtRowState::Dropped);
+    CHECK(BtDeviceList::stateText(*list.find("AA")) == "dropped");
+    list.updatePaired({btDevice("AA", "Xbox", true, true, 50)});
+    CHECK(list.find("AA")->state == BtRowState::Connected);
+
+    // forgotten elsewhere: back to new
+    list.updatePaired({});
+    CHECK(list.find("AA")->state == BtRowState::New);
+    CHECK_FALSE(list.find("AA")->device.paired);
+
+    // a paired pad never seen connected is just paired
+    list.updatePaired({btDevice("CC", "8BitDo", true, false)});
+    CHECK(list.find("CC")->state == BtRowState::Paired);
+    CHECK(list.indexOf("CC") == 2);
+    CHECK(list.indexOf("ZZ") == -1);
+}
+
+TEST_CASE("BtDeviceList follows a pairing's stages and how it ended") {
+    BtDeviceList list;
+    list.setScanned({btDevice("BB", "Wireless Controller", false, false)});
+    list.pairStage("BB", BtPairStage::Discovering);
+    CHECK(BtDeviceList::stateText(*list.find("BB")) == "discovering...");
+    list.pairStage("BB", BtPairStage::WaitingForPaired);
+    CHECK(BtDeviceList::stateText(*list.find("BB")) == "pairing...");
+    list.updatePaired({}); // a refresh meanwhile does not undo the stage
+    CHECK(list.find("BB")->state == BtRowState::Pairing);
+    list.pairStage("BB", BtPairStage::Connecting);
+    CHECK(BtDeviceList::stateText(*list.find("BB")) == "connecting...");
+
+    list.pairFinished("BB", false, false, "the controller refused the pairing (org.bluez.Error.AuthenticationFailed)");
+    CHECK(list.find("BB")->state == BtRowState::Failed);
+    CHECK(BtDeviceList::stateText(*list.find("BB")) == "failed");
+    CHECK_FALSE(list.find("BB")->error.empty());
+
+    list.pairStage("BB", BtPairStage::Pairing); // tried again: the error goes
+    CHECK(list.find("BB")->error.empty());
+    list.pairFinished("BB", false, false, ""); // cancelled: new again
+    CHECK(list.find("BB")->state == BtRowState::New);
+
+    list.pairFinished("BB", true, false, "the controller is off or out of range (...)"); // paired, not connected
+    CHECK(list.find("BB")->state == BtRowState::Paired);
+    list.pairFinished("BB", true, true, "");
+    CHECK(list.find("BB")->state == BtRowState::Connected);
+
+    list.removed("BB", false, "the controller could not be removed (org.bluez.Error.Failed: nope)");
+    CHECK(list.find("BB")->state == BtRowState::Connected);
+    CHECK_FALSE(list.find("BB")->error.empty());
+    list.removed("BB", true, "");
+    CHECK(list.find("BB")->state == BtRowState::New);
+}
+
+TEST_CASE("BtDeviceList's battery text") {
+    BtBattery b;
+    CHECK(BtDeviceList::batteryText(b).empty());
+    b.percent = 80;
+    CHECK(BtDeviceList::batteryText(b) == "battery 80%");
+    b.status = "Charging";
+    CHECK(BtDeviceList::batteryText(b) == "charging 80%");
+    b.status = "Full";
+    CHECK(BtDeviceList::batteryText(b) == "battery full");
 }
 
 TEST_CASE("SsidConfig reads and writes the three-line ssid.cfg") {

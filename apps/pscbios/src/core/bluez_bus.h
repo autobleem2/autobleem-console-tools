@@ -118,6 +118,13 @@ public:
 
     // reads and writes the connection for up to timeoutMs, handing any incoming agent call to its handler
     virtual void pump(int timeoutMs) = 0;
+
+    // how long a call waits for its reply (DbusBluezBus: 5 s by default); a status read sets a shorter one
+    virtual void setCallTimeout(int /*timeoutMs*/) {}
+    virtual int callTimeout() const { return 0; }
+    // called every few tens of ms while a call waits for its reply (a screen's spinner); false ends the wait,
+    // the call failing with BluezClient::CancelledError
+    virtual void setWaitHook(std::function<bool()> /*hook*/) {}
 };
 
 // connects a BluezBus: nullptr, with the reason in `error`, when the system bus cannot be reached

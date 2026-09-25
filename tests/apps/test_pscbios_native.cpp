@@ -64,6 +64,14 @@ public:
         replies_[cmd] = answer;
     }
     void setSilent(bool silent) { silent_ = silent; }
+    void setScanEvents(bool send) { scanEvents_ = send; } // false: a SCAN is answered, its end never announced
+    // an event to every ATTACHed client, as wpa_supplicant sends them
+    void sendEvent(const string &event) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (auto &client : attached_)
+            sendto(fd_, event.data(), event.size(), 0, reinterpret_cast<struct sockaddr *>(&client.first),
+                   client.second);
+    }
     // what the client sent, ATTACH/DETACH left out
     vector<string> commands() {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -105,7 +113,8 @@ private:
             if (silent_)
                 continue;
             sendto(fd_, answer.data(), answer.size(), 0, reinterpret_cast<struct sockaddr *>(&from), fromLength);
-            if (cmd == "SCAN") {
+            if (cmd == "SCAN" && scanEvents_) {
+                std::lock_guard<std::mutex> lock(mutex_);
                 const string event = "<2>CTRL-EVENT-SCAN-RESULTS ";
                 for (auto &client : attached_)
                     sendto(fd_, event.data(), event.size(), 0, reinterpret_cast<struct sockaddr *>(&client.first),
@@ -119,6 +128,7 @@ private:
     bool bound_ = false;
     std::atomic<bool> stop_{false};
     std::atomic<bool> silent_{false};
+    std::atomic<bool> scanEvents_{true};
     std::mutex mutex_;
     std::map<string, string> replies_;
     vector<string> commands_;
@@ -276,7 +286,8 @@ TEST_CASE("WpaCtrlClient configures a network in wpa_supplicant's order") {
     fake.clearCommands();
     fake.reply("SET_NETWORK 3 psk \"12345678\"", "FAIL\n");
     CHECK_FALSE(client.configure("Home", "12345678"));
-    CHECK(client.lastError() == "SET_NETWORK psk: FAIL");              // the step, never the password
+    // the reason, then the step, never the password
+    CHECK(client.lastError() == "wpa_supplicant refused the network (SET_NETWORK psk: FAIL)");
     CHECK(fake.commands().back() == "SET_NETWORK 3 psk \"12345678\""); // nothing after the refusal
 
     fake.clearCommands();
@@ -391,7 +402,7 @@ TEST_CASE("NativeBackend: the kernel, and the timezone without timedatectl or a 
     backend.setTimezone("../../etc/passwd");
     backend.setTimezone("Nowhere/Gone");
     CHECK(runs.lines.empty());
-    CHECK(backend.lastError() == "unknown timezone Nowhere/Gone");
+    CHECK(backend.lastError() == "unknown timezone (Nowhere/Gone)");
 }
 
 TEST_CASE("NativeBackend says why settime failed") {
@@ -401,7 +412,7 @@ TEST_CASE("NativeBackend says why settime failed") {
     tmp.writeFile("zoneinfo/Europe/Warsaw", "TZif");
     NativeBackend backend(paths, [](const string &, const vector<string> &) { return 1; });
     backend.setTimezone("Europe/Warsaw");
-    CHECK(backend.lastError() == paths.settime + " tzone Europe/Warsaw: 1");
+    CHECK(backend.lastError() == "the timezone could not be changed (" + paths.settime + " tzone Europe/Warsaw: 1)");
 }
 
 TEST_CASE("NativeBackend configures WiFi through a running wpa_supplicant") {
@@ -414,9 +425,14 @@ TEST_CASE("NativeBackend configures WiFi through a running wpa_supplicant") {
     RecordedRuns runs;
     NativeBackend backend(paths, runs.runner());
 
-    vector<string> expected{"Home Network", "Cafe Corner", "Caf\xc3\xa9 \"Bar\"\\"};
-    std::sort(expected.begin(), expected.end()); // sorted as std::string sorts (char's sign differs per CPU)
-    CHECK(backend.scanSsids() == expected);
+    vector<WifiNetwork> networks = backend.scanNetworks(); // strongest first, one per SSID
+    REQUIRE(networks.size() == 3);
+    CHECK(networks[0].ssid == "Home Network");
+    CHECK(networks[0].signal == -48);
+    CHECK(networks[1].ssid == "Cafe Corner");
+    CHECK_FALSE(networks[1].secured());
+    CHECK(networks[2].ssid == "Caf\xc3\xa9 \"Bar\"\\");
+    CHECK(backend.lastError().empty());
 
     fake.clearCommands();
     fake.reply("ADD_NETWORK", "0\n");
@@ -467,9 +483,9 @@ TEST_CASE("NativeBackend writes wpa_supplicant.conf and has dhcpcd start it when
 
     // a scan with no wpa_supplicant starts it; one that never comes up gives up after supplicantStartMs
     runs.lines.clear();
-    CHECK(backend.scanSsids().empty());
+    CHECK(backend.scanNetworks().empty());
     CHECK(runs.lines == vector<string>{"dhcpcd -n wlan0"});
-    CHECK(backend.lastError() == "wpa_supplicant did not start on wlan0");
+    CHECK(backend.lastError() == "wpa_supplicant did not start (wlan0)");
 
     CHECK(NativeBackend::supplicantConfText("/var/run/wpa_supplicant", "netdev", "Cafe Corner", "") ==
           "ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev\nupdate_config=1\n\nnetwork={\n"
@@ -485,7 +501,8 @@ TEST_CASE("NativeBackend without a WiFi interface scans nothing and only writes 
     RecordedRuns runs;
     NativeBackend backend(paths, runs.runner());
     CHECK_FALSE(backend.wlanOn());
-    CHECK(backend.scanSsids().empty());
+    CHECK(backend.scanNetworks().empty());
+    CHECK(backend.lastError() == "no WiFi interface");
     backend.configureWifi("Home Network", "secret123", "wext");
     CHECK(ableem::DirEntry::exists(paths.wpaSupplicantConf)); // for the dongle plugged in later
     CHECK(runs.lines.empty());
@@ -542,12 +559,12 @@ TEST_CASE("NativeBackend's Bluetooth goes through BlueZ") {
     state->errors["Pair"] = {"org.bluez.Error.AuthenticationTimeout", "Authentication Timeout"};
     state->objects[fakebluez::devicePath("E4:17:D8:AA:BB:CC")] = fakebluez::device("E4:17:D8:AA:BB:CC", "8BitDo");
     CHECK_FALSE(backend.btPair("E4:17:D8:AA:BB:CC"));
-    CHECK(backend.btLastError() ==
-          "pairing E4:17:D8:AA:BB:CC failed: org.bluez.Error.AuthenticationTimeout: Authentication Timeout");
+    CHECK(backend.btLastError() == "the controller did not answer - is it in pairing mode? "
+                                   "(org.bluez.Error.AuthenticationTimeout: Authentication Timeout)");
 
     CHECK(backend.btRemove("A0:AB:51:33:44:55"));
     CHECK_FALSE(backend.btRemove("A0:AB:51:33:44:55"));
-    CHECK(backend.btLastError() == "A0:AB:51:33:44:55 is not known");
+    CHECK(backend.btLastError() == "the controller is not known (A0:AB:51:33:44:55)");
     CHECK(connects == 1); // one connection for all of it
 
     // the adapter switched off behind our back: not powered on again, and said so
@@ -562,8 +579,8 @@ TEST_CASE("NativeBackend's Bluetooth goes through BlueZ") {
                                           "The name org.bluez was not "
                                           "provided by any .service files"};
     CHECK_FALSE(backend.btUp());
-    CHECK(backend.btLastError() == "BlueZ does not answer: org.freedesktop.DBus.Error.ServiceUnknown: The name "
-                                   "org.bluez was not provided by any .service files");
+    CHECK(backend.btLastError() == "BlueZ (bluetoothd) is not running (org.freedesktop.DBus.Error.ServiceUnknown: "
+                                   "The name org.bluez was not provided by any .service files)");
     CHECK(backend.btScan().empty());
     CHECK(backend.btPairedDevices().empty());
 }
@@ -581,11 +598,163 @@ TEST_CASE("NativeBackend without a system bus: no Bluetooth, and why") {
     });
     CHECK_FALSE(backend.btUp());
     CHECK(backend.btLastError() ==
-          "the system bus cannot be reached: org.freedesktop.DBus.Error.FileNotFound: Failed to connect to socket "
-          "/var/run/dbus/system_bus_socket: No such file or directory");
+          "the system bus cannot be reached (org.freedesktop.DBus.Error.FileNotFound: Failed to connect to socket "
+          "/var/run/dbus/system_bus_socket: No such file or directory)");
     CHECK(backend.btName().empty());
     CHECK_FALSE(backend.btPair("1C:A0:B8:12:34:56"));
     CHECK_FALSE(backend.btRemove("1C:A0:B8:12:34:56"));
     CHECK(backend.btScan().empty());
     CHECK(attempts == 5); // tried again each time: dbus-daemon may come up later
+}
+
+//*******************************
+// NativeBackend: nothing freezes a screen
+//*******************************
+TEST_CASE("NativeBackend's scan asks the wait hook, and a stop ends it before its timeout") {
+    TempDir tmp("native_scanstop");
+    NativePaths paths = pathsIn(tmp);
+    makeInterface(tmp, "wlan0", "0x1003", "wireless");
+    FakeWpaSupplicant fake(tmp.at("run/wlan0"));
+    REQUIRE(fake.bound());
+    fake.setScanEvents(false); // a scan that never ends by itself
+    fake.reply("SCAN_RESULTS", ScanResults);
+    RecordedRuns runs;
+    NativeBackend backend(paths, runs.runner());
+    int asked = 0;
+    backend.setWaitHook([&]() { return ++asked < 4; });
+    const auto start = std::chrono::steady_clock::now();
+    vector<WifiNetwork> networks = backend.scanNetworks();
+    const auto waited =
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+    CHECK(asked == 4);
+    CHECK(waited < 2000);        // WpaCtrlClient::ScanTimeoutMs is 8 s
+    CHECK(networks.size() == 3); // what wpa_supplicant has, all the same
+    CHECK(backend.lastError() == "cancelled");
+}
+
+TEST_CASE("NativeBackend follows a connection to the end: connected, or a wrong password") {
+    TempDir tmp("native_follow");
+    NativePaths paths = pathsIn(tmp);
+    makeInterface(tmp, "wlan0", "0x1003", "wireless");
+    FakeWpaSupplicant fake(tmp.at("run/wlan0"));
+    REQUIRE(fake.bound());
+    RecordedRuns runs;
+    NativeBackend backend(paths, runs.runner());
+
+    auto follow = [&](int maxMs) -> const WifiConnectWatch & {
+        const auto start = std::chrono::steady_clock::now();
+        for (;;) {
+            const WifiConnectWatch &watch = backend.pumpWifiConnect();
+            auto ms =
+                std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+            if (watch.finished() || ms > maxMs)
+                return watch;
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+    };
+
+    fake.reply("STATUS", "wpa_state=COMPLETED\nssid=Home Network\nip_address=10.0.0.7\n");
+    backend.beginWifiConnect("Home Network");
+    const WifiConnectWatch &ok = follow(3000);
+    CHECK(ok.stage() == WifiConnectStage::Connected);
+    CHECK(ok.address() == "10.0.0.7");
+
+    fake.reply("STATUS", "wpa_state=4WAY_HANDSHAKE\nssid=Home Network\n");
+    backend.beginWifiConnect("Home Network");
+    backend.pumpWifiConnect(); // attached
+    fake.sendEvent("<3>CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\"Home Network\" auth_failures=1 duration=10 "
+                   "reason=WRONG_KEY");
+    const WifiConnectWatch &wrong = follow(3000);
+    CHECK(wrong.stage() == WifiConnectStage::Failed);
+    CHECK(wrong.failure() == WifiFailure::WrongPassword);
+    CHECK(wrong.text().compare(0, 16, "wrong password (") == 0);
+
+    WpaStatus status;
+    fake.reply("STATUS", "wpa_state=SCANNING\n");
+    REQUIRE(backend.wifiStatus(status));
+    CHECK(status.wpaState == "SCANNING");
+}
+
+TEST_CASE("NativeBackend's connection watch: no wpa_supplicant, and no WiFi at all") {
+    TempDir tmp("native_follow_none");
+    NativePaths paths = pathsIn(tmp);
+    paths.wifiTimeouts.startMs = 100;
+    makeInterface(tmp, "wlan0", "0x1003", "wireless");
+    RecordedRuns runs;
+    NativeBackend backend(paths, runs.runner());
+    backend.beginWifiConnect("Home Network");
+    CHECK(backend.pumpWifiConnect().stage() == WifiConnectStage::Starting);
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    CHECK(backend.pumpWifiConnect().failure() == WifiFailure::NoSupplicant);
+    WpaStatus status;
+    CHECK_FALSE(backend.wifiStatus(status));
+
+    TempDir bare("native_follow_nowifi");
+    NativePaths barePaths = pathsIn(bare);
+    NativeBackend noWifi(barePaths, runs.runner());
+    noWifi.beginWifiConnect("Home Network");
+    CHECK(noWifi.pumpWifiConnect().failure() == WifiFailure::NoInterface);
+}
+
+TEST_CASE("NativeBackend stops asking a bluetoothd that does not answer, for a while") {
+    TempDir tmp("native_bt_hung");
+    NativePaths paths = pathsIn(tmp);
+    paths.btStatusTimeoutMs = 700;
+    paths.btRetryMs = 200;
+    auto state = std::make_shared<fakebluez::State>();
+    state->objects[fakebluez::Adapter] = fakebluez::adapter("00:1A:7D:DA:71:13", true);
+    state->errors["GetManagedObjects"] = {"org.freedesktop.DBus.Error.NoReply", "no reply within 700 ms"};
+    RecordedRuns runs;
+    NativeBackend backend(paths, runs.runner(), [&](BusError &) { return fakebluez::makeBus(state); });
+
+    CHECK_FALSE(backend.btUp());
+    CHECK(backend.btLastError() == "BlueZ did not answer in time (org.freedesktop.DBus.Error.NoReply: no reply within "
+                                   "700 ms)");
+    CHECK(state->refreshTimeouts == vector<int>{700}); // the status read's own timeout
+    CHECK_FALSE(backend.btUp());                       // not asked again yet: the same reason
+    CHECK(backend.btPairedDevices().empty());
+    CHECK(state->refreshTimeouts.size() == 1);
+    CHECK_FALSE(backend.btLastError().empty());
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    state->errors.clear(); // it came back
+    CHECK(backend.btUp());
+    CHECK(state->refreshTimeouts.size() == 2);
+}
+
+TEST_CASE("NativeBackend: the paired pads with their batteries, and a pairing the hook cancels") {
+    TempDir tmp("native_bt_live");
+    NativePaths paths = pathsIn(tmp);
+    paths.powerSupplyDir = tmp.at("ps");
+    paths.btTimeouts.pollMs = 1;
+    tmp.makeSubDir("ps/sony_controller_battery_a0:ab:51:33:44:55");
+    tmp.writeFile("ps/sony_controller_battery_a0:ab:51:33:44:55/capacity", "40\n");
+    tmp.writeFile("ps/sony_controller_battery_a0:ab:51:33:44:55/status", "Charging\n");
+    auto state = std::make_shared<fakebluez::State>();
+    state->objects["/org/bluez"]["org.bluez.AgentManager1"];
+    state->objects[fakebluez::Adapter] = fakebluez::adapter("00:1A:7D:DA:71:13", true);
+    state->objects[fakebluez::devicePath("A0:AB:51:33:44:55")] =
+        fakebluez::device("A0:AB:51:33:44:55", "Wireless Controller", true, true);
+    state->objects[fakebluez::devicePath("1C:A0:B8:12:34:56")] =
+        fakebluez::device("1C:A0:B8:12:34:56", "Wireless Controller");
+    state->asyncNeverAnswers = true;
+    RecordedRuns runs;
+    NativeBackend backend(paths, runs.runner(), [&](BusError &) { return fakebluez::makeBus(state); });
+
+    vector<BtDevice> paired = backend.btPairedDevices();
+    REQUIRE(paired.size() == 1);
+    CHECK(paired[0].battery.percent == 40);
+    CHECK(paired[0].battery.status == "Charging");
+
+    REQUIRE(backend.btBeginPair("1C:A0:B8:12:34:56"));
+    CHECK(backend.btPumpPair() == BtPairStage::Pairing);
+    CHECK(state->waitHook); // the bus's waits go through the backend's hook
+    int asked = 0;
+    backend.setWaitHook([&]() { return ++asked < 3; });
+    CHECK(state->waitHook() == true); // the bus asks the backend, which asks the screen
+    backend.btCancelPair();
+    CHECK(backend.btLastError() == "cancelled");
+    CHECK(state->calls.back() == "UnregisterAgent /org/autobleem/pscbios/agent");
+    CHECK_FALSE(backend.btPair("1C:A0:B8:12:34:56")); // the blocking form: the hook says stop between the pumps
+    CHECK(backend.btLastError() == "cancelled");
 }

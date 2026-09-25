@@ -134,34 +134,13 @@ string BluezDevice::displayName() const {
     return address;
 }
 
-const char *btPairStageName(BtPairStage stage) {
-    switch (stage) {
-    case BtPairStage::Idle:
-        return "Idle";
-    case BtPairStage::Discovering:
-        return "Discovering";
-    case BtPairStage::Trusting:
-        return "Trusting";
-    case BtPairStage::Pairing:
-        return "Pairing";
-    case BtPairStage::WaitingForPaired:
-        return "WaitingForPaired";
-    case BtPairStage::Connecting:
-        return "Connecting";
-    case BtPairStage::Done:
-        return "Done";
-    case BtPairStage::Failed:
-        return "Failed";
-    }
-    return "?";
-}
-
 //*******************************
 // BluezClient
 //*******************************
 const char *const BluezClient::AgentPath = "/org/autobleem/pscbios/agent";
 const char *const BluezClient::AgentCapability = "NoInputNoOutput";
 const char *const BluezClient::DefaultPowerSupplyDir = "/sys/class/power_supply";
+const char *const BluezClient::CancelledError = "org.autobleem.Error.Cancelled";
 
 BluezClient::BluezClient(unique_ptr<BluezBus> bus, string powerSupplyDir, BluezTimeouts timeouts)
     : bus_(std::move(bus)), powerSupplyDir_(std::move(powerSupplyDir)), timeouts_(timeouts) {}
@@ -266,23 +245,67 @@ string BluezClient::devicePathSuffix(const string &mac) {
 }
 
 //*******************************
+// BluezClient::reasonFor
+//*******************************
+string BluezClient::reasonFor(const BusError &error) {
+    const string &n = error.name;
+    const string &m = error.message;
+    if (n == CancelledError)
+        return _("cancelled");
+    if (n == "org.bluez.Error.AuthenticationFailed")
+        return _("the controller refused the pairing");
+    if (n == "org.bluez.Error.AuthenticationRejected")
+        return _("the pairing was rejected");
+    if (n == "org.bluez.Error.AuthenticationCanceled")
+        return _("the pairing was cancelled");
+    if (n == "org.bluez.Error.AuthenticationTimeout" || n == "org.bluez.Error.ConnectionAttemptFailed")
+        return _("the controller did not answer - is it in pairing mode?");
+    if (n == "org.bluez.Error.Failed" &&
+        (m.find("page-timeout") != string::npos || m.find("Host is down") != string::npos))
+        return _("the controller is off or out of range");
+    if (n == "org.bluez.Error.NotReady")
+        return _("the Bluetooth adapter is not ready");
+    if (n == "org.bluez.Error.InProgress")
+        return _("Bluetooth is busy with something else");
+    if (n == "org.bluez.Error.DoesNotExist" || n == "org.freedesktop.DBus.Error.UnknownObject")
+        return _("the controller is not known");
+    if (n == "org.freedesktop.DBus.Error.NoReply" || n == "org.freedesktop.DBus.Error.Timeout" ||
+        n == "org.freedesktop.DBus.Error.TimedOut")
+        return _("BlueZ did not answer in time");
+    if (n == "org.freedesktop.DBus.Error.ServiceUnknown" || n == "org.freedesktop.DBus.Error.NameHasNoOwner")
+        return _("BlueZ (bluetoothd) is not running");
+    if (n == "org.freedesktop.DBus.Error.Disconnected" || n == "org.freedesktop.DBus.Error.NoServer")
+        return _("the system bus went away");
+    if (n == "org.freedesktop.DBus.Error.AccessDenied")
+        return _("the system bus refused PSC-Bios");
+    return "";
+}
+
+//*******************************
 // BluezClient::fail
 //*******************************
-// lastError() = what + the D-Bus error, logged; always false, for `return fail(...)`
-bool BluezClient::fail(const string &what, const BusError &error) {
+bool BluezClient::fail(const string &reason, const BusError &error, const string &subject) {
     lastBusError_ = error;
-    lastError_ = error.empty() ? what : what + ": " + error.text();
-    PLOG_WARNING << "bluetooth: " << lastError_;
+    const string known = reasonFor(error);
+    lastError_ = (known.empty() ? reason : known) + (error.empty() ? string() : " (" + error.text() + ")");
+    PLOG_WARNING << "bluetooth: " << (subject.empty() ? string() : subject + ": ") << reason
+                 << (error.empty() ? string() : " - " + error.text());
     return false;
 }
 
 //*******************************
 // BluezClient::refresh / findDevice
 //*******************************
-bool BluezClient::refresh() {
+bool BluezClient::refresh(int timeoutMs) {
     DbusManagedObjects objects;
     BusError error;
-    if (!bus_->getManagedObjects(objects, error)) {
+    const int previousTimeout = bus_->callTimeout();
+    if (timeoutMs > 0)
+        bus_->setCallTimeout(timeoutMs);
+    const bool answered = bus_->getManagedObjects(objects, error);
+    if (timeoutMs > 0)
+        bus_->setCallTimeout(previousTimeout);
+    if (!answered) {
         adapter_ = BluezAdapter();
         devices_.clear();
         return fail(_("BlueZ does not answer"), error);
@@ -313,7 +336,9 @@ bool BluezClient::setPowered(bool on) {
         return fail(_("no Bluetooth adapter"));
     BusError error;
     if (!bus_->setBool(adapter_.path, Adapter1, "Powered", on, error))
-        return fail(string("cannot power the adapter ") + (on ? "on" : "off"), error);
+        return fail(on ? _("the Bluetooth adapter cannot be switched on")
+                       : _("the Bluetooth adapter cannot be switched off"),
+                    error);
     adapter_.powered = on;
     PLOG_INFO << "bluetooth: " << adapter_.hciName() << " powered " << (on ? "on" : "off");
     return true;
@@ -337,7 +362,7 @@ bool BluezClient::startDiscovery() {
             PLOG_INFO << "bluetooth: a discovery is already running";
             return true;
         }
-        return fail("cannot start the discovery", error);
+        return fail(_("the search for controllers cannot start"), error);
     }
     ourDiscovery_ = true;
     PLOG_INFO << "bluetooth: discovery started on " << adapter_.hciName();
@@ -358,7 +383,7 @@ bool BluezClient::stopDiscovery() {
     return true;
 }
 
-bool BluezClient::scan(int durationMs, const function<void()> &progress) {
+bool BluezClient::scan(int durationMs, const function<bool()> &keepGoing) {
     lastError_.clear();
     lastBusError_.clear();
     if (!startDiscovery())
@@ -366,8 +391,10 @@ bool BluezClient::scan(int durationMs, const function<void()> &progress) {
     auto start = chrono::steady_clock::now();
     while (msSince(start) < durationMs) {
         bus_->pump(50);
-        if (progress)
-            progress();
+        if (keepGoing && !keepGoing()) {
+            PLOG_INFO << "bluetooth: the scan was stopped after " << msSince(start) << " ms";
+            break; // what was found so far is the answer
+        }
     }
     stopDiscovery();
     return refresh();
@@ -383,10 +410,10 @@ bool BluezClient::removeDevice(const string &mac) {
         return false;
     const BluezDevice *device = findDevice(mac);
     if (device == nullptr)
-        return fail(mac + " is not known");
+        return fail(_("the controller is not known") + " (" + mac + ")", BusError(), mac);
     BusError error;
     if (!bus_->callWithPath(adapter_.path, Adapter1, "RemoveDevice", device->path, error))
-        return fail("cannot remove " + mac, error);
+        return fail(_("the controller could not be removed"), error, mac);
     PLOG_INFO << "bluetooth: removed " << mac;
     refresh();
     return true;
@@ -399,10 +426,10 @@ bool BluezClient::disconnect(const string &mac) {
         return false;
     const BluezDevice *device = findDevice(mac);
     if (device == nullptr)
-        return fail(mac + " is not known");
+        return fail(_("the controller is not known") + " (" + mac + ")", BusError(), mac);
     BusError error;
     if (!bus_->call(device->path, Device1, "Disconnect", error))
-        return fail("cannot disconnect " + mac, error);
+        return fail(_("the controller could not be disconnected"), error, mac);
     return true;
 }
 
@@ -489,7 +516,7 @@ bool BluezClient::beginPair(const string &mac) {
 
     if (!refresh() || !hasAdapter()) {
         if (lastError_.empty())
-            fail(_("no Bluetooth adapter"));
+            fail(_("no Bluetooth adapter"), BusError(), pairMac_);
         stage_ = BtPairStage::Failed;
         return false;
     }
@@ -501,14 +528,14 @@ bool BluezClient::beginPair(const string &mac) {
     BusError error;
     if (!bus_->registerAgent(
             AgentPath, AgentCapability, [this](const AgentRequest &request) { return answerAgent(request); }, error)) {
-        fail("cannot register the pairing agent", error);
+        fail(_("the pairing agent cannot be registered"), error, pairMac_);
         stage_ = BtPairStage::Failed;
         return false;
     }
     agentRegistered_ = true;
     error.clear();
     if (!bus_->callWithPath(AgentManagerPath, AgentManager1, "RequestDefaultAgent", AgentPath, error)) {
-        fail("cannot make the pairing agent the default", error);
+        fail(_("the pairing agent cannot be registered"), error, pairMac_);
         finishPair();
         stage_ = BtPairStage::Failed;
         return false;
@@ -545,7 +572,7 @@ void BluezClient::finishPair() {
 void BluezClient::cancelPair() {
     bus_->cancelAsync();
     if (stage_ != BtPairStage::Idle && stage_ != BtPairStage::Done && stage_ != BtPairStage::Failed) {
-        fail("pairing " + pairMac_ + " cancelled");
+        fail(_("cancelled"), BusError(), pairMac_);
         stage_ = BtPairStage::Failed;
     }
     finishPair();
@@ -561,11 +588,11 @@ BtPairStage BluezClient::pump(int timeoutMs) {
         BusError error;
         const BluezDevice *device = findDevice(pairMac_);
         if (device == nullptr) {
-            fail(pairMac_ + " is gone");
+            fail(_("the controller is not known") + " (" + pairMac_ + ")", BusError(), pairMac_);
         } else if (!bus_->setBool(device->path, Device1, "Trusted", true, error)) {
-            fail("cannot trust " + pairMac_, error);
+            fail(_("the pairing failed"), error, pairMac_);
         } else if (!bus_->startAsync(device->path, Device1, "Pair", timeouts_.pairMs, error)) {
-            fail("cannot pair " + pairMac_, error);
+            fail(_("the pairing failed"), error, pairMac_);
         } else {
             enter(BtPairStage::Pairing);
             break;
@@ -599,7 +626,7 @@ void BluezClient::pumpDiscovering() {
     }
     if (!lastError_.empty() || msSince(stageStart_) >= timeouts_.discoverMs) {
         if (lastError_.empty())
-            fail(pairMac_ + " was not found - is it in pairing mode?");
+            fail(_("the controller was not found - is it in pairing mode?"), BusError(), pairMac_);
         stage_ = BtPairStage::Failed;
         finishPair();
     }
@@ -624,7 +651,7 @@ void BluezClient::pumpPairing() {
         enter(BtPairStage::WaitingForPaired);
         return;
     }
-    fail("pairing " + pairMac_ + " failed", error);
+    fail(_("the pairing failed"), error, pairMac_);
     stage_ = BtPairStage::Failed;
     finishPair();
 }
@@ -632,7 +659,7 @@ void BluezClient::pumpPairing() {
 void BluezClient::pumpWaitingForPaired() {
     if (!pollDue()) {
         if (msSince(stageStart_) >= timeouts_.pairedWaitMs) {
-            fail(pairMac_ + " did not become paired");
+            fail(_("the pairing failed"), BusError{"", "Paired did not become true"}, pairMac_);
             stage_ = BtPairStage::Failed;
             finishPair();
         }
@@ -654,7 +681,7 @@ void BluezClient::pumpWaitingForPaired() {
         BusError error;
         if (!bus_->startAsync(device->path, Device1, "Connect", timeouts_.connectMs, error)) {
             // paired all the same: the pad connects itself on its PS button
-            fail("paired, but cannot connect " + pairMac_, error);
+            fail(_("paired, but the controller did not connect"), error, pairMac_);
             enter(BtPairStage::Done);
             finishPair();
             return;
@@ -663,7 +690,7 @@ void BluezClient::pumpWaitingForPaired() {
         return;
     }
     if (msSince(stageStart_) >= timeouts_.pairedWaitMs) {
-        fail(pairMac_ + " did not become paired");
+        fail(_("the pairing failed"), BusError{"", "Paired did not become true"}, pairMac_);
         stage_ = BtPairStage::Failed;
         finishPair();
     }
@@ -684,7 +711,7 @@ void BluezClient::pumpConnecting() {
         pairConnected_ = true;
     } else {
         // paired all the same: lastError() says why it is not connected, the pairing still counts
-        fail("paired, but the connection failed", error);
+        fail(_("paired, but the controller did not connect"), error, pairMac_);
     }
     refresh();
     const BluezDevice *device = findDevice(pairMac_);

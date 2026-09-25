@@ -42,7 +42,7 @@ public:
                          << " missing): the network rows are off";
         }
 #else
-        unique_ptr<ConsoleBackend> console = make_unique<FakeBackend>();
+        unique_ptr<ConsoleBackend> console = make_unique<FakeBackend>(true); // slow: the spinner and the stages show
 #endif
         PLOG_INFO << "PSC-Bios, folder " << host.folder();
         {

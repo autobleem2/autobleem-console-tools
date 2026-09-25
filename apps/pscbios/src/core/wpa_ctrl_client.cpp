@@ -7,7 +7,9 @@
 #include <ableem/engine/log.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <cstddef>
 #include <map>
 #include <sstream>
@@ -39,6 +41,10 @@ int hexDigit(char c) {
     if (c >= 'A' && c <= 'F')
         return c - 'A' + 10;
     return -1;
+}
+
+string firstWord(const string &cmd) {
+    return cmd.substr(0, cmd.find(' '));
 }
 
 bool isPrintableAscii(const string &s) {
@@ -73,18 +79,70 @@ bool WpaCtrlClient::socketExists() const {
 }
 
 //*******************************
+// WpaEventMonitor
+//*******************************
+WpaEventMonitor::WpaEventMonitor(string socketPath) : socketPath_(std::move(socketPath)) {}
+
+WpaEventMonitor::~WpaEventMonitor() {
+    if (ctrl_ != nullptr) {
+        wpa_ctrl_detach(ctrl_);
+        wpa_ctrl_close(ctrl_);
+    }
+}
+
+bool WpaEventMonitor::open(int timeoutMs) {
+    if (ctrl_ != nullptr)
+        return true;
+    struct stat st{};
+    if (stat(socketPath_.c_str(), &st) != 0 || !S_ISSOCK(st.st_mode))
+        return false;
+    ctrl_ = wpa_ctrl_open(socketPath_.c_str());
+    if (ctrl_ == nullptr)
+        return false;
+    wpa_ctrl_set_timeout(ctrl_, timeoutMs);
+    if (wpa_ctrl_attach(ctrl_) != 0) {
+        wpa_ctrl_close(ctrl_);
+        ctrl_ = nullptr;
+        return false;
+    }
+    return true;
+}
+
+bool WpaEventMonitor::read(vector<string> &events, int waitMs) {
+    if (ctrl_ == nullptr)
+        return false;
+    const int fd = wpa_ctrl_get_fd(ctrl_);
+    for (int wait = waitMs;; wait = 0) {
+        fd_set fds;
+        FD_ZERO(&fds);
+        FD_SET(fd, &fds);
+        struct timeval tv{};
+        tv.tv_sec = wait / 1000;
+        tv.tv_usec = (wait % 1000) * 1000;
+        const int ready = select(fd + 1, &fds, nullptr, nullptr, &tv);
+        if (ready <= 0)
+            return ready == 0 || errno == EINTR; // nothing (more) waiting; a signal is nothing too
+        char event[4096];
+        size_t length = sizeof(event) - 1;
+        if (wpa_ctrl_recv(ctrl_, event, &length) != 0)
+            return false;
+        events.emplace_back(event, length);
+    }
+}
+
+//*******************************
 // WpaCtrlClient::open / close
 //*******************************
 bool WpaCtrlClient::open() {
     if (ctrl_ != nullptr)
         return true;
     if (!socketExists()) {
-        lastError_ = "wpa_supplicant is not running on " + iface_ + " (no " + socketPath() + ")";
+        lastError_ = _("wpa_supplicant is not running") + " (" + socketPath() + ")";
         return false;
     }
     ctrl_ = wpa_ctrl_open(socketPath().c_str());
     if (ctrl_ == nullptr) {
-        lastError_ = "cannot connect to " + socketPath();
+        lastError_ = _("wpa_supplicant does not answer") + " (" + socketPath() + ": " + strerror(errno) + ")";
         PLOG_WARNING << lastError_;
         return false;
     }
@@ -111,7 +169,8 @@ bool WpaCtrlClient::request(const string &cmd, string &reply) {
     int result = wpa_ctrl_request(ctrl_, cmd.c_str(), cmd.size(), buffer.data(), &length, nullptr);
     if (result != 0) {
         // -2 is the timeout; either way the connection may be stale (wpa_supplicant restarted) - reopen next time
-        lastError_ = result == -2 ? "wpa_supplicant did not answer" : "wpa_supplicant's socket failed";
+        lastError_ = _("wpa_supplicant does not answer") + " (" + firstWord(cmd) + ": " +
+                     (result == -2 ? "no reply within " + to_string(timeoutMs_) + " ms" : string("socket error")) + ")";
         close();
         return false;
     }
@@ -119,12 +178,12 @@ bool WpaCtrlClient::request(const string &cmd, string &reply) {
     return true;
 }
 
-bool WpaCtrlClient::expectOk(const string &cmd, const string &logged) {
+bool WpaCtrlClient::expectOk(const string &cmd, const string &logged, const string &reason) {
     string reply;
     if (!request(cmd, reply)) {
-        lastError_ = logged + ": " + lastError_;
+        // lastError_ says wpa_supplicant does not answer
     } else if (withoutTrailingNewlines(reply) != "OK") {
-        lastError_ = logged + ": " + withoutTrailingNewlines(reply);
+        lastError_ = reason + " (" + logged + ": " + withoutTrailingNewlines(reply) + ")";
     } else {
         return true;
     }
@@ -139,55 +198,43 @@ bool WpaCtrlClient::scan(int timeoutMs) {
     if (!open())
         return false;
     // a second connection hears the events: the one requests go through never asks for them
-    wpa_ctrl *monitor = wpa_ctrl_open(socketPath().c_str());
-    if (monitor != nullptr) {
-        wpa_ctrl_set_timeout(monitor, timeoutMs_);
-        if (wpa_ctrl_attach(monitor) != 0) {
-            wpa_ctrl_close(monitor);
-            monitor = nullptr;
-        }
-    }
+    WpaEventMonitor monitor(socketPath());
+    const bool listening = monitor.open(timeoutMs_);
     string reply;
     bool started = request("SCAN", reply);
     reply = withoutTrailingNewlines(reply);
     if (started && reply != "OK" && reply != "FAIL-BUSY") {
-        lastError_ = "SCAN: " + reply;
+        lastError_ = _("the scan failed") + " (SCAN: " + reply + ")";
         started = false;
     }
     bool finished = false;
+    bool stopped = false;
     auto start = chrono::steady_clock::now();
-    while (started && monitor != nullptr && !finished) {
-        long long left = timeoutMs - millisecondsSince(start);
-        if (left <= 0) {
+    while (started && listening && !finished) {
+        if (millisecondsSince(start) >= timeoutMs) {
             lastError_ = _("the scan did not finish in time");
             break;
         }
-        int fd = wpa_ctrl_get_fd(monitor);
-        fd_set fds;
-        FD_ZERO(&fds);
-        FD_SET(fd, &fds);
-        struct timeval tv{};
-        tv.tv_sec = static_cast<long>(left / 1000);
-        tv.tv_usec = static_cast<long>((left % 1000) * 1000);
-        if (select(fd + 1, &fds, nullptr, nullptr, &tv) <= 0)
-            continue; // a timeout (the loop's check ends it) or a signal
-        char event[4096];
-        size_t length = sizeof(event) - 1;
-        if (wpa_ctrl_recv(monitor, event, &length) != 0)
-            break;
-        string text(event, length);
-        if (text.find("CTRL-EVENT-SCAN-RESULTS") != string::npos) {
-            finished = true;
-        } else if (text.find("CTRL-EVENT-SCAN-FAILED") != string::npos) {
-            lastError_ = _("the scan failed");
+        if (waitHook_ && !waitHook_()) {
+            lastError_ = _("cancelled");
+            stopped = true;
             break;
         }
+        vector<string> events;
+        if (!monitor.read(events, 50)) {
+            lastError_ = _("wpa_supplicant does not answer") + " (" + socketPath() + ")";
+            break;
+        }
+        for (const string &event : events) {
+            if (event.find("CTRL-EVENT-SCAN-RESULTS") != string::npos) {
+                finished = true;
+            } else if (event.find("CTRL-EVENT-SCAN-FAILED") != string::npos) {
+                lastError_ = _("the scan failed") + " (" + WifiConnectWatch::eventText(event) + ")";
+                started = false;
+            }
+        }
     }
-    if (monitor != nullptr) {
-        wpa_ctrl_detach(monitor);
-        wpa_ctrl_close(monitor);
-    }
-    if (!finished && started) {
+    if (!finished && started && !stopped) {
         PLOG_WARNING << "wpa_supplicant on " << iface_ << ": " << lastError_ << " - using the results it has";
     }
     return finished;
@@ -217,49 +264,48 @@ bool WpaCtrlClient::status(WpaStatus &out) {
 bool WpaCtrlClient::configure(const string &ssid, const string &password) {
     string ssidArg = ssidValue(ssid);
     if (ssidArg.empty()) {
-        lastError_ = "an SSID is 1 to 32 bytes";
+        lastError_ = _("an SSID is 1 to 32 bytes");
         return false;
     }
     string pskArg;
     if (!password.empty()) {
         pskArg = pskValue(password);
         if (pskArg.empty()) {
-            lastError_ = "a WiFi password is 8 to 63 letters, digits or signs";
+            lastError_ = _("a WiFi password is 8 to 63 letters, digits or signs");
             return false;
         }
     }
-    if (!expectOk("REMOVE_NETWORK all", "REMOVE_NETWORK"))
+    const string refused = _("wpa_supplicant refused the network");
+    if (!expectOk("REMOVE_NETWORK all", "REMOVE_NETWORK", refused))
         return false;
     string reply;
-    if (!request("ADD_NETWORK", reply)) {
-        lastError_ = "ADD_NETWORK: " + lastError_;
+    if (!request("ADD_NETWORK", reply))
         return false;
-    }
     string id = withoutTrailingNewlines(reply);
     if (id.empty() || !all_of(id.begin(), id.end(), [](char c) { return c >= '0' && c <= '9'; })) {
-        lastError_ = "ADD_NETWORK: " + id;
+        lastError_ = refused + " (ADD_NETWORK: " + id + ")";
         return false;
     }
-    if (!expectOk("SET_NETWORK " + id + " ssid " + ssidArg, "SET_NETWORK ssid"))
+    if (!expectOk("SET_NETWORK " + id + " ssid " + ssidArg, "SET_NETWORK ssid", refused))
         return false;
     if (pskArg.empty()) {
-        if (!expectOk("SET_NETWORK " + id + " key_mgmt NONE", "SET_NETWORK key_mgmt"))
+        if (!expectOk("SET_NETWORK " + id + " key_mgmt NONE", "SET_NETWORK key_mgmt", refused))
             return false;
-    } else if (!expectOk("SET_NETWORK " + id + " psk " + pskArg, "SET_NETWORK psk")) {
+    } else if (!expectOk("SET_NETWORK " + id + " psk " + pskArg, "SET_NETWORK psk", refused)) {
         return false; // never logged with the password: `logged` names the step only
     }
-    if (!expectOk("ENABLE_NETWORK " + id, "ENABLE_NETWORK"))
+    if (!expectOk("ENABLE_NETWORK " + id, "ENABLE_NETWORK", refused))
         return false;
     // the network is in use from here on; SAVE_CONFIG only makes it survive a reboot (it fails when the
     // file says update_config=0 - reported, the network stays)
-    if (!expectOk("SAVE_CONFIG", "SAVE_CONFIG"))
+    if (!expectOk("SAVE_CONFIG", "SAVE_CONFIG", _("the WiFi settings could not be saved")))
         return false;
     PLOG_INFO << "wpa_supplicant on " << iface_ << ": network " << id << " set to \"" << ssid << "\" and saved";
     return true;
 }
 
 bool WpaCtrlClient::terminate() {
-    bool ok = expectOk("TERMINATE", "TERMINATE");
+    bool ok = expectOk("TERMINATE", "TERMINATE", _("wpa_supplicant does not answer"));
     close();
     return ok;
 }

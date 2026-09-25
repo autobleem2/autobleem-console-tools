@@ -1,13 +1,16 @@
 //
 // DbusBluezBus: BluezBus over libdbus-1 on the system bus - a private connection of PSC-Bios's own (the launcher
-// has none), driven without a main loop: blocking calls with a timeout, and pump() reading the connection and
-// dispatching the agent's calls for the asynchronous Pair/Connect. The thin layer; the logic is BluezClient's.
+// has none), driven without a main loop and from the main thread only: a call is sent and its reply waited for
+// by reading the connection in 40 ms slices, the wait hook asked between them (the screen's spinner turns, a
+// Circle ends the wait), up to the call timeout; pump() reads the connection and dispatches the agent's calls for
+// the asynchronous Pair/Connect. The thin layer; the logic is BluezClient's.
 // Built where libdbus-1 is (PSCBIOS_HAVE_DBUS) - always for the console.
 //
 #pragma once
 
 #include "bluez_bus.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -44,13 +47,17 @@ public:
     AsyncState asyncState(BusError &error) override;
     void cancelAsync() override;
     void pump(int timeoutMs) override;
+    void setCallTimeout(int timeoutMs) override { callTimeoutMs_ = timeoutMs; }
+    int callTimeout() const override { return callTimeoutMs_; }
+    void setWaitHook(std::function<bool()> hook) override { waitHook_ = std::move(hook); }
 
     // an Agent1 call arriving on the connection (libdbus's object-path callback)
     void handleAgentMessage(DBusMessage *message);
 
 private:
     DbusBluezBus(DBusConnection *connection, int callTimeoutMs);
-    // sends `message` (and unrefs it), waits for the reply; nullptr with `error` set on an error reply or none
+    // sends `message` (and unrefs it), waits for the reply - the connection read and the hook asked meanwhile;
+    // nullptr with `error` set on an error reply, none in time, a closed connection or a hook that said stop
     DBusMessage *callBlocking(DBusMessage *message, BusError &error);
     void dropExport();
 
@@ -61,4 +68,5 @@ private:
     BusError asyncError_;
     std::string agentPath_; // exported while not empty
     AgentHandler agentHandler_;
+    std::function<bool()> waitHook_;
 };

@@ -12,6 +12,7 @@
 #include "core/bluez_client.h"
 
 #include <algorithm>
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
@@ -263,7 +264,7 @@ TEST_CASE("BluezClient gives up on a pad that never shows up, and cleans up") {
     auto client = clientFor(state);
     CHECK_FALSE(client->pair(Ds4));
     CHECK(client->pairStage() == BtPairStage::Failed);
-    CHECK(client->lastError() == string(Ds4) + " was not found - is it in pairing mode?");
+    CHECK(client->lastError() == "the controller was not found - is it in pairing mode?");
     CHECK(called(state, "StopDiscovery"));
     CHECK(called(state, "UnregisterAgent"));
     CHECK_FALSE(called(state, "Pair"));
@@ -277,7 +278,7 @@ TEST_CASE("BluezClient reports a refused pairing with BlueZ's error") {
     CHECK_FALSE(client->pair(Ds4));
     CHECK(client->pairStage() == BtPairStage::Failed);
     CHECK(client->lastError() ==
-          "pairing " + string(Ds4) + " failed: org.bluez.Error.AuthenticationFailed: Authentication Failed");
+          "the controller refused the pairing (org.bluez.Error.AuthenticationFailed: Authentication Failed)");
     CHECK(client->lastBusError().name == "org.bluez.Error.AuthenticationFailed");
     CHECK(state->calls.back() == "UnregisterAgent /org/autobleem/pscbios/agent");
     CHECK_FALSE(called(state, "Connect"));
@@ -314,8 +315,9 @@ TEST_CASE("BluezClient counts a pairing whose connection failed as paired, and s
     CHECK(client->pair(Ds4));
     CHECK(client->pairStage() == BtPairStage::Done);
     CHECK_FALSE(client->pairConnected());
+    // the reason BlueZ's error stands for, the error after it
     CHECK(client->lastError() ==
-          "paired, but the connection failed: org.bluez.Error.Failed: br-connection-page-timeout");
+          "the controller is off or out of range (org.bluez.Error.Failed: br-connection-page-timeout)");
     CHECK(called(state, "UnregisterAgent"));
 }
 
@@ -325,7 +327,7 @@ TEST_CASE("BluezClient fails when Pair returns but the pad never becomes paired"
     state->pairSetsPaired = false;
     auto client = clientFor(state);
     CHECK_FALSE(client->pair(Ds4));
-    CHECK(client->lastError() == string(Ds4) + " did not become paired");
+    CHECK(client->lastError() == "the pairing failed (Paired did not become true)");
 }
 
 TEST_CASE("BluezClient gives up on a Pair that is never answered") {
@@ -362,15 +364,16 @@ TEST_CASE("BluezClient powers the adapter on to pair, and says why it cannot sta
     CHECK_FALSE(unreachable->pair(Ds4));
     CHECK(unreachable->pairStage() == BtPairStage::Failed);
     CHECK(unreachable->lastError() ==
-          "BlueZ does not answer: org.freedesktop.DBus.Error.ServiceUnknown: The name org.bluez was not provided "
-          "by any .service files");
+          "BlueZ (bluetoothd) is not running (org.freedesktop.DBus.Error.ServiceUnknown: The name org.bluez was not "
+          "provided by any .service files)");
 
     // the agent refused: nothing else is tried
     auto refused = consoleWithAdapter();
     refused->errors["RegisterAgent"] = {"org.bluez.Error.AlreadyExists", "Already Exists"};
     auto noAgent = clientFor(refused);
     CHECK_FALSE(noAgent->pair(Ds4));
-    CHECK(noAgent->lastError() == "cannot register the pairing agent: org.bluez.Error.AlreadyExists: Already Exists");
+    CHECK(noAgent->lastError() ==
+          "the pairing agent cannot be registered (org.bluez.Error.AlreadyExists: Already Exists)");
     CHECK(verbs(refused) == vector<string>{"RegisterAgent"});
 
     // not made the default: the agent goes again
@@ -391,7 +394,7 @@ TEST_CASE("BluezClient cancels a pairing: the call dropped, the agent unregister
     CHECK(client->pairStage() == BtPairStage::Pairing);
     client->cancelPair();
     CHECK(client->pairStage() == BtPairStage::Failed);
-    CHECK(client->lastError() == "pairing " + string(Ds4) + " cancelled");
+    CHECK(client->lastError() == "cancelled");
     CHECK(state->calls.back() == "UnregisterAgent /org/autobleem/pscbios/agent");
     CHECK(state->asyncState == BluezBus::AsyncState::None);
 }
@@ -416,7 +419,10 @@ TEST_CASE("BluezClient scans: discovery started, devices found, discovery stoppe
     state->discoverable[devicePath(Ds4)] = device(Ds4, "Wireless Controller");
     auto client = clientFor(state);
     int rounds = 0;
-    REQUIRE(client->scan(30, [&]() { ++rounds; }));
+    REQUIRE(client->scan(30, [&]() {
+        ++rounds;
+        return true;
+    }));
     CHECK(rounds > 0);
     CHECK(client->devices().size() == 2);
     CHECK(client->findDevice(Ds4) != nullptr);
@@ -436,7 +442,7 @@ TEST_CASE("BluezClient scans: discovery started, devices found, discovery stoppe
 
     state->errors["StartDiscovery"] = {"org.bluez.Error.NotReady", "Resource Not Ready"};
     CHECK_FALSE(client->scan(5));
-    CHECK(client->lastError() == "cannot start the discovery: org.bluez.Error.NotReady: Resource Not Ready");
+    CHECK(client->lastError() == "the Bluetooth adapter is not ready (org.bluez.Error.NotReady: Resource Not Ready)");
 }
 
 TEST_CASE("BluezClient removes and disconnects a device by its address") {
@@ -449,10 +455,67 @@ TEST_CASE("BluezClient removes and disconnects a device by its address") {
     CHECK(called(state, "RemoveDevice /org/bluez/hci0 " + devicePath(Ds4)));
     CHECK(client->findDevice(Ds4) == nullptr);
     CHECK_FALSE(client->removeDevice(Ds4));
-    CHECK(client->lastError() == string(Ds4) + " is not known");
+    CHECK(client->lastError() == "the controller is not known (" + string(Ds4) + ")");
 
     state->objects[devicePath(Ds4)] = device(Ds4, "Wireless Controller", true, false);
     state->errors["RemoveDevice"] = {"org.bluez.Error.Failed", "nope"};
     CHECK_FALSE(client->removeDevice(Ds4));
-    CHECK(client->lastError() == "cannot remove " + string(Ds4) + ": org.bluez.Error.Failed: nope");
+    CHECK(client->lastError() == "the controller could not be removed (org.bluez.Error.Failed: nope)");
+}
+
+TEST_CASE("BluezClient's scan ends early when it is asked to stop, and keeps what it found") {
+    auto state = consoleWithAdapter();
+    state->discoverable[devicePath(Ds4)] = device(Ds4, "Wireless Controller");
+    state->appearAfterPumps = 1;
+    auto client = clientFor(state);
+    int rounds = 0;
+    const auto start = std::chrono::steady_clock::now();
+    REQUIRE(client->scan(10000, [&]() { return ++rounds < 3; })); // Circle on the third frame
+    const auto waited =
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+    CHECK(waited < 5000);
+    CHECK(rounds == 3);
+    CHECK(client->findDevice(Ds4) != nullptr);
+    CHECK(called(state, "StopDiscovery")); // ours, stopped
+}
+
+TEST_CASE("BluezClient reads the status with a short timeout, and puts the bus's back") {
+    auto state = consoleWithAdapter();
+    auto client = clientFor(state);
+    REQUIRE(client->refresh(1500));
+    REQUIRE(client->refresh());
+    CHECK(state->refreshTimeouts == vector<int>{1500, 5000});
+    CHECK(state->callTimeout == 5000);
+}
+
+TEST_CASE("BluezClient says what a D-Bus error means, and the error after it") {
+    auto reason = [](const char *name, const char *message = "") { return BluezClient::reasonFor({name, message}); };
+    CHECK(reason("org.bluez.Error.AuthenticationFailed") == "the controller refused the pairing");
+    CHECK(reason("org.bluez.Error.AuthenticationRejected") == "the pairing was rejected");
+    CHECK(reason("org.bluez.Error.AuthenticationCanceled") == "the pairing was cancelled");
+    CHECK(reason("org.bluez.Error.AuthenticationTimeout") == "the controller did not answer - is it in pairing mode?");
+    CHECK(reason("org.bluez.Error.ConnectionAttemptFailed") ==
+          "the controller did not answer - is it in pairing mode?");
+    CHECK(reason("org.bluez.Error.Failed", "Host is down") == "the controller is off or out of range");
+    CHECK(reason("org.bluez.Error.Failed", "br-connection-page-timeout") == "the controller is off or out of range");
+    CHECK(reason("org.bluez.Error.Failed", "something else").empty()); // the step's own reason then
+    CHECK(reason("org.bluez.Error.NotReady") == "the Bluetooth adapter is not ready");
+    CHECK(reason("org.bluez.Error.InProgress") == "Bluetooth is busy with something else");
+    CHECK(reason("org.bluez.Error.DoesNotExist") == "the controller is not known");
+    CHECK(reason("org.freedesktop.DBus.Error.NoReply") == "BlueZ did not answer in time");
+    CHECK(reason("org.freedesktop.DBus.Error.ServiceUnknown") == "BlueZ (bluetoothd) is not running");
+    CHECK(reason("org.freedesktop.DBus.Error.Disconnected") == "the system bus went away");
+    CHECK(reason("org.freedesktop.DBus.Error.AccessDenied") == "the system bus refused PSC-Bios");
+    CHECK(reason(BluezClient::CancelledError) == "cancelled");
+    CHECK(reason("").empty());
+}
+
+TEST_CASE("BluezClient: a wait the user stopped fails the pairing as cancelled") {
+    auto state = consoleWithAdapter();
+    state->objects[devicePath(Ds4)] = device(Ds4, "Wireless Controller");
+    state->errors["Set Trusted"] = {BluezClient::CancelledError, "stopped by the user"}; // Circle during the call
+    auto client = clientFor(state);
+    CHECK_FALSE(client->pair(Ds4));
+    CHECK(client->lastError() == "cancelled (org.autobleem.Error.Cancelled: stopped by the user)");
+    CHECK(state->calls.back() == "UnregisterAgent /org/autobleem/pscbios/agent");
 }

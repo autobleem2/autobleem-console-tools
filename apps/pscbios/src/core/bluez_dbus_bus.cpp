@@ -196,13 +196,52 @@ DBusMessage *DbusBluezBus::callBlocking(DBusMessage *message, BusError &error) {
         outOfMemory(error);
         return nullptr;
     }
-    ScopedError e;
-    DBusMessage *reply = dbus_connection_send_with_reply_and_block(connection_, message, callTimeoutMs_, &e.e);
+    DBusPendingCall *pending = nullptr;
+    const bool sent = dbus_connection_send_with_reply(connection_, message, &pending, callTimeoutMs_) != 0;
     dbus_message_unref(message);
-    if (reply == nullptr) {
-        e.take(error);
-        if (error.empty())
+    if (!sent) {
+        outOfMemory(error);
+        return nullptr;
+    }
+    if (pending == nullptr) {
+        error.name = "org.freedesktop.DBus.Error.Disconnected";
+        error.message = "the system bus connection is closed";
+        return nullptr;
+    }
+    dbus_connection_flush(connection_);
+    // the reply waited for here rather than in libdbus, so the hook runs meanwhile (and anything else arriving -
+    // an agent call - is dispatched); the deadline is ours, libdbus's own timeout needs a main loop to fire
+    const auto start = chrono::steady_clock::now();
+    auto waited = [&start]() {
+        return chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - start).count();
+    };
+    while (!dbus_pending_call_get_completed(pending)) {
+        if (waited() >= callTimeoutMs_) {
             error.name = "org.freedesktop.DBus.Error.NoReply";
+            error.message = "no reply within " + to_string(callTimeoutMs_) + " ms";
+        } else if (waitHook_ && !waitHook_()) {
+            error.name = "org.autobleem.Error.Cancelled";
+            error.message = "stopped by the user";
+        } else if (!dbus_connection_read_write_dispatch(connection_, 40)) {
+            error.name = "org.freedesktop.DBus.Error.Disconnected";
+            error.message = "the system bus connection is closed";
+        } else {
+            continue;
+        }
+        dbus_pending_call_cancel(pending);
+        dbus_pending_call_unref(pending);
+        return nullptr;
+    }
+    DBusMessage *reply = dbus_pending_call_steal_reply(pending);
+    dbus_pending_call_unref(pending);
+    if (reply == nullptr) {
+        error.name = "org.freedesktop.DBus.Error.NoReply";
+        return nullptr;
+    }
+    ScopedError e;
+    if (dbus_set_error_from_message(&e.e, reply)) {
+        e.take(error);
+        dbus_message_unref(reply);
         return nullptr;
     }
     return reply;

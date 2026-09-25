@@ -10,6 +10,8 @@ set(PSCBIOS_CORE_SOURCES
         src/core/bluez_bus.h
         src/core/bluez_client.cpp
         src/core/bluez_client.h
+        src/core/bt_device_list.cpp
+        src/core/bt_device_list.h
         src/core/console_backend.cpp
         src/core/console_backend.h
         src/core/game_controller_db.cpp
@@ -20,6 +22,8 @@ set(PSCBIOS_CORE_SOURCES
         src/core/pad_mapping.h
         src/core/ssid_config.cpp
         src/core/ssid_config.h
+        src/core/wifi_connect.cpp
+        src/core/wifi_connect.h
 )
 # the native backend (docs/native-backend-plan.md): sysfs, getifaddrs and wpa_supplicant's control socket through
 # hostap's vendored client - Unix only; the Windows dev build has the FakeBackend
@@ -110,6 +114,8 @@ ab_add_extension(pscbios ${pscbios_host}
         src/screens/gui_pscbios_main.h
         src/screens/gui_ssid_scan_menu.cpp
         src/screens/gui_ssid_scan_menu.h
+        src/screens/pscbios_busy.cpp
+        src/screens/pscbios_busy.h
         src/screens/pscbios_pages.cpp
         src/screens/pscbios_pages.h
         INI ${CMAKE_CURRENT_SOURCE_DIR}/resources/extension.ini

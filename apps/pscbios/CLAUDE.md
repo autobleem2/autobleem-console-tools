@@ -41,10 +41,28 @@ The programs it starts (`dhcpcd`, `systemctl`, `settime`) go through `NativeBack
 (`System::runAndWait`, the tests record them). When something does not answer - no WiFi interface,
 wpa_supplicant not starting, the system bus or bluetoothd down, no adapter - the call fails at once or after its
 timeout and the reason is `lastError()` (WiFi, timezone) / `btLastError()` (Bluetooth), both on the
-`ConsoleBackend` interface: the main screen shows Bluetooth as "Unavailable" with the reason as its details
-row, the SSID scan, the WiFi write/restart, the timezone and the pairing screen show the reason under their
-message (`drawText`, 3 s - step 4 makes that live). The fixed reasons NativeBackend and the two clients produce
-at the top of those paths go through `_()`; the D-Bus/wpa_supplicant error text after them is shown as it is.
+`ConsoleBackend` interface, always as **a reason for the user through `_()`, then the technical detail in
+brackets** - "the controller refused the pairing (org.bluez.Error.AuthenticationFailed: Authentication
+Failed)", "wpa_supplicant refused the network (SET_NETWORK psk: FAIL)". `BluezClient::reasonFor()` is what a
+D-Bus error means (tested); a reason names no MAC or path - those are the bracket's.
+
+**Nothing freezes a screen** (docs/native-backend-plan.md step 4, 2026-09-26 - the owner's report: the spinner
+did not spin while scanning or pairing). Every slow call runs under the standard busy spinner through
+`BusyWork` (`src/screens/pscbios_busy.*`: `Gui::beginBusy`, the screen as the dimmed backdrop, its footer
+saying "|@O| Cancel"/"|@O| Stop" where the wait can be ended), and the backend calls the screen's **wait hook**
+(`ConsoleBackend::setWaitHook`) every few tens of milliseconds while it waits - the D-Bus reply (DbusBluezBus
+waits by reading the connection in 40 ms slices, on the main thread, never libdbus's blocking call), the scan's
+event, wpa_supplicant's socket appearing, a program run (`System::runAndWait`'s `whileWaiting`). The hook turns
+the spinner and reads the pad: Circle stops a Bluetooth scan (what was found is kept), a pairing, an SSID scan
+and the following of a connection; a Quit ends any wait and is handed on to the screen's loop. The two long
+ones are state machines pumped once a frame: the pairing (`btBeginPair`/`btPumpPair`, whose stage the spinner
+says: "Looking for X...", "Pairing X...", "Connecting X...") and a WiFi connection after a write or a restart
+(`beginWifiConnect`/`pumpWifiConnect` - a `WifiConnectWatch` fed wpa_supplicant's STATUS every 500 ms, its events
+on an attached connection and the interface's address, to Connected or why not: a wrong password
+(`reason=WRONG_KEY`), the network not found, an access point refusing, no address from DHCP, a timeout). The
+status reads a screen repeats (the main screen every 2 s, the pairing and WiFi screens too) are short:
+GetManagedObjects waits 1.5 s at most and a bluetoothd that did not answer is not asked again for 15 s (the
+same reason shown meanwhile); STATUS waits 1 s.
 
 Plus two files: `/etc/autobleem/ssid.cfg` (three lines: SSID, password, driver mode - what the WiFi settings
 screen keeps) and `/etc/wpa_supplicant.conf` (read, for the SSID an earlier setup left there; its `"1"` means
@@ -59,8 +77,17 @@ wizard still works - the 2020 tool exited after "Custom Firmware Kernel Not Foun
 ```
 src/core/       pscbios_core (SDL-free, links ab_core; the tests link it)
   console_backend.*   ConsoleBackend interface (wifiInterface()/ethernetInterface() by what they are, lastError() and
-                      btLastError() - the reasons) and FakeBackend (a dev host: wlan0 on 192.168.1.23, three SSIDs,
-                      Europe/Warsaw, 16 zones)
+                      btLastError() - the reasons, the wait hook, the pumped pairing and WiFi connection, btBattery)
+                      and FakeBackend (a dev host: wlan0 on 192.168.1.23, three networks, Europe/Warsaw, 16 zones;
+                      `slow` - the extension's - takes the console's time for every action through the hook: the
+                      pairing in three stages, the 8BitDo pad refused, "Neighbour 5G" a wrong password, the Xbox pad
+                      dropping a few refreshes in; the tests' is instant)
+  wifi_connect.*      WifiNetwork (a scan's network: signalText, secured), WpaStatus, wpaStateText (the connection row),
+                      WifiConnectWatch - a connection followed to Connected or a WifiFailure, from STATUS, the events
+                      and the address, the times the caller's (tested without waiting)
+  bt_device_list.*    BtDeviceList - the pairing screen's rows: scan + paired merged, new / discovering... / pairing... /
+                      connecting... / paired / connected / dropped (was connected, no longer) / failed, the battery,
+                      the error
   native_backend.*    NativeBackend, the console's (Unix only - docs/native-backend-plan.md): interfaces from
                       /sys/class/net (wireless = a `wireless`/`phy80211` entry, any name; ethernetInterface() the first
                       ARPHRD_ETHER one with a `device`, rndis*/bnep* left out), IPv4 by getifaddrs, WiFi through
@@ -68,10 +95,13 @@ src/core/       pscbios_core (SDL-free, links ab_core; the tests link it)
                       `dhcpcd -n <iface>` (its 10-wpa_supplicant hook starts it); Bluetooth through BluezClient (the
                       bus connected on first use, again after a failure; btLastError() says why when there is none);
                       the timezone from /etc/timezone and the zoneinfo tables, set with `settime tzone`; the kernel
-                      is /bin/abnet existing. Every path in NativePaths, the programs through a CommandRunner
+                      is /bin/abnet existing. Every path in NativePaths, the programs through a CommandRunner; the
+                      short status timeouts and the BlueZ back-off; the connection watch re-attaches to a restarted
+                      wpa_supplicant (its socket's inode)
   wpa_ctrl_client.*   WpaCtrlClient: /var/run/wpa_supplicant/<iface> over third_party/wpa_ctrl (hostap 2.10's client,
-                      BSD, README.autobleem.txt lists our two changes) - SCAN (waits for the event), SCAN_RESULTS,
-                      STATUS, the one-network configure, TERMINATE; a timeout on every request
+                      BSD, README.autobleem.txt lists our two changes) - SCAN (waits for the event, 50 ms slices, the
+                      hook asked), SCAN_RESULTS, STATUS, the one-network configure, TERMINATE; a timeout on every
+                      request. WpaEventMonitor: an ATTACHed connection read without blocking
   bluez_client.*      BluezClient (every host): the first adapter from GetManagedObjects and its devices (name, paired,
                       trusted, connected, modalias, icon, class, RSSI, Battery1), discovery (BR/EDR filter; someone
                       else's InProgress joined, not stopped), RemoveDevice/Disconnect, the battery (power_supply's
@@ -80,12 +110,15 @@ src/core/       pscbios_core (SDL-free, links ab_core; the tests link it)
                       until known, Trusted=true, Pair (AlreadyExists fine), wait for Paired, Connect (a failed Connect
                       still counts as paired, lastError() says why). Its own agent for the pairing's duration
                       (NoInputNoOutput, RequestDefaultAgent; yes only to the device being paired, PIN 0000/passkey 0),
-                      unregistered after - abbtagent is the default again. Every failure: the D-Bus error in lastError()
+                      unregistered after - abbtagent is the default again. Every failure: reasonFor(the D-Bus error),
+                      else the step's reason, then the error, in lastError(); refresh(timeoutMs) for a status read;
+                      scan(ms, keepGoing) ends early when told
   bluez_bus.h         BluezBus - the D-Bus operations it needs, values already unpacked (DbusValue); the seam the tests
                       script (tests/apps/fake_bluez_bus.h)
-  bluez_dbus_bus.*    DbusBluezBus - that over libdbus-1: a private system-bus connection, no main loop (blocking calls
-                      with a timeout, pump() = read_write_dispatch for Pair/Connect and the agent's calls). Built where
-                      libdbus-1's dev files are (PSCBIOS_HAVE_DBUS): required for the console, optional on a host
+  bluez_dbus_bus.*    DbusBluezBus - that over libdbus-1: a private system-bus connection, no main loop, main thread only
+                      (a call waits for its reply reading the connection in 40 ms slices, the hook asked between them,
+                      its own deadline; pump() = read_write_dispatch for Pair/Connect and the agent's calls). Built
+                      where libdbus-1's dev files are (PSCBIOS_HAVE_DBUS): required for the console, optional on a host
   ssid_config.*       SsidConfig - ssid.cfg load/save, the wpa_supplicant.conf fallback, the paths
   game_controller_db.* GameControllerDb - gamecontrollerdb.txt with one mapping replaced under "#AutoBleem"
   pad_mapping.*       PadMapping - the wizard's logic: the 25 standard elements, detectChange(), the stick-half
@@ -97,9 +130,14 @@ src/screens/    the screens, on ab_classic (GuiFactsPage, GuiStringMenu, GuiConf
   gui_pscbios_main.*  the opening screen, a GuiFactsPage (sections: time, WiFi, ethernet, Bluetooth, the controllers
                       with their mapping and the mapping file); Select = WiFi (kernel only), Square = gamepads,
                       Triangle = About, Circle = quit
-  gui_network_menu.*  the WiFi settings: seven option rows (label left, value right - a compact panel), the two
-                      actions among them; the restart's two messages are the busy spinner over the panel.
-                      gui_ssid_scan_menu.* holds both pickers (SSID scan, timezone)
+  gui_network_menu.*  the WiFi settings: option rows (label left, value right - a compact panel), the Connection row
+                      (wpa_state + address, re-read every 2 s), the last failure's row when there is one, the two
+                      actions; the scan, the write, the restart, the connection that follows and the timezone under
+                      the spinner. gui_ssid_scan_menu.* holds both pickers (the scanned networks with their signal,
+                      the timezones)
+  gui_bt_pairing.*    the Bluetooth pairing screen: Scan, the devices with their live state and battery at the right
+                      edge (re-read every 2 s), the last failure's row; scan and pairing under the spinner, Circle stops
+  pscbios_busy.*      BusyWork - the spinner, the pad and the backend's wait hook for the length of one slow call
   gui_gamepad_menu.*  the gamepad section, a compact three-row list; gui_pad_config.* the wizard: the facts, the
                       stage's message and (while mapping) the entries in two columns down the left of the panel,
                       the DualShock picture at the right, the front buttons as RESET/OPEN/POWER chips in the footer;
@@ -161,7 +199,7 @@ else the main GUI's `gamecontrollerdb.txt` - which the launcher loads at its nex
 ## Build, run, test
 
 - **This repository** (Linux: the host build and the console): `ab_add_extension` without a HOST builds
-  `<build>/extensions/pscbios/`; the host build also runs `tests/apps/test_pscbios_core.cpp` (FakeBackend, NetworkStatus, ssid.cfg, the
+  `<build>/extensions/pscbios/`; the host build also runs `tests/apps/test_pscbios_core.cpp` (FakeBackend, NetworkStatus, WifiConnectWatch, BtDeviceList, ssid.cfg, the
   mapping), `test_pscbios_bluez.cpp` (BluezClient over a scripted BlueZ, every host) and, on Linux,
   `test_pscbios_native.cpp` (a fake wpa_supplicant on a Unix datagram socket in a temp dir, a fake sysfs, the
   Bluetooth half over the scripted BlueZ, the timezone over a fake zoneinfo tree). The plugin links
@@ -176,7 +214,8 @@ else the main GUI's `gamecontrollerdb.txt` - which the launcher loads at its nex
 Visual test on Windows: the launcher's `tools/ab_drive.py start`, then the System menu's Hardware Information
 (`down l2; press r2; up l2; wait_screen GuiSystemMenu`, four `press down`, `press x`) - the screen names are
 `GuiPscBiosMain`, `GuiNetworkMenu`, `GuiSsidScanMenu`, `GuiTimezoneSelect`, `GuiGamepadMenu`,
-`GuiPadConfig`, `GuiTextPage`, `GuiAbout`, `GuiKeyboard`. The FakeBackend answers everything; a
+`GuiPadConfig`, `GuiTextPage`, `GuiAbout`, `GuiKeyboard`, `GuiBtPairing`. The FakeBackend (slow, on a dev
+host) answers everything in the time the console takes, so the spinner and every stage can be shot; a
 `configure`/`restart`/`setTimezone` is logged and reflected in what it then reports. The wizard needs a
 real pad (the keyboard-as-pad is not a joystick) - it shows "NO GAME CONTROLLERS OPENED" without one.
 

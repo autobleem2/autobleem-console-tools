@@ -8,6 +8,7 @@
 
 #include "core/bluez_bus.h"
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -79,6 +80,9 @@ struct State {
     bool pairSetsPaired = true;           // a Pair that succeeds leaves Paired=true
     int asyncPumps = 3;                   // pumps until a started Pair/Connect answers
     bool asyncNeverAnswers = false;
+    int callTimeout = 5000;           // what setCallTimeout() left
+    std::vector<int> refreshTimeouts; // the timeout each GetManagedObjects was made with
+    std::function<bool()> waitHook;   // what setWaitHook() was given
 
     BluezBus::AgentHandler agent;
     std::string agentPath;
@@ -108,6 +112,7 @@ public:
     explicit FakeBluezBus(std::shared_ptr<State> state) : s_(std::move(state)) {}
 
     bool getManagedObjects(DbusManagedObjects &out, BusError &error) override {
+        s_->refreshTimeouts.push_back(s_->callTimeout);
         if (s_->failWith("GetManagedObjects", error))
             return false;
         out = s_->objects;
@@ -233,6 +238,10 @@ public:
                 (*p)["Connected"] = DbusValue::ofBool(true);
         }
     }
+
+    void setCallTimeout(int timeoutMs) override { s_->callTimeout = timeoutMs; }
+    int callTimeout() const override { return s_->callTimeout; }
+    void setWaitHook(std::function<bool()> hook) override { s_->waitHook = std::move(hook); }
 
 private:
     std::shared_ptr<State> s_;

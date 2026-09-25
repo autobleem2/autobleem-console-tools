@@ -12,13 +12,24 @@ using namespace std;
 //*******************************
 void GuiSsidScanMenu::init() {
     GuiMenuBase::init();
-    gui->drawText(_("Scanning networks"));
-    lines = PscBios::get().console().scanSsids();
-    if (lines.empty()) {
-        // the reason, when there is one: no WiFi dongle, wpa_supplicant not starting or not answering
-        gui->drawText(_("No networks found"), PscBios::get().console().lastError());
-        gui->platform().delay(2000);
-    }
+    lines.clear();
+    for (const WifiNetwork &network : networks)
+        lines.push_back(network.ssid);
+}
+
+string GuiSsidScanMenu::signalColumn(const WifiNetwork &network) {
+    string text = WifiNetwork::signalText(network.signal) + ", " + to_string(network.signal) + " dBm";
+    if (!network.flags.empty() && !network.secured())
+        text += ", " + _("open");
+    return text;
+}
+
+// the SSID at the left (elided to leave room), its signal at the right edge
+void GuiSsidScanMenu::renderLineIndexOnRow(int index, int row) {
+    const string value = signalColumn(networks[static_cast<size_t>(index)]);
+    const int width = gui->classicContent().w - 64 - gui->text().textWidth(font, value) - 32;
+    gui->text().renderTextLine(gui->text().elide(font, lines[index], width), row, yoffset, XALIGN_LEFT, 0, font);
+    gui->text().renderRowValue(value, row, yoffset, 0, font);
 }
 
 string GuiSsidScanMenu::getStatusLine() {
@@ -46,9 +57,9 @@ void GuiSsidScanMenu::doCircle_Pressed() {
 //*******************************
 // GuiTimezoneSelect
 //*******************************
+// the zoneinfo tables read - a file, quick; no spinner needed
 void GuiTimezoneSelect::init() {
     GuiMenuBase::init();
-    gui->drawText(_("Loading timezones..."));
     lines = PscBios::get().console().listTimezones();
 }
 
