@@ -12,6 +12,14 @@
 // unregistered afterwards, and BlueZ's previous default - abbtagent, the payload's cable-pairing agent - is the
 // default again. Every failure leaves the D-Bus error's name and message in lastError(), and in the log.
 //
+// cancelPair() really stops it: dropping the local wait for Pair()/Connect()'s reply (what asyncState/cancelAsync
+// do) does not tell bluetoothd anything - the call keeps running there and a DS4 finishes pairing a moment
+// later regardless. So cancelPair() also sends Device1.CancelPairing to the device, then checks what actually
+// happened: Device1.Pair races with it (its reply, or Paired turning true, can land after the cancel was sent),
+// so a device found Paired afterwards is removed (RemoveDevice) rather than trusted at face value. Undone ->
+// Failed ("cancelled"), as before; not undone (CancelPairing came too late and RemoveDevice failed too) -> Done,
+// so the caller shows the pad as paired instead of "new" - never a half-paired device the screen calls "new".
+//
 // The battery: /sys/class/power_supply/{sony_controller_battery_,ps-controller-battery-}<mac> (hid-sony,
 // hid-playstation), else BlueZ's Battery1.Percentage.
 //
@@ -110,7 +118,10 @@ public:
     // pairing
     bool beginPair(const std::string &mac); // false (Failed, lastError()) when it cannot even start
     BtPairStage pump(int timeoutMs = 50);   // one round: the bus read, the stage advanced; returns it
-    void cancelPair();                      // Failed, "cancelled"; the agent unregistered
+    // asks BlueZ to stop it (CancelPairing, then a check for real - see the class comment), the agent
+    // unregistered either way: Failed ("cancelled") once the device is confirmed not paired, or Done when it
+    // could not be undone - pairConnected() then says whether it connected too
+    BtPairStage cancelPair();
     BtPairStage pairStage() const { return stage_; }
     const std::string &pairingAddress() const { return pairMac_; }
     bool pairConnected() const { return pairConnected_; } // Done: whether Connect succeeded too

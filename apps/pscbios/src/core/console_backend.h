@@ -97,7 +97,9 @@ public:
     // frame until Done or Failed; Done with btPairConnected() false is paired but not connected (btLastError())
     virtual bool btBeginPair(const std::string &mac) = 0;
     virtual BtPairStage btPumpPair() = 0;
-    virtual void btCancelPair() = 0;
+    // really stops it, not just the wait for it: Failed once the device is confirmed not paired, or Done when it
+    // could not be undone (it paired anyway) - the caller then shows it as paired, never "new"
+    virtual BtPairStage btCancelPair() = 0;
     virtual bool btPairConnected() const = 0;
     // begin + pump until it ends, the hook asked between the pumps (Circle cancels); true when paired
     bool btPair(const std::string &mac);
@@ -151,7 +153,7 @@ public:
     std::vector<BtDevice> btPairedDevices() override;
     bool btBeginPair(const std::string &mac) override;
     BtPairStage btPumpPair() override;
-    void btCancelPair() override;
+    BtPairStage btCancelPair() override;
     bool btPairConnected() const override { return pairStage_ == BtPairStage::Done; }
     bool btRemove(const std::string &mac) override;
     BtBattery btBattery(const std::string &mac) override;
@@ -162,7 +164,8 @@ public:
 
     std::string configuredSsid, configuredPassword; // what configureWifi() was given
     int restarts = 0;
-    bool btAdapter_ = true; // a test can clear this to exercise the "no adapter" path
+    bool btAdapter_ = true;     // a test can clear this to exercise the "no adapter" path
+    bool raceOnCancel_ = false; // a test can set this to model CancelPairing losing the race with Pair() finishing
 
 private:
     // `ms` of work (none unless slow_), the hook asked every 20 ms; false when it said stop

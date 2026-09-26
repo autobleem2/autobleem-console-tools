@@ -161,8 +161,9 @@ void GuiBtPairing::pair(const BtDevice &device) {
                     busy.setMessage(stageMessage(stage, device.name));
                 }
                 if (!busy.frame()) {
-                    backend().btCancelPair();
-                    stage = BtPairStage::Failed;
+                    // Done here means the cancel could not really stop it (a race with Pair() finishing on
+                    // BlueZ's side) - the code below then reports it exactly as an ordinary successful pairing
+                    stage = backend().btCancelPair();
                     break;
                 }
             }
