@@ -428,9 +428,12 @@ BtPairStage NmBackend::btPumpPair() {
     return stage;
 }
 
-void NmBackend::btCancelPair() {
-    if (bluez_)
-        bluez_->cancelPair();
+BtPairStage NmBackend::btCancelPair() {
+    if (!bluez_)
+        return BtPairStage::Failed;
+    const BtPairStage stage = bluez_->cancelPair();
+    takeBtError();
+    return stage;
 }
 
 bool NmBackend::btPairConnected() const {
