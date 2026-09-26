@@ -2,8 +2,8 @@
 # Format: English Text=Translated Text
 # Untranslated: 10 / Total: 207
 
- - Mapping (Available):= - Mapare (disponibilă):
- - Mapping (Not found)= - Mapare (negăsită)
+- Mapping (Available):=- Mapare (disponibilă):
+- Mapping (Not found)=- Mapare (negăsită)
 1. Using a micro USB charging cable connect the controller to one of available USB FRONT port of the console=1. Cu un cablu de încărcare micro USB, conectați controlerul la unul dintre porturile USB din FAȚA consolei
 2. When the leds on the controller will start to blink press the PlayStation Home button=2. Când LED-urile controlerului încep să clipească, apăsați butonul PlayStation Home
 3. The controller should be recognized as normal wired PS3 compatible controller=3. Controlerul ar trebui recunoscut ca un controler cu fir obișnuit, compatibil PS3
@@ -46,7 +46,7 @@ connecting...=se conectează...
 Connection:=Conexiune:
 Controller=
 Controller mapping=Mapare controler
-Could not connect to=Nu s-a putut conecta la
+Could not connect=Nu s-a putut conecta
 Current Time:=Ora curentă:
 discovering...=se caută...
 Dongle status:=Stare adaptor:

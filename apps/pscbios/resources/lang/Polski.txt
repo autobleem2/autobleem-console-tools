@@ -2,8 +2,8 @@
 # Format: English Text=Translated Text
 # Untranslated: 8 / Total: 207
 
- - Mapping (Available):= - Mapowanie (dostępne):
- - Mapping (Not found)= - Mapowanie (nie znaleziono)
+- Mapping (Available):=- Mapowanie (dostępne):
+- Mapping (Not found)=- Mapowanie (nie znaleziono)
 1. Using a micro USB charging cable connect the controller to one of available USB FRONT port of the console=1. Kablem micro USB podłącz kontroler do jednego z PRZEDNICH portów USB konsoli
 2. When the leds on the controller will start to blink press the PlayStation Home button=2. Gdy diody kontrolera zaczną migać, naciśnij przycisk PlayStation Home
 3. The controller should be recognized as normal wired PS3 compatible controller=3. Kontroler powinien zostać rozpoznany jak zwykły przewodowy kontroler zgodny z PS3
@@ -46,7 +46,7 @@ connecting...=łączenie...
 Connection:=Połączenie:
 Controller=
 Controller mapping=Mapowanie kontrolera
-Could not connect to=Nie udało się połączyć z
+Could not connect=Nie udało się połączyć
 Current Time:=Aktualny czas:
 discovering...=wyszukiwanie...
 Dongle status:=Urządzenie USB:
