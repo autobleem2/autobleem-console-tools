@@ -1,6 +1,6 @@
 # AutoBleem Slovak Translation - pscbios
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 1 / Total: 114
+# Untranslated: 1 / Total: 116
 
  - Mapping (Available):= - Mapovanie (k dispozícii):
  - Mapping (Not found)= - Mapovanie (nenájdené)
@@ -52,6 +52,8 @@ Gamepad configuration details=Podrobnosti o konfigurácii gamepadu
 Gamepad input configuration:=Vstupy gamepadu:
 Gamepad Support Configuration=Konfigurácia podpory gamepadov
 Hats:=Krížové ovládače:
+Hold 2 s: Exit=Podržať 2 s: Koniec
+Hold any button 2 s: Exit=Podržať ľubovoľné tlačidlo 2 s: Koniec
 How a DualShock 3 pairs over its USB cable=Ako sa DualShock 3 páruje cez kábel USB
 In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.=V AutoBleem sa ovládače DualShock/SixAxis párujú automaticky, ak máte kompatibilný Bluetooth adaptér a nainštalované jadro AutoBleem.
 Interface details:=Podrobnosti o rozhraní:

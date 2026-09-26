@@ -1,6 +1,6 @@
 # AutoBleem Finnish Translation - pscbios
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 1 / Total: 114
+# Untranslated: 1 / Total: 116
 
  - Mapping (Available):= - Määritys (saatavilla):
  - Mapping (Not found)= - Määritys (ei löydy)
@@ -52,6 +52,8 @@ Gamepad configuration details=Ohjaimen määrityksen tiedot
 Gamepad input configuration:=Ohjaimen syötteet:
 Gamepad Support Configuration=Ohjaintuen määritys
 Hats:=Ristiohjaimet:
+Hold 2 s: Exit=Pidä 2 s: Poistu
+Hold any button 2 s: Exit=Pidä mitä tahansa painiketta 2 s: Poistu
 How a DualShock 3 pairs over its USB cable=Miten DualShock 3 yhdistetään USB-kaapelilla
 In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.=AutoBleemissä DualShock/SixAxis-ohjaimet pariliitetään automaattisesti, jos sinulla on yhteensopiva Bluetooth-sovitin ja AutoBleem-ydin asennettuna.
 Interface details:=Liitännän tiedot:

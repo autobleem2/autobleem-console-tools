@@ -518,3 +518,41 @@ TEST_CASE("NmBackend reads the Bluetooth controller from bluetoothctl show, pair
     for (const string &cmd : ran)
         CHECK(cmd != "sh 'bt' scan");
 }
+
+TEST_CASE("PadMapping: the raw input behind Circle, and whether it is held (the wizard's hold-to-exit)") {
+    const string line = "030000004c0500006802000011010000,PS3 Controller,a:b0,b:b1,x:b3,y:b2,dpup:h0.1,"
+                        "lefttrigger:a2,-leftx:-a0,platform:Linux,";
+    CHECK(PadMapping::rawInput(line, "b") == "b1");
+    CHECK(PadMapping::rawInput(line, "a") == "b0");
+    CHECK(PadMapping::rawInput(line, "dpup") == "h0.1");
+    CHECK(PadMapping::rawInput(line, "back") == "");
+    CHECK(PadMapping::rawInput("", "b") == "");
+
+    // this session's mapping wins over the pad's old line; neither: unknown
+    vector<PadMapping::Element> elements = PadMapping::standardElements();
+    CHECK(PadMapping::circleInput(elements, line) == "b1");
+    CHECK(PadMapping::circleInput(elements, "") == "");
+    for (PadMapping::Element &e : elements)
+        if (e.apiName == "b")
+            e.value = "b7";
+    CHECK(PadMapping::circleInput(elements, line) == "b7");
+
+    ableem::JoystickState initial = rest(3, 8, 1);
+    initial.axes[2] = -32768; // a trigger at rest
+    ableem::JoystickState now = initial;
+    CHECK_FALSE(PadMapping::inputHeld("b1", initial, now));
+    now.buttons[1] = true;
+    CHECK(PadMapping::inputHeld("b1", initial, now));
+    CHECK_FALSE(PadMapping::inputHeld("b9", initial, now)); // no such button
+    now.hats[0] = 1;
+    CHECK(PadMapping::inputHeld("h0.1", initial, now));
+    CHECK_FALSE(PadMapping::inputHeld("h0.4", initial, now));
+    now.axes[0] = -30000;
+    CHECK(PadMapping::inputHeld("-a0", initial, now));
+    CHECK_FALSE(PadMapping::inputHeld("+a0", initial, now));
+    CHECK_FALSE(PadMapping::inputHeld("a2", initial, now));
+    now.axes[2] = 32767;
+    CHECK(PadMapping::inputHeld("a2", initial, now));
+    CHECK_FALSE(PadMapping::inputHeld("", initial, now));
+    CHECK_FALSE(PadMapping::inputHeld("x1", initial, now));
+}

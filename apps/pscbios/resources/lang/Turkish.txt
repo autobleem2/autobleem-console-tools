@@ -1,6 +1,6 @@
 # AutoBleem Turkish Translation - pscbios
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 1 / Total: 114
+# Untranslated: 1 / Total: 116
 
  - Mapping (Available):= - Eşleme (mevcut):
  - Mapping (Not found)= - Eşleme (bulunamadı)
@@ -52,6 +52,8 @@ Gamepad configuration details=Kumanda yapılandırma ayrıntıları
 Gamepad input configuration:=Kumanda girişleri:
 Gamepad Support Configuration=Kumanda desteği yapılandırması
 Hats:=Yön tuşları:
+Hold 2 s: Exit=2 sn basılı tut: Çıkış
+Hold any button 2 s: Exit=Herhangi bir tuşu 2 sn basılı tut: Çıkış
 How a DualShock 3 pairs over its USB cable=DualShock 3 USB kablosuyla nasıl eşleştirilir
 In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.=AutoBleem'de uyumlu bir Bluetooth adaptörü ve AutoBleem çekirdeği kuruluysa DualShock/SixAxis kumandalar otomatik eşleşir.
 Interface details:=Arayüz ayrıntıları:

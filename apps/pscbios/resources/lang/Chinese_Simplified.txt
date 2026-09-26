@@ -1,6 +1,6 @@
 # AutoBleem Chinese_Simplified Translation - pscbios
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 1 / Total: 114
+# Untranslated: 1 / Total: 116
 
  - Mapping (Available):= - 映射（可用）：
  - Mapping (Not found)= - 映射（未找到）
@@ -52,6 +52,8 @@ Gamepad configuration details=手柄配置详情
 Gamepad input configuration:=手柄输入：
 Gamepad Support Configuration=手柄支持配置
 Hats:=方向键：
+Hold 2 s: Exit=按住 2 秒：退出
+Hold any button 2 s: Exit=按住任意按键 2 秒：退出
 How a DualShock 3 pairs over its USB cable=如何通过 USB 线配对 DualShock 3
 In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.=在 AutoBleem 中，如果装有兼容的蓝牙适配器和 AutoBleem 内核，DualShock/SixAxis 手柄会自动配对。
 Interface details:=接口详情：

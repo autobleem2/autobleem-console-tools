@@ -1,6 +1,6 @@
 # AutoBleem Swedish Translation - pscbios
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 1 / Total: 114
+# Untranslated: 1 / Total: 116
 
  - Mapping (Available):= - Mappning (tillgänglig):
  - Mapping (Not found)= - Mappning (hittades inte)
@@ -52,6 +52,8 @@ Gamepad configuration details=Detaljer om handkontrollens konfiguration
 Gamepad input configuration:=Handkontrollens ingångar:
 Gamepad Support Configuration=Konfiguration av handkontrollsstöd
 Hats:=Hats:
+Hold 2 s: Exit=Håll 2 s: Avsluta
+Hold any button 2 s: Exit=Håll valfri knapp 2 s: Avsluta
 How a DualShock 3 pairs over its USB cable=Hur en DualShock 3 parkopplas via sin USB-kabel
 In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.=I AutoBleem parkopplas DualShock/SixAxis-handkontroller automatiskt om du har en kompatibel Bluetooth-dongel och AutoBleem-kärnan installerad.
 Interface details:=Gränssnittsdetaljer:

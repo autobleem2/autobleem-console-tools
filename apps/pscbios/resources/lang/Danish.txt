@@ -1,6 +1,6 @@
 # AutoBleem Danish Translation - pscbios
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 1 / Total: 114
+# Untranslated: 1 / Total: 116
 
  - Mapping (Available):= - Mapping (tilgængelig):
  - Mapping (Not found)= - Mapping (ikke fundet)
@@ -52,6 +52,8 @@ Gamepad configuration details=Detaljer om gamepad-konfiguration
 Gamepad input configuration:=Gamepad-input:
 Gamepad Support Configuration=Konfiguration af gamepad-understøttelse
 Hats:=Hats:
+Hold 2 s: Exit=Hold 2 s: Afslut
+Hold any button 2 s: Exit=Hold en vilkårlig knap 2 s: Afslut
 How a DualShock 3 pairs over its USB cable=Sådan parres en DualShock 3 via sit USB-kabel
 In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.=I AutoBleem parres DualShock/SixAxis-controllere automatisk, hvis du har en kompatibel Bluetooth-dongle og AutoBleem-kernen installeret.
 Interface details:=Interfacedetaljer:

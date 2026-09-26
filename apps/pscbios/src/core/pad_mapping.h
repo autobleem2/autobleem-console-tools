@@ -47,6 +47,20 @@ public:
     // kept as two half-axis keys otherwise; every unmapped element dropped; "platform:<platform>" last
     static std::vector<Element> finalElements(const std::vector<Element> &scanned, const std::string &platform);
 
+    // the raw input a mapping line gives an element: rawInput("...,a:b0,b:b1,...", "b") -> "b1"; "" when the
+    // line has no such element
+    static std::string rawInput(const std::string &mappingLine, const std::string &apiName);
+    // the raw input (in the format above) is away from its rest in `now` - a button pressed, the hat in that
+    // direction, a half axis past HeldThreshold on its side, a whole axis that far from where it rested in
+    // `initial`. False for "" or an input the pad does not have
+    static bool inputHeld(const std::string &raw, const ableem::JoystickState &initial,
+                          const ableem::JoystickState &now);
+    // the raw input that is Circle ("b") on this pad: what the wizard mapped it to this time, else what the
+    // pad's mapping line says, "" when neither knows - what the wizard's hold-to-exit watches
+    static std::string circleInput(const std::vector<Element> &elements, const std::string &mappingLine);
+
+    static const unsigned HoldToExitMs = 2000; // Circle held this long leaves the wizard
+
     // "<guid>,<name>,<apiName>:<value>,...," as SDL reads it
     static std::string mappingLine(const std::string &guid, const std::string &name,
                                    const std::vector<Element> &finals);

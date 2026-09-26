@@ -1,6 +1,6 @@
 # AutoBleem Romanian Translation - pscbios
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 1 / Total: 114
+# Untranslated: 1 / Total: 116
 
  - Mapping (Available):= - Mapare (disponibilă):
  - Mapping (Not found)= - Mapare (negăsită)
@@ -52,6 +52,8 @@ Gamepad configuration details=Detalii configurare gamepad
 Gamepad input configuration:=Intrări gamepad:
 Gamepad Support Configuration=Configurare suport gamepad
 Hats:=Cruci direcționale:
+Hold 2 s: Exit=Țineți 2 s: Ieșire
+Hold any button 2 s: Exit=Țineți orice buton 2 s: Ieșire
 How a DualShock 3 pairs over its USB cable=Cum se asociază un DualShock 3 prin cablul USB
 In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.=În AutoBleem, controlerele DualShock/SixAxis se asociază automat dacă aveți un adaptor Bluetooth compatibil și kernelul AutoBleem instalat.
 Interface details:=Detalii interfață:

@@ -1,6 +1,6 @@
 # AutoBleem Spanish Translation - pscbios
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 1 / Total: 114
+# Untranslated: 1 / Total: 116
 
  - Mapping (Available):= - Mapeo (disponible):
  - Mapping (Not found)= - Mapeo (no encontrado)
@@ -52,6 +52,8 @@ Gamepad configuration details=Detalles de configuracion del Mando
 Gamepad input configuration:=Entradas del mando:
 Gamepad Support Configuration=Configuración de compatibilidad de mandos
 Hats:=Cruceta:
+Hold 2 s: Exit=Mantén 2 s: Salir
+Hold any button 2 s: Exit=Mantén cualquier botón 2 s: Salir
 How a DualShock 3 pairs over its USB cable=Cómo se empareja un DualShock 3 con su cable USB
 In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.=En AutoBleem los mandos DualShock/SixAxis se emparejan automáticamente si tienes un adaptador Bluetooth compatible y el kernel de AutoBleem instalado.
 Interface details:=Detalles de interfaz:

@@ -1,6 +1,6 @@
 # AutoBleem English Translation
 # Format: English Text=Translated Text
-# Untranslated: 0 / Total: 126
+# Untranslated: 0 / Total: 128
 
  - Mapping (Available):= - Mapping (Available):
  - Mapping (Not found)= - Mapping (Not found)
@@ -52,6 +52,8 @@ Gamepad configuration details=Gamepad configuration details
 Gamepad input configuration:=Gamepad input configuration:
 Gamepad Support Configuration=Gamepad Support Configuration
 Hats:=Hats:
+Hold 2 s: Exit=Hold 2 s: Exit
+Hold any button 2 s: Exit=Hold any button 2 s: Exit
 How a DualShock 3 pairs over its USB cable=How a DualShock 3 pairs over its USB cable
 In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.=In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.
 Interface details:=Interface details:
