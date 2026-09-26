@@ -21,7 +21,11 @@ public:
     void doCircle_Pressed() override;
     void doCross_Pressed() override;
 
+    // the three screens, for the Network & Controllers hub as well
+    static void showWizard(ableem::GuiBase &gui);
+    static void showDualShock3Page(ableem::GuiBase &gui);
+    static void showBluetoothPairing(ableem::GuiBase &gui);
+
 private:
     enum Row { Mapping = 0, DualShock, BluetoothPairing };
-    void openWizard();
 };

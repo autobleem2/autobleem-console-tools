@@ -1,7 +1,8 @@
 # AutoBleem Czech Translation - abflashkit
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 0 / Total: 44
+# Untranslated: 3 / Total: 49
 
+About=
 All done - when the screen goes black replace power cord=Hotovo - až obrazovka zčerná, znovu zapojte napájecí kabel
 All four partitions to LBOOT.EPB on the stick, for a restore later=Všechny čtyři oddíly do LBOOT.EPB na flash disku pro pozdější obnovu
 Back the console up to the stick, install the AutoBleem kernel and reboot=Zálohovat konzoli na flash disk, nainstalovat jádro AutoBleem a restartovat
@@ -9,6 +10,7 @@ Back up games=Záloha her
 Backup complete=Záloha dokončena
 Backup failed=Záloha se nezdařila
 Checking LBOOT for vanilla kernel. Decompressing...=Kontrola původního jádra v LBOOT. Rozbalování...
+Code C++ and shell scripts=
 Copy the console's built-in games to the Games Backup folder on the stick=Zkopírovat vestavěné hry konzole do složky Games Backup na flash disku
 Copying:=Kopírování:
 Creating backup....=Vytváření zálohy....
@@ -20,6 +22,7 @@ Games backed up to the Games Backup folder=Hry zálohovány do složky Games Bac
 Games backup failed=Záloha her se nezdařila
 I understand=Rozumím
 Invalid backup or invalid kernel image=Neplatná záloha nebo obraz jádra
+Linux Kernel Patching=Úpravy linuxového jádra
 needed=potřeba
 No backup found - Recovery locked=Záloha nenalezena - obnova zamčena
 No built-in games found on this console=V této konzoli nebyly nalezeny žádné vestavěné hry
@@ -36,6 +39,7 @@ Set recovery mode and reboot now?=Zapnout režim obnovy a nyní restartovat?
 Setting recovery mode: off=Režim obnovy: vypnuto
 Setting recovery mode: on=Režim obnovy: zapnuto
 Start flashing ?=Spustit nahrávání?
+Testing=
 The games are already backed up=Hry už jsou zálohované
 The kernel image could not be written. Nothing was changed.=Obraz jádra se nepodařilo zapsat. Nic nebylo změněno.
 The LBOOT does not contain CLEAN PSC firmware. You may SOFTBRICK your console. Are you sure?=LBOOT neobsahuje ČISTÝ firmware PSC. Konzole může skončit jako SOFTBRICK. Opravdu pokračovat?
@@ -44,5 +48,6 @@ This PSC has not been restored to original condition. Unable to flash.=Tato PSC 
 This tool writes to the console's flash memory. A flash that is interrupted - the power cut, the stick pulled - can leave the console unable to start, and installing a custom kernel voids its warranty. Keep the console powered and the stick in until it reboots by itself. Continue at your own risk.=Tento nástroj zapisuje do flash paměti konzole. Přerušené flashování - výpadek napájení, vytažený flash disk - může konzoli znemožnit start a instalace vlastního jádra ruší záruku. Nechte konzoli napájenou a disk zapojený, dokud se sama nerestartuje. Pokračujete na vlastní riziko.
 Updating payload=Aktualizace payloadu
 Validating backup...   Please wait...=Ověřování zálohy...   Čekejte prosím...
+Version, credits and licence=Verze, autoři a licence
 Writing the kernel failed. The console will restore itself from LBOOT.EPB when it restarts.=Zápis jádra selhal. Po restartu se konzole obnoví z LBOOT.EPB.
 Zipping:=Balení:

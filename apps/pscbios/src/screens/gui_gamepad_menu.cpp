@@ -31,36 +31,45 @@ void GuiGamepadMenu::doCross_Pressed() {
     app.audio().cursor.play();
     switch (selected) {
     case Mapping:
-        openWizard();
+        showWizard(*gui);
         break;
-    case DualShock: {
-        GuiTextPage page(*gui);
-        page.title = _("DualShock3/SixAxis Wireless Pairing");
-        page.lines = dualshock3PairingLines();
-        page.show();
+    case DualShock:
+        showDualShock3Page(*gui);
         break;
-    }
-    case BluetoothPairing: {
-        GuiBtPairing pairing(*gui);
-        pairing.show();
+    case BluetoothPairing:
+        showBluetoothPairing(*gui);
         break;
-    }
     default:
         break;
     }
 }
 
 //*******************************
-// GuiGamepadMenu::openWizard
+// GuiGamepadMenu::showWizard
 //*******************************
 // the wizard reads the pads raw, so Input lets go of them first and takes them back (with whatever mapping
 // the wizard added) after
-void GuiGamepadMenu::openWizard() {
-    gui->input().flushPads();
+void GuiGamepadMenu::showWizard(ableem::GuiBase &gui) {
+    gui.input().flushPads();
     {
-        GuiPadConfig wizard(*gui);
+        GuiPadConfig wizard(gui);
         wizard.show();
     }
-    gui->input().probePads();
-    gui->input().flushEvents();
+    gui.input().probePads();
+    gui.input().flushEvents();
+}
+
+//*******************************
+// GuiGamepadMenu::showDualShock3Page / showBluetoothPairing
+//*******************************
+void GuiGamepadMenu::showDualShock3Page(ableem::GuiBase &gui) {
+    GuiTextPage page(gui);
+    page.title = _("DualShock3/SixAxis Wireless Pairing");
+    page.lines = dualshock3PairingLines();
+    page.show();
+}
+
+void GuiGamepadMenu::showBluetoothPairing(ableem::GuiBase &gui) {
+    GuiBtPairing pairing(gui);
+    pairing.show();
 }

@@ -7,19 +7,25 @@
 #include "support/env_fixture.h"
 #include "support/temp_dir.h"
 
+#include "fake_bluez_bus.h"
+
 #include "core/bt_device_list.h"
 #include "core/console_backend.h"
 #include "core/game_controller_db.h"
 #include "core/network_status.h"
+#include "core/nm_backend.h"
 #include "core/pad_mapping.h"
 #include "core/ssid_config.h"
 
 #include <chrono>
+#include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
 using std::string;
 using std::vector;
+using std::map;
 
 TEST_CASE("FakeBackend pairs and removes Bluetooth controllers, and can report no adapter") {
     FakeBackend fake;
@@ -569,4 +575,288 @@ TEST_CASE("PadMapping::finalElements merges stick halves, drops the unmapped and
 
 TEST_CASE("PadMapping::cleanName keeps what SDL accepts in a mapping line") {
     CHECK(PadMapping::cleanName("Sony PLAYSTATION(R)3 Controller, v2") == "Sony PLAYSTATIONR3 Controller v2");
+}
+
+//*******************************
+// NmBackend - the answers are what a Raspberry Pi 400 (Raspberry Pi OS trixie, NetworkManager 1.52.1,
+// BlueZ 5.82) printed on 2026-09-26. Ported against the new ConsoleBackend shape 2026-09-26: no
+// hasDriverMode()/wlanOn() any more (X6 - the interface has neither), scanNetworks() returns
+// vector<WifiNetwork> from SSID,SIGNAL,SECURITY (not a bare SSID list), configureWifi() takes no driver
+// mode, and Bluetooth goes through the same BluezClient/fake bus NativeBackend's tests use - never the
+// deleted `bt` bluetoothctl wrapper.
+//*******************************
+namespace {
+const char *const DeviceStatus = "nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null";
+const vector<string> PiDevices = {"wlan0:wifi:connected", "lo:loopback:connected (externally)",
+                                  "p2p-dev-wlan0:wifi-p2p:disconnected", "eth0:ethernet:unavailable"};
+
+// the Runner/LinesRunner test seam: NmBackend takes plain function pointers (no captures), so the script
+// is global state a ScriptedShell resets before each test
+vector<string> ran;
+map<string, string> answers;
+map<string, vector<string>> listings;
+
+string scriptedRun(const string &cmd) {
+    ran.push_back(cmd);
+    auto it = answers.find(cmd);
+    return it != answers.end() ? it->second : string();
+}
+vector<string> scriptedRunLines(const string &cmd) {
+    ran.push_back(cmd);
+    auto it = listings.find(cmd);
+    return it != listings.end() ? it->second : vector<string>();
+}
+struct ScriptedShell {
+    ScriptedShell() {
+        ran.clear();
+        answers.clear();
+        listings.clear();
+    }
+};
+} // namespace
+
+TEST_CASE("NmBackend::splitTerse undoes nmcli's escapes") {
+    CHECK(NmBackend::splitTerse("wlan0:wifi:connected") == vector<string>{"wlan0", "wifi", "connected"});
+    CHECK(NmBackend::splitTerse("yes:My\\:Net\\\\5G:63") == vector<string>{"yes", "My:Net\\5G", "63"});
+    CHECK(NmBackend::splitTerse("no::92:WPA2") == vector<string>{"no", "", "92", "WPA2"});
+    CHECK(NmBackend::splitTerse("") == vector<string>{""});
+}
+
+TEST_CASE("NmBackend reads the devices, addresses and time zone the way a Pi 400 answers") {
+    ScriptedShell shell;
+    listings[DeviceStatus] = PiDevices;
+    answers["nmcli -g IP4.ADDRESS device show 'wlan0' 2>/dev/null"] = "192.168.68.144/24";
+    answers["nmcli -g IP4.ADDRESS device show 'eth0' 2>/dev/null"] = "";
+    answers["timedatectl show -p Timezone --value 2>/dev/null"] = "Europe/Dublin";
+    listings["timedatectl list-timezones 2>/dev/null"] = {"Africa/Abidjan", "Africa/Accra", "Europe/Dublin",
+                                                          "Africa/Accra"};
+    // SSID,SIGNAL,SECURITY - a hidden network (no name) dropped; SIGNAL is nmcli's 0-100 percentage,
+    // approximated to dBm (percent/2 - 100), sorted strongest first
+    listings["nmcli -t -f SSID,SIGNAL,SECURITY device wifi list --rescan yes 2>/dev/null"] = {
+        "DecoMeshArt:88:WPA2", "DecoMeshArt_Guest:70:--", ":50:WPA2", "FRITZ!Box 4040 BN:60:WPA2",
+        "Mark's Office 2.4ghz (Private):40:WPA2"};
+    listings["nmcli -t -f ACTIVE,SSID device wifi list --rescan no 2>/dev/null"] = {
+        "no:DecoMeshArt", "no:DecoMeshArt_Guest", "no:", "yes:DecoMeshArt", "no:SKY45280"};
+    NmBackend backend(scriptedRun, scriptedRunLines, true, nullptr);
+
+    CHECK(backend.kernelInstalled()); // here: nmcli is there
+    CHECK(backend.keepsWifiSettings());
+    CHECK(backend.interfaceFound("wlan0"));
+    CHECK(backend.interfaceFound("eth0"));
+    CHECK(backend.isUp("wlan0"));
+    CHECK_FALSE(backend.isUp("eth0")); // unplugged: "unavailable"
+    CHECK(backend.ipOf("wlan0") == "192.168.68.144");
+    CHECK(backend.ipOf("eth0") == "");
+    CHECK(backend.timezone() == "Europe/Dublin");
+    CHECK(backend.listTimezones() == vector<string>{"Africa/Abidjan", "Africa/Accra", "Europe/Dublin"});
+
+    vector<WifiNetwork> networks = backend.scanNetworks();
+    REQUIRE(networks.size() == 4); // the hidden one dropped
+    CHECK(networks[0].ssid == "DecoMeshArt");
+    CHECK(networks[0].signal == 88 / 2 - 100);
+    CHECK(networks[0].flags == "[WPA2]");
+    CHECK(networks[0].secured());
+    CHECK(networks[1].ssid == "DecoMeshArt_Guest");
+    CHECK(networks[1].flags.empty()); // SECURITY "--" -> no flags
+    CHECK_FALSE(networks[1].secured());
+    CHECK(networks[2].ssid == "FRITZ!Box 4040 BN");
+    CHECK(networks[3].ssid == "Mark's Office 2.4ghz (Private)");
+    CHECK(backend.currentSsid() == "DecoMeshArt");
+
+    ran.clear();
+    backend.setTimezone("America/New_York");
+    CHECK(ran == vector<string>{"timedatectl set-timezone 'America/New_York' 2>&1"});
+}
+
+TEST_CASE("NmBackend maps the screens' wlan0/eth0 to a PC's slot-named devices") {
+    ScriptedShell shell;
+    listings[DeviceStatus] = {"enp3s0:ethernet:connected", "wlp2s0:wifi:disconnected", "lo:loopback:unmanaged"};
+    answers["nmcli -g IP4.ADDRESS device show 'enp3s0' 2>/dev/null"] = "10.0.2.15/24 | 10.0.3.1/16";
+    NmBackend backend(scriptedRun, scriptedRunLines, true, nullptr);
+    // wifiInterface()/ethernetInterface() are what the screens actually ask for - the real slot names,
+    // never a hard-coded "wlan0"/"eth0"
+    CHECK(backend.wifiInterface() == "wlp2s0");
+    CHECK(backend.ethernetInterface() == "enp3s0");
+    CHECK(backend.interfaceFound("wlp2s0"));
+    CHECK_FALSE(backend.isUp("wlp2s0"));
+    CHECK(backend.isUp("enp3s0"));
+    CHECK(backend.ipOf("enp3s0") == "10.0.2.15");
+    CHECK_FALSE(backend.interfaceFound("usb0"));
+
+    // no Wi-Fi device at all: scanNetworks() reports it and asks nothing else
+    listings[DeviceStatus] = {"enp3s0:ethernet:connected"};
+    ran.clear();
+    CHECK(backend.scanNetworks().empty());
+    CHECK(backend.lastError() == "no WiFi interface");
+    CHECK(ran == vector<string>{DeviceStatus});
+}
+
+TEST_CASE("NmBackend connects on restartNetwork, the password through the environment, never the command") {
+    ScriptedShell shell;
+    listings[DeviceStatus] = PiDevices;
+    NmBackend backend(scriptedRun, scriptedRunLines, true, nullptr);
+    // an empty answer is not success (restartNetwork() requires !answer.empty() && no "Error:") - nmcli's
+    // real success line names the connection it just brought up
+    const string ok = "Device 'wlan0' successfully activated with '11111111-2222-3333-4444-555555555555'.";
+
+    backend.configureWifi("Mark's Office", "s3cr3t pass"); // remembered only - no driver mode argument any more
+    for (const string &cmd : ran)
+        CHECK(cmd.find("connect") == string::npos);
+    ran.clear();
+    answers["nmcli --wait 30 device wifi connect 'Mark'\\''s Office' password \"$AB_WIFI_PSK\" ifname 'wlan0' "
+            "2>&1"] = ok;
+    backend.restartNetwork();
+    REQUIRE_FALSE(ran.empty());
+    CHECK(ran.back() ==
+          "nmcli --wait 30 device wifi connect 'Mark'\\''s Office' password \"$AB_WIFI_PSK\" ifname 'wlan0' 2>&1");
+    for (const string &cmd : ran)
+        CHECK(cmd.find("s3cr3t") == string::npos);
+    CHECK(backend.lastError().empty());
+
+    // an open network: no password argument; a restart with nothing new reconnects the device
+    backend.configureWifi("Cafe", "");
+    answers["nmcli --wait 30 device wifi connect 'Cafe' ifname 'wlan0' 2>&1"] = ok;
+    backend.restartNetwork();
+    CHECK(ran.back() == "nmcli --wait 30 device wifi connect 'Cafe' ifname 'wlan0' 2>&1");
+    answers["nmcli --wait 30 device connect 'wlan0' 2>&1"] = ok;
+    backend.restartNetwork();
+    CHECK(ran.back() == "nmcli --wait 30 device connect 'wlan0' 2>&1");
+
+    // nmcli's own "Error:" in the answer: the network could not be joined, the answer kept as the detail
+    backend.configureWifi("Neighbour 5G", "wrongpass");
+    answers["nmcli --wait 30 device wifi connect 'Neighbour 5G' password \"$AB_WIFI_PSK\" ifname 'wlan0' 2>&1"] =
+        "Error: Connection activation failed: Secrets were required, but not provided.";
+    backend.restartNetwork();
+    CHECK(backend.lastError() ==
+          "the network could not be joined (Error: Connection activation failed: Secrets were required, "
+          "but not provided.)");
+
+    // beginWifiConnect/pumpWifiConnect just report restartNetwork()'s own outcome - nmcli already waited
+    // out the whole attempt, there is no wpa_supplicant event stream to follow afterwards
+    backend.configureWifi("Mark's Office", "s3cr3t pass");
+    answers["nmcli --wait 30 device wifi connect 'Mark'\\''s Office' password \"$AB_WIFI_PSK\" ifname 'wlan0' "
+            "2>&1"] = ok;
+    answers["nmcli -g IP4.ADDRESS device show 'wlan0' 2>/dev/null"] = "192.168.68.144/24"; // onStatus needs an address to reach Connected
+    backend.restartNetwork();
+    backend.beginWifiConnect("Mark's Office");
+    const WifiConnectWatch &watch = backend.pumpWifiConnect();
+    CHECK(watch.finished());
+    CHECK(watch.stage() == WifiConnectStage::Connected);
+}
+
+TEST_CASE("NmBackend without nmcli asks nothing of the network") {
+    ScriptedShell shell;
+    listings[DeviceStatus] = PiDevices;
+    NmBackend backend(scriptedRun, scriptedRunLines, false, nullptr);
+    CHECK_FALSE(backend.kernelInstalled());
+    CHECK_FALSE(backend.interfaceFound("wlan0"));
+    CHECK(backend.currentSsid().empty());
+    CHECK(ran.empty());
+}
+
+//*******************************
+// NmBackend: Bluetooth, over the same BluezClient/fake bus as NativeBackend (fake_bluez_bus.h) - never
+// bluetoothctl or the deleted `bt` wrapper
+//*******************************
+TEST_CASE("NmBackend's Bluetooth goes through the shared BluezClient, exactly like NativeBackend's") {
+    ScriptedShell shell;
+    listings[DeviceStatus] = PiDevices;
+
+    auto state = std::make_shared<fakebluez::State>();
+    state->objects["/org/bluez"]["org.bluez.AgentManager1"];
+    state->objects[fakebluez::Adapter] = fakebluez::adapter("DC:A6:32:E3:04:97", true);
+    state->objects[fakebluez::devicePath("A0:AB:51:33:44:55")] =
+        fakebluez::device("A0:AB:51:33:44:55", "Xbox Wireless Controller", true, true);
+    state->discoverable[fakebluez::devicePath("00:1B:DC:0F:11:22")] =
+        fakebluez::device("00:1B:DC:0F:11:22", "Wireless Controller");
+    int connects = 0;
+    NmBackend backend(scriptedRun, scriptedRunLines, true,
+                      [&](BusError &) {
+                          ++connects;
+                          return fakebluez::makeBus(state);
+                      });
+
+    CHECK(backend.btUp());
+    CHECK(backend.btName() == "hci0 PSC DC:A6:32:E3:04:97"); // fakebluez::adapter()'s fixed Alias "PSC"
+
+    vector<BtDevice> paired = backend.btPairedDevices();
+    REQUIRE(paired.size() == 1);
+    CHECK(paired[0].mac == "A0:AB:51:33:44:55");
+    CHECK(paired[0].connected);
+
+    vector<BtDevice> found = backend.btScan();
+    REQUIRE(found.size() == 2);
+    bool sawNew = false;
+    for (const BtDevice &d : found)
+        if (d.mac == "00:1B:DC:0F:11:22")
+            sawNew = true;
+    CHECK(sawNew);
+
+    CHECK(backend.btPair("00:1B:DC:0F:11:22"));
+    CHECK(backend.btLastError().empty());
+    CHECK(backend.btPairedDevices().size() == 2);
+    CHECK(connects == 1); // one bus connection for all of it, exactly like NativeBackend
+
+    CHECK(backend.btRemove("A0:AB:51:33:44:55"));
+    CHECK_FALSE(backend.btRemove("A0:AB:51:33:44:55"));
+    CHECK(backend.btLastError() == "the controller is not known (A0:AB:51:33:44:55)");
+}
+
+TEST_CASE("NmBackend without a BlueZ bus factory: no Bluetooth support") {
+    ScriptedShell shell;
+    listings[DeviceStatus] = PiDevices;
+    NmBackend backend(scriptedRun, scriptedRunLines, true, nullptr); // a host with no libdbus-1
+    CHECK_FALSE(backend.btUp());
+    CHECK(backend.btLastError() == "no Bluetooth support");
+}
+
+TEST_CASE("PadMapping: the raw input behind Circle, and whether it is held (the wizard's hold-to-exit)") {
+    const string line = "030000004c0500006802000011010000,PS3 Controller,a:b0,b:b1,x:b3,y:b2,dpup:h0.1,"
+                        "lefttrigger:a2,-leftx:-a0,platform:Linux,";
+    CHECK(PadMapping::rawInput(line, "b") == "b1");
+    CHECK(PadMapping::rawInput(line, "a") == "b0");
+    CHECK(PadMapping::rawInput(line, "dpup") == "h0.1");
+    CHECK(PadMapping::rawInput(line, "back") == "");
+    CHECK(PadMapping::rawInput("", "b") == "");
+
+    // this session's mapping wins over the pad's old line; neither: unknown
+    vector<PadMapping::Element> elements = PadMapping::standardElements();
+    CHECK(PadMapping::circleInput(elements, line) == "b1");
+    CHECK(PadMapping::circleInput(elements, "") == "");
+    for (PadMapping::Element &e : elements)
+        if (e.apiName == "b")
+            e.value = "b7";
+    CHECK(PadMapping::circleInput(elements, line) == "b7");
+
+    ableem::JoystickState initial = rest(3, 8, 1);
+    initial.axes[2] = -32768; // a trigger at rest
+    ableem::JoystickState now = initial;
+    CHECK_FALSE(PadMapping::inputHeld("b1", initial, now));
+    now.buttons[1] = true;
+    CHECK(PadMapping::inputHeld("b1", initial, now));
+    CHECK_FALSE(PadMapping::inputHeld("b9", initial, now)); // no such button
+    now.hats[0] = 1;
+    CHECK(PadMapping::inputHeld("h0.1", initial, now));
+    CHECK_FALSE(PadMapping::inputHeld("h0.4", initial, now));
+    now.axes[0] = -30000;
+    CHECK(PadMapping::inputHeld("-a0", initial, now));
+    CHECK_FALSE(PadMapping::inputHeld("+a0", initial, now));
+    CHECK_FALSE(PadMapping::inputHeld("a2", initial, now));
+    now.axes[2] = 32767;
+    CHECK(PadMapping::inputHeld("a2", initial, now));
+    CHECK_FALSE(PadMapping::inputHeld("", initial, now));
+    CHECK_FALSE(PadMapping::inputHeld("x1", initial, now));
+}
+
+TEST_CASE("PadMapping::isExitKey is Power or a keyboard's Esc/Backspace, never a pad button") {
+    CHECK(PadMapping::isExitKey(ableem::Key::Sleep));
+    CHECK(PadMapping::isExitKey(ableem::Key::Escape));
+    CHECK(PadMapping::isExitKey(ableem::Key::Backspace));
+    // a real pad's Circle is a Button, never a Key - the wizard's loop() only calls isExitKey on a
+    // KeyDown, so a short press of a real pad's Circle cannot reach it at all; only these keys, or the
+    // 2 s hold (PadMapping::inputHeld on the raw joystick), leave the wizard
+    CHECK_FALSE(PadMapping::isExitKey(ableem::Key::Return));
+    CHECK_FALSE(PadMapping::isExitKey(ableem::Key::Reset));
+    CHECK_FALSE(PadMapping::isExitKey(ableem::Key::Open));
+    CHECK_FALSE(PadMapping::isExitKey(ableem::Key::Other));
 }

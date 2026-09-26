@@ -98,7 +98,7 @@ src/core/       abflashkit_core (SDL-free, links ab_core; the tests link it)
   flash_actions.*     FlashKitActions - flash()/fullBackup()/restore()/backupGames() step by step, through a
                       FlashUi (status line, progress bar, confirm, wait, runInBackground) so the tests run them
                       to the end against the fakes; FlashKitPaths is every path they use
-src/screens/gui_flashkit_main.*  the one screen: a GuiActionMenu of the four actions (name + a line of what it
+src/screens/gui_flashkit_main.*  the one screen: a GuiActionMenu of the four actions and About (the shared GuiAbout with the tool's credits; name + a line of what it
                       does, the version at the header's right), and the FlashUi: each status line is the busy
                       spinner's message over the dimmed menu (Gui::beginBusy) with the bar under it, a question
                       a GuiConfirm, a pause or a background job keeps the spinner turning; the last status stays

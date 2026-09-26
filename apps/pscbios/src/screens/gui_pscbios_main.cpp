@@ -137,10 +137,11 @@ void GuiPscBiosMain::openGamepadMenu() {
     menu.show();
 }
 
+// the foot is AutoBleem's - support, copyright and the GPL notice cover this tool too
 void GuiPscBiosMain::openAbout() {
     app.audio().cursor.play();
     GuiAbout about(*gui);
     about.credits = pscbiosCredits();
-    about.foot = pscbiosFoot();
+    about.foot = GuiAbout::autobleemFoot();
     about.show();
 }

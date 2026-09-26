@@ -11,13 +11,28 @@
 
 using namespace std;
 
+namespace {
+// a password as the settings list shows it: an asterisk per character (UTF-8 continuation bytes not counted)
+string masked(const string &password) {
+    size_t characters = 0;
+    for (unsigned char c : password)
+        if ((c & 0xC0) != 0x80)
+            characters++;
+    return string(characters, '*');
+}
+} // namespace
+
 //*******************************
 // GuiNetworkMenu::init
 //*******************************
 void GuiNetworkMenu::init() {
     GuiMenuBase::init();
-    // ssid.cfg if there is one, else the SSID an earlier setup left in wpa_supplicant.conf
-    if (!config.load(SsidConfig::defaultPath()))
+    ConsoleBackend &console = PscBios::get().console();
+    // NetworkManager (a Pi, the PC stick) keeps the credentials itself: the network it is on is the start.
+    // The console: ssid.cfg if there is one, else the SSID an earlier setup left in wpa_supplicant.conf
+    if (console.keepsWifiSettings())
+        config.ssid = console.currentSsid();
+    else if (!config.load(SsidConfig::defaultPath()))
         config.ssid = SsidConfig::ssidFromWpaSupplicant(SsidConfig::wpaSupplicantPath());
     refresh();
     fill();
@@ -210,7 +225,7 @@ void GuiNetworkMenu::editPassword() {
     GuiKeyboard keyboard(*gui);
     keyboard.label = _("Enter Password");
     keyboard.result = config.password;
-    keyboard.displayAsterisksInstead = displayAsterisksInsteadOfPassword;
+    keyboard.displayAsterisksInstead = false; // typed in the clear: a virtual keyboard is hard to use blind
     keyboard.show();
     if (!keyboard.cancelled)
         config.password = keyboard.result;
@@ -247,17 +262,19 @@ void GuiNetworkMenu::scanSsid() {
         config.ssid = scan.newSsid;
 }
 
+// on the console, a WiFi password is required (it is written to ssid.cfg for the kernel); NetworkManager
+// (keepsWifiSettings()) keeps the credentials itself once connected, so an open network needs none
 bool GuiNetworkMenu::writeConfig() {
     message_.clear();
-    if (config.ssid.empty() || config.password.empty()) {
+    ConsoleBackend &console = PscBios::get().console();
+    if (config.ssid.empty() || (!console.keepsWifiSettings() && config.password.empty())) {
         message_ = _("Enter the SSID and the password first");
         return false;
     }
-    if (!config.save(SsidConfig::defaultPath())) {
+    if (!console.keepsWifiSettings() && !config.save(SsidConfig::defaultPath())) {
         message_ = _("WiFi configuration failed") + ": " + _("cannot write") + " (" + SsidConfig::defaultPath() + ")";
         return false;
     }
-    ConsoleBackend &console = PscBios::get().console();
     busy_ = true;
     {
         BusyWork busy(*gui, console, _("Saving the WiFi settings"), [this]() { render(); }, false);
