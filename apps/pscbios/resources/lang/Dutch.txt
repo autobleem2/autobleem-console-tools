@@ -1,6 +1,6 @@
 # AutoBleem Dutch Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 207
+# Untranslated: 10 / Total: 210
 
 - Mapping (Available):=- Toewijzing (beschikbaar):
 - Mapping (Not found)=- Toewijzing (niet gevonden)
@@ -209,3 +209,7 @@ Write Config/Restart Network=Config. wegschrijven/netwerk herstarten
 Write Configuration/Restart Network=Configuratie wegschrijven/netwerk herstarten
 wrong password=verkeerd wachtwoord
 You can test your controller=Je kunt je controller testen
+
+Player 1=Speler 1
+Player 2=Speler 2
+not used by the PS1 emulator=wordt niet gebruikt door de PS1-emulator

@@ -1,6 +1,6 @@
 # AutoBleem Finnish Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 207
+# Untranslated: 10 / Total: 210
 
 - Mapping (Available):=- Määritys (saatavilla):
 - Mapping (Not found)=- Määritys (ei löydy)
@@ -209,3 +209,7 @@ Write Config/Restart Network=Kirjoita asetukset/käynnistä verkko uudelleen
 Write Configuration/Restart Network=Kirjoita asetukset/käynnistä verkko uudelleen
 wrong password=väärä salasana
 You can test your controller=Voit testata ohjaintasi
+
+Player 1=Pelaaja 1
+Player 2=Pelaaja 2
+not used by the PS1 emulator=ei käytössä PS1-emulaattorissa

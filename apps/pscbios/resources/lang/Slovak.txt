@@ -1,6 +1,6 @@
 # AutoBleem Slovak Translation
 # Format: English Text=Translated Text
-# Untranslated: 8 / Total: 207
+# Untranslated: 8 / Total: 210
 
 - Mapping (Available):=- Mapovanie (k dispozícii):
 - Mapping (Not found)=- Mapovanie (nenájdené)
@@ -209,3 +209,7 @@ Write Config/Restart Network=Zapísať konfiguračný súbor / Reštartovať sie
 Write Configuration/Restart Network=Zapísať konfiguráciu / Reštartovať sieť
 wrong password=nesprávne heslo
 You can test your controller=Môžete vyskúšať svoj ovládač
+
+Player 1=Hráč 1
+Player 2=Hráč 2
+not used by the PS1 emulator=nepoužíva ho PS1 emulátor

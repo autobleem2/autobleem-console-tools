@@ -1,6 +1,6 @@
 # AutoBleem English Translation
 # Format: English Text=Translated Text
-# Untranslated: 0 / Total: 207
+# Untranslated: 0 / Total: 210
 
  - Mapping (Available):= - Mapping (Available):
  - Mapping (Not found)= - Mapping (Not found)
@@ -209,3 +209,7 @@ Write Config/Restart Network=Write Config/Restart Network
 Write Configuration/Restart Network=Write Configuration/Restart Network
 wrong password=wrong password
 You can test your controller=You can test your controller
+
+Player 1=Player 1
+Player 2=Player 2
+not used by the PS1 emulator=not used by the PS1 emulator

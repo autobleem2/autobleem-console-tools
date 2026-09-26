@@ -9,6 +9,7 @@
 #include "gui/gui.h"
 #include "gui/screens/gui_about.h"
 #include "core/services/environment.h"
+#include "core/model/pad_assignment.h"
 
 #include <ableem/ui/joystick.h>
 
@@ -87,7 +88,13 @@ vector<InfoSection> GuiPscBiosMain::collect() {
             name += _(" - Mapping (Available):") + " " + ableem::Joystick::controllerNameForIndex(i);
         else
             name += _(" - Mapping (Not found)");
-        pads.rows.push_back({_("Controller") + " " + to_string(i + 1), name});
+        // joysticks are enumerated in the same ascending SDL device-index order pcsx-ab/pcsx-abnxt
+        // assign PS1 ports 1/2 by (see core/model/pad_assignment.h), so this position is that port
+        string playerLabel = psPlayerLabel(i, joysticks);
+        if (i < 2)
+            pads.rows.push_back({_(playerLabel), name});
+        else
+            pads.rows.push_back({_("Controller") + " " + to_string(i + 1), name + " (" + _(playerLabel) + ")"});
     }
     sections.push_back(pads);
     return sections;

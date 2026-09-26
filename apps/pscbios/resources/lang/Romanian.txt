@@ -1,6 +1,6 @@
 # AutoBleem Romanian Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 207
+# Untranslated: 10 / Total: 210
 
 - Mapping (Available):=- Mapare (disponibilă):
 - Mapping (Not found)=- Mapare (negăsită)
@@ -209,3 +209,7 @@ Write Config/Restart Network=Scrie configurația/repornește rețeaua
 Write Configuration/Restart Network=Scrie configurația/repornește rețeaua
 wrong password=parolă greșită
 You can test your controller=Puteți testa controlerul
+
+Player 1=Jucător 1
+Player 2=Jucător 2
+not used by the PS1 emulator=nefolosit de emulatorul PS1

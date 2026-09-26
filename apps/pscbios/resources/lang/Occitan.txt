@@ -1,6 +1,6 @@
 # AutoBleem Occitan Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 207
+# Untranslated: 10 / Total: 210
 
 - Mapping (Available):=- Mapatge (disponible) :
 - Mapping (Not found)=- Mapatge (pas trobat)
@@ -209,3 +209,7 @@ Write Config/Restart Network=Escriure la config/reaviar la ret
 Write Configuration/Restart Network=Escriure la configuracion/reaviar la ret
 wrong password=senhal incorrècte
 You can test your controller=Podètz testar vòstra maneta
+
+Player 1=Jogaire 1
+Player 2=Jogaire 2
+not used by the PS1 emulator=pas utilizat per l'emulator PS1
