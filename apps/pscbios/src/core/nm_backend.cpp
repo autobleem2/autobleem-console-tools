@@ -1,7 +1,11 @@
 //
-// NmBackend: nmcli, timedatectl and bluetoothctl for a Raspberry Pi and the PC stick.
+// NmBackend: nmcli and timedatectl for a Raspberry Pi and the PC stick; Bluetooth over BlueZ/D-Bus (shared
+// with NativeBackend - see its comments for the pairing state machine, the retry back-off and the battery).
 //
 #include "nm_backend.h"
+#ifdef PSCBIOS_HAVE_DBUS
+#include "bluez_dbus_bus.h"
+#endif
 #include "core/main.h"
 #include "core/services/environment.h"
 #include "core/services/system.h"
@@ -9,6 +13,7 @@
 #include <ableem/engine/log.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <utility>
 
@@ -23,24 +28,6 @@ string runViaSystem(const string &cmd) {
 vector<string> runLinesViaSystem(const string &cmd) {
     return System::execUnixCommandLines(cmd);
 }
-// bluetoothctl waits for ever for a bluetoothd that is not running ("Waiting to connect to bluetoothd...")
-const string Bluetoothctl = "timeout 5 bluetoothctl";
-
-// what bluetoothctl colours its lines with, gone
-string withoutAnsi(const string &text) {
-    string out;
-    for (size_t i = 0; i < text.size(); i++) {
-        if (text[i] == '\x1b' && i + 1 < text.size() && text[i + 1] == '[') {
-            i += 2;
-            while (i < text.size() && !(text[i] >= '@' && text[i] <= '~'))
-                i++;
-            continue;
-        }
-        if (text[i] != '\x01' && text[i] != '\x02') // readline's invisible-text markers
-            out += text[i];
-    }
-    return out;
-}
 
 vector<string> sortedUnique(vector<string> list) {
     list.erase(remove(list.begin(), list.end(), string()), list.end());
@@ -48,6 +35,12 @@ vector<string> sortedUnique(vector<string> list) {
     list.erase(unique(list.begin(), list.end()), list.end());
     return list;
 }
+
+#ifdef PSCBIOS_HAVE_DBUS
+unique_ptr<BluezBus> systemBus(BusError &error) {
+    return DbusBluezBus::connectSystem(error);
+}
+#endif
 } // namespace
 
 //*******************************
@@ -56,10 +49,19 @@ vector<string> sortedUnique(vector<string> list) {
 NmBackend::NmBackend()
     : run_(runViaSystem), runLines_(runLinesViaSystem),
       nmcli_(DirEntry::exists("/usr/bin/nmcli") || DirEntry::exists("/bin/nmcli")),
-      btHelper_(Env::getAppDir() + sep + "bt") {}
+#ifdef PSCBIOS_HAVE_DBUS
+      bluezFactory_(systemBus) {
+#else
+      bluezFactory_(nullptr) {
+#endif
+}
 
-NmBackend::NmBackend(Runner run, LinesRunner runLines, bool nmcli, string btHelper)
-    : run_(run), runLines_(runLines), nmcli_(nmcli), btHelper_(std::move(btHelper)) {}
+NmBackend::NmBackend(Runner run, LinesRunner runLines, bool nmcli, BluezBusFactory bluez)
+    : run_(run), runLines_(runLines), nmcli_(nmcli), bluezFactory_(std::move(bluez)) {}
+
+long long NmBackend::steadyMs() {
+    return chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now().time_since_epoch()).count();
+}
 
 //*******************************
 // the parsers
@@ -96,26 +98,6 @@ string NmBackend::firstAddress(const string &text) {
     return Strings::trim(first);
 }
 
-string NmBackend::controllerName(const vector<string> &showLines) {
-    string address, name;
-    bool powered = true;
-    for (const string &raw : showLines) {
-        string line = Strings::trim(withoutAnsi(raw));
-        if (line.compare(0, 11, "Controller ") == 0 && address.empty()) {
-            address = line.substr(11);
-            address = address.substr(0, address.find(' '));
-        } else if (line.compare(0, 6, "Name: ") == 0 && name.empty()) {
-            name = Strings::trim(line.substr(6));
-        } else if (line.compare(0, 9, "Powered: ") == 0) {
-            powered = Strings::trim(line.substr(9)) == "yes";
-        }
-    }
-    if (address.empty())
-        return "";
-    string text = name.empty() ? address : name + " " + address;
-    return powered ? text : text + " (off)";
-}
-
 string NmBackend::shellQuoted(const string &value) {
     string out = "'";
     for (char c : value) {
@@ -128,7 +110,7 @@ string NmBackend::shellQuoted(const string &value) {
 }
 
 //*******************************
-// NmBackend::devices / resolve
+// NmBackend::devices / deviceOfType
 //*******************************
 vector<NmBackend::Device> NmBackend::devices() {
     if (!nmcli_)
@@ -136,55 +118,73 @@ vector<NmBackend::Device> NmBackend::devices() {
     return parseDevices(runLines_("nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null"));
 }
 
-string NmBackend::resolve(const string &iface) {
-    vector<Device> list = devices();
-    for (const Device &d : list)
-        if (d.name == iface)
+string NmBackend::deviceOfType(const string &type) {
+    string any;
+    for (const Device &d : devices()) {
+        if (d.type != type)
+            continue;
+        if (d.state == "connected")
             return d.name;
-    string type = iface.compare(0, 4, "wlan") == 0 ? "wifi" : iface.compare(0, 3, "eth") == 0 ? "ethernet" : "";
-    for (const Device &d : list)
-        if (!type.empty() && d.type == type)
-            return d.name;
-    return "";
+        if (any.empty())
+            any = d.name;
+    }
+    return any;
 }
 
 //*******************************
 // network
 //*******************************
-bool NmBackend::interfaceFound(const string &iface) {
-    return !resolve(iface).empty();
+string NmBackend::wifiInterface() {
+    return deviceOfType("wifi");
 }
 
-bool NmBackend::wlanOn() {
-    // "unavailable": the radio is off (or rfkill-blocked); "unmanaged": NetworkManager does not drive it
+string NmBackend::ethernetInterface() {
+    return deviceOfType("ethernet");
+}
+
+bool NmBackend::interfaceFound(const string &iface) {
     for (const Device &d : devices())
-        if (d.type == "wifi")
-            return d.state != "unavailable" && d.state != "unmanaged";
+        if (d.name == iface)
+            return true;
     return false;
 }
 
 bool NmBackend::isUp(const string &iface) {
-    string name = resolve(iface);
     for (const Device &d : devices())
-        if (d.name == name)
+        if (d.name == iface)
             return d.state == "connected";
     return false;
 }
 
 string NmBackend::ipOf(const string &iface) {
-    string name = resolve(iface);
-    if (name.empty())
+    if (iface.empty())
         return "";
-    return firstAddress(run_("nmcli -g IP4.ADDRESS device show " + shellQuoted(name) + " 2>/dev/null"));
+    return firstAddress(run_("nmcli -g IP4.ADDRESS device show " + shellQuoted(iface) + " 2>/dev/null"));
 }
 
-vector<string> NmBackend::scanSsids() {
-    if (resolve("wlan0").empty())
+// SIGNAL is a 0-100 percentage; approximated to dBm (0% -> -100 dBm, 100% -> -50 dBm) for signalText()'s
+// thresholds - nmcli never reports a real dBm figure
+vector<WifiNetwork> NmBackend::scanNetworks() {
+    lastError_.clear();
+    string iface = wifiInterface();
+    if (iface.empty()) {
+        lastError_ = _("no WiFi interface");
         return {};
-    vector<string> ssids;
-    for (const string &line : runLines_("nmcli -t -f SSID device wifi list --rescan yes 2>/dev/null"))
-        ssids.push_back(splitTerse(line)[0]); // a hidden network has no name: dropped
-    return sortedUnique(ssids);
+    }
+    vector<WifiNetwork> out;
+    for (const string &line : runLines_("nmcli -t -f SSID,SIGNAL,SECURITY device wifi list --rescan yes 2>/dev/null")) {
+        vector<string> f = splitTerse(line);
+        if (f.empty() || f[0].empty())
+            continue; // a hidden network has no name: dropped
+        WifiNetwork n;
+        n.ssid = f[0];
+        int percent = f.size() > 1 ? atoi(f[1].c_str()) : 0;
+        n.signal = percent / 2 - 100;
+        n.flags = f.size() > 2 && f[2] != "--" ? "[" + f[2] + "]" : "";
+        out.push_back(n);
+    }
+    sort(out.begin(), out.end(), [](const WifiNetwork &a, const WifiNetwork &b) { return a.signal > b.signal; });
+    return out;
 }
 
 string NmBackend::currentSsid() {
@@ -198,26 +198,32 @@ string NmBackend::currentSsid() {
     return "";
 }
 
-void NmBackend::configureWifi(const string &ssid, const string &password, const string &) {
+void NmBackend::configureWifi(const string &ssid, const string &password) {
+    lastError_.clear();
     pendingSsid_ = ssid;
     pendingPassword_ = password;
 }
 
-// the password goes through the environment, not the command line: the command is logged
+// the password goes through the environment, not the command line: the command is logged. nmcli does the
+// whole connection attempt in this one (blocking) call - there is no wpa_supplicant event stream to follow
+// afterwards, so beginWifiConnect/pumpWifiConnect just report what happened here
 void NmBackend::restartNetwork() {
-    string device = resolve("wlan0");
+    lastError_.clear();
+    string device = wifiInterface();
     if (device.empty()) {
-        PLOG_WARNING << "no Wi-Fi device to connect with";
+        lastError_ = _("no WiFi interface");
         return;
     }
+    string ssid = pendingSsid_.empty() ? currentSsid() : pendingSsid_;
+    string cmd;
     if (pendingSsid_.empty()) {
-        run_("nmcli --wait 30 device connect " + shellQuoted(device) + " 2>&1");
-        return;
+        cmd = "nmcli --wait 30 device connect " + shellQuoted(device) + " 2>&1";
+    } else {
+        cmd = "nmcli --wait 30 device wifi connect " + shellQuoted(pendingSsid_);
+        if (!pendingPassword_.empty())
+            cmd += string(" password \"$") + PasswordVariable + "\"";
+        cmd += " ifname " + shellQuoted(device) + " 2>&1";
     }
-    string cmd = "nmcli --wait 30 device wifi connect " + shellQuoted(pendingSsid_);
-    if (!pendingPassword_.empty())
-        cmd += string(" password \"$") + PasswordVariable + "\"";
-    cmd += " ifname " + shellQuoted(device) + " 2>&1";
 #ifndef _WIN32
     if (!pendingPassword_.empty())
         setenv(PasswordVariable, pendingPassword_.c_str(), 1);
@@ -227,40 +233,225 @@ void NmBackend::restartNetwork() {
     unsetenv(PasswordVariable);
 #endif
     PLOG_INFO << "nmcli: " << answer;
+    lastConnectSsid_ = ssid;
+    lastConnectDetail_ = answer;
+    lastConnectOk_ = answer.find("Error:") == string::npos && !answer.empty();
+    if (!lastConnectOk_)
+        lastError_ = _("the network could not be joined") + (answer.empty() ? string() : " (" + answer + ")");
     pendingSsid_.clear();
     pendingPassword_.clear();
 }
 
+bool NmBackend::wifiStatus(WpaStatus &out) {
+    out = WpaStatus();
+    string iface = wifiInterface();
+    if (iface.empty())
+        return false;
+    out.ipAddress = ipOf(iface);
+    out.ssid = currentSsid();
+    out.wpaState = isUp(iface) ? "COMPLETED" : "DISCONNECTED";
+    return true;
+}
+
+// nmcli already finished the attempt (in restartNetwork(), above) by the time this is called: the watch is
+// resolved at once, so followConnection()'s pump loop sees it finished on the very first pumpWifiConnect()
+void NmBackend::beginWifiConnect(const string &ssid) {
+    const long long now = steadyMs();
+    watch_ = make_unique<WifiConnectWatch>(ssid, now);
+    if (ssid.empty()) {
+        watch_->fail(WifiFailure::NoInterface);
+        return;
+    }
+    if (ssid == lastConnectSsid_ && lastConnectOk_) {
+        WpaStatus status;
+        status.wpaState = "COMPLETED";
+        status.ssid = ssid;
+        status.ipAddress = ipOf(wifiInterface());
+        watch_->onStatus(status, status.ipAddress, now);
+    } else if (ssid == lastConnectSsid_) {
+        watch_->fail(WifiFailure::AssociationRejected, lastConnectDetail_);
+    } else {
+        // followConnection() called without a preceding restartNetwork() (e.g. after Write only): report
+        // whatever the interface is on now
+        WpaStatus status;
+        if (wifiStatus(status) && status.ssid == ssid && !status.ipAddress.empty())
+            watch_->onStatus(status, status.ipAddress, now);
+        else
+            watch_->fail(WifiFailure::Timeout);
+    }
+}
+
+const WifiConnectWatch &NmBackend::pumpWifiConnect() {
+    if (!watch_)
+        beginWifiConnect(lastConnectSsid_);
+    watch_->tick(steadyMs());
+    return *watch_;
+}
+
 //*******************************
-// bluetooth
+// bluetooth (mirrors NativeBackend's - see its comments)
 //*******************************
+BluezClient *NmBackend::bluez() {
+    if (bluez_)
+        return bluez_.get();
+    if (!bluezFactory_) {
+        btError_ = _("no Bluetooth support");
+        return nullptr;
+    }
+    BusError error;
+    unique_ptr<BluezBus> bus = bluezFactory_(error);
+    if (!bus) {
+        btError_ = _("the system bus cannot be reached") + (error.empty() ? string() : " (" + error.text() + ")");
+        return nullptr;
+    }
+    bus->setWaitHook([this]() { return keepWaiting(); });
+    bluez_ = make_unique<BluezClient>(std::move(bus));
+    return bluez_.get();
+}
+
+void NmBackend::takeBtError() {
+    if (!bluez_)
+        return;
+    btError_ = bluez_->lastError();
+    const string &name = bluez_->lastBusError().name;
+    if (name == "org.freedesktop.DBus.Error.Disconnected" || name == "org.freedesktop.DBus.Error.NoServer")
+        bluez_.reset();
+}
+
+BtDevice NmBackend::toBtDevice(const BluezDevice &device) {
+    BtDevice d;
+    d.mac = device.address;
+    d.name = device.displayName();
+    d.paired = device.paired;
+    d.connected = device.connected;
+    if (device.paired && bluez_)
+        d.battery = bluez_->battery(device.address);
+    return d;
+}
+
+bool NmBackend::statusRefresh(BluezClient &client) {
+    const long long now = steadyMs();
+    if (now < btRetryAt_) {
+        btError_ = btStaleError_;
+        return false;
+    }
+    if (client.refresh(1500))
+        return true;
+    const string name = client.lastBusError().name;
+    takeBtError();
+    if (name == "org.freedesktop.DBus.Error.NoReply" || name == "org.freedesktop.DBus.Error.Timeout" ||
+        name == "org.freedesktop.DBus.Error.TimedOut") {
+        btRetryAt_ = now + 15000;
+        btStaleError_ = btError_;
+    }
+    return false;
+}
+
 bool NmBackend::btUp() {
-    return !btName().empty();
+    btError_.clear();
+    BluezClient *client = bluez();
+    if (client == nullptr)
+        return false;
+    if (!statusRefresh(*client))
+        return false;
+    if (!client->hasAdapter()) {
+        btError_ = _("no Bluetooth adapter");
+        return false;
+    }
+    if (!client->adapter().powered && !triedPowerOn_) {
+        triedPowerOn_ = true;
+        if (!client->setPowered(true))
+            takeBtError();
+    }
+    if (!client->adapter().powered && btError_.empty())
+        btError_ = _("the Bluetooth adapter is off");
+    return client->adapter().powered;
 }
 
 string NmBackend::btName() {
-    return controllerName(runLines_(Bluetoothctl + " show 2>/dev/null"));
+    BluezClient *client = bluez();
+    if (client == nullptr || !client->hasAdapter())
+        return "";
+    const BluezAdapter &adapter = client->adapter();
+    string alias = adapter.alias.empty() ? adapter.name : adapter.alias;
+    return adapter.hciName() + " " + (alias.empty() ? string() : alias + " ") + adapter.address;
 }
 
-// the bt helper switches the adapter on (and out of rfkill's block) before a scan or a pairing
 vector<BtDevice> NmBackend::btScan() {
-    if (!btUp())
+    btError_.clear();
+    BluezClient *client = bluez();
+    if (client == nullptr)
         return {};
-    return parseBtHelperLines(runLines_("sh " + shellQuoted(btHelper_) + " scan"), false);
+    if (!client->scan(8000, [this]() { return keepWaiting(); })) {
+        takeBtError();
+        return {};
+    }
+    vector<BtDevice> out;
+    for (const BluezDevice &device : client->devices())
+        out.push_back(toBtDevice(device));
+    return out;
 }
 
 vector<BtDevice> NmBackend::btPairedDevices() {
-    if (!btUp())
+    btError_.clear();
+    BluezClient *client = bluez();
+    if (client == nullptr)
         return {};
-    return parseBtHelperLines(runLines_("sh " + shellQuoted(btHelper_) + " paired"), true);
+    if (!statusRefresh(*client))
+        return {};
+    vector<BtDevice> out;
+    for (const BluezDevice &device : client->devices())
+        if (device.paired)
+            out.push_back(toBtDevice(device));
+    return out;
 }
 
-bool NmBackend::btPair(const string &mac) {
-    return run_("sh " + shellQuoted(btHelper_) + " pair " + shellQuoted(mac)) == "ok";
+bool NmBackend::btBeginPair(const string &mac) {
+    btError_.clear();
+    BluezClient *client = bluez();
+    if (client == nullptr)
+        return false;
+    if (!client->beginPair(mac)) {
+        takeBtError();
+        return false;
+    }
+    return true;
+}
+
+BtPairStage NmBackend::btPumpPair() {
+    BluezClient *client = bluez();
+    if (client == nullptr)
+        return BtPairStage::Failed;
+    BtPairStage stage = client->pump();
+    if (stage == BtPairStage::Failed)
+        takeBtError();
+    return stage;
+}
+
+void NmBackend::btCancelPair() {
+    if (bluez_)
+        bluez_->cancelPair();
+}
+
+bool NmBackend::btPairConnected() const {
+    return bluez_ && bluez_->pairConnected();
 }
 
 bool NmBackend::btRemove(const string &mac) {
-    return run_("sh " + shellQuoted(btHelper_) + " remove " + shellQuoted(mac)) == "ok";
+    btError_.clear();
+    BluezClient *client = bluez();
+    if (client == nullptr)
+        return false;
+    if (!client->removeDevice(mac)) {
+        takeBtError();
+        return false;
+    }
+    return true;
+}
+
+BtBattery NmBackend::btBattery(const string &mac) {
+    BluezClient *client = bluez();
+    return client != nullptr ? client->battery(mac) : BtBattery();
 }
 
 //*******************************
@@ -271,7 +462,10 @@ string NmBackend::timezone() {
 }
 
 void NmBackend::setTimezone(const string &zone) {
-    run_("timedatectl set-timezone " + shellQuoted(zone) + " 2>&1");
+    lastError_.clear();
+    string answer = run_("timedatectl set-timezone " + shellQuoted(zone) + " 2>&1");
+    if (!answer.empty())
+        lastError_ = _("the timezone could not be changed") + " (" + answer + ")";
 }
 
 vector<string> NmBackend::listTimezones() {

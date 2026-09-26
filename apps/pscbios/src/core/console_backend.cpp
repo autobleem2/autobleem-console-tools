@@ -1,179 +1,189 @@
 //
-// ConsoleBackend: the abnet/settime calls, and the dev host's stand-in.
+// ConsoleBackend: what every backend shares (the blocking pairing over the state machine), and the dev host's
+// stand-in (the console's backend is NativeBackend, native_backend.*).
 //
 #include "console_backend.h"
 #include "core/main.h"
-#include "core/services/environment.h"
-#include "core/services/system.h"
 
 #include <ableem/engine/log.h>
 
-#include <algorithm>
-#include <utility>
+#include <chrono>
+#include <thread>
 
 using namespace std;
 
-const char *const AbnetBackend::Abnet = "/bin/abnet";
-const char *const AbnetBackend::Settime = "/bin/settime";
-
-//*******************************
-// AbnetBackend
-//*******************************
-namespace {
-string runViaSystem(const string &cmd) {
-    return System::execUnixCommand(cmd.c_str());
-}
-vector<string> runLinesViaSystem(const string &cmd) {
-    return System::execUnixCommandLines(cmd);
-}
-// a shell argument in double quotes, with what the shell would otherwise interpret inside them escaped
-string quoted(const string &value) {
-    string out = "\"";
-    for (char c : value) {
-        if (c == '"' || c == '\\' || c == '$' || c == 0x60) // 0x60: the backquote
-            out += '\\';
-        out += c;
+const char *btPairStageName(BtPairStage stage) {
+    switch (stage) {
+    case BtPairStage::Idle:
+        return "Idle";
+    case BtPairStage::Discovering:
+        return "Discovering";
+    case BtPairStage::Trusting:
+        return "Trusting";
+    case BtPairStage::Pairing:
+        return "Pairing";
+    case BtPairStage::WaitingForPaired:
+        return "WaitingForPaired";
+    case BtPairStage::Connecting:
+        return "Connecting";
+    case BtPairStage::Done:
+        return "Done";
+    case BtPairStage::Failed:
+        return "Failed";
     }
-    return out + "\"";
+    return "?";
 }
-} // namespace
 
-// the bt helper's scan / paired print one device per line as "<mac> <name>" (name may contain spaces).
-vector<BtDevice> parseBtHelperLines(const vector<string> &lines, bool paired) {
-    vector<BtDevice> out;
-    for (const string &raw : lines) {
-        string line = raw;
-        while (!line.empty() && (line.back() == '\r' || line.back() == '\n' || line.back() == ' '))
-            line.pop_back();
-        size_t sp = line.find(' ');
-        string mac = sp == string::npos ? line : line.substr(0, sp);
-        if (mac.find(':') == string::npos)
-            continue; // not a device line
-        BtDevice d;
-        d.mac = mac;
-        d.name = sp == string::npos ? mac : line.substr(line.find_first_not_of(' ', sp));
-        if (d.name.empty())
-            d.name = mac;
-        d.paired = paired;
-        out.push_back(d);
+//*******************************
+// ConsoleBackend::btPair
+//*******************************
+bool ConsoleBackend::btPair(const string &mac) {
+    if (!btBeginPair(mac))
+        return false;
+    BtPairStage stage = btPumpPair();
+    while (stage != BtPairStage::Done && stage != BtPairStage::Failed) {
+        if (!keepWaiting()) {
+            btCancelPair();
+            return false;
+        }
+        stage = btPumpPair();
     }
-    return out;
-}
-
-AbnetBackend::AbnetBackend()
-    : run_(runViaSystem), runLines_(runLinesViaSystem), kernel_(DirEntry::exists(Abnet)),
-      btHelper_(Env::getAppDir() + sep + "bt") {}
-
-AbnetBackend::AbnetBackend(Runner run, LinesRunner runLines, bool kernel, string btHelper)
-    : run_(run), runLines_(runLines), kernel_(kernel), btHelper_(std::move(btHelper)) {}
-
-bool AbnetBackend::interfaceFound(const string &iface) {
-    // "list_ifaces" answers with the names on one line
-    return run_(string(Abnet) + " list_ifaces").find(iface) != string::npos;
-}
-
-bool AbnetBackend::wlanOn() {
-    return run_(string(Abnet) + " wlan_on") == "yes";
-}
-
-bool AbnetBackend::isUp(const string &iface) {
-    return run_(string(Abnet) + " is_up " + iface) == "yes";
-}
-
-string AbnetBackend::ipOf(const string &iface) {
-    if (!interfaceFound(iface))
-        return "";
-    return run_(string(Abnet) + " show_ip " + iface);
-}
-
-vector<string> AbnetBackend::scanSsids() {
-    if (!interfaceFound("wlan0") || !isUp("wlan0"))
-        return {};
-    vector<string> ssids = runLines_(string(Abnet) + " scan");
-    sort(ssids.begin(), ssids.end());
-    ssids.erase(unique(ssids.begin(), ssids.end()), ssids.end());
-    return ssids;
-}
-
-void AbnetBackend::configureWifi(const string &ssid, const string &password, const string &driverMode) {
-    run_(string(Abnet) + " configure " + quoted(ssid) + " " + quoted(password));
-    run_(string(Abnet) + " driver_mode " + driverMode);
-}
-
-void AbnetBackend::restartNetwork() {
-    run_(string(Abnet) + " restart");
-}
-
-bool AbnetBackend::btUp() {
-    return run_(string(Abnet) + " bt_up ") == "yes";
-}
-
-string AbnetBackend::btName() {
-    return run_(string(Abnet) + " bt_name ");
-}
-
-// Bluetooth pairing goes through the shipped `bt` bluetoothctl wrapper, not abnet: it then works on the
-// original flashed kernel too (its overlay already has bluetoothctl + bluetoothd), not just a kernel with
-// new abnet subcommands. btUp()/btName() stay on abnet - the old abnet already answers those.
-// invoked as `sh <helper> ...`: the console's stick (FAT32 or exFAT) keeps no Unix exec bit, so scripts run
-// through sh.
-vector<BtDevice> AbnetBackend::btScan() {
-    if (!btUp())
-        return {};
-    return parseBtHelperLines(runLines_("sh " + btHelper_ + " scan"), false);
-}
-
-vector<BtDevice> AbnetBackend::btPairedDevices() {
-    if (!btUp())
-        return {};
-    return parseBtHelperLines(runLines_("sh " + btHelper_ + " paired"), true);
-}
-
-bool AbnetBackend::btPair(const string &mac) {
-    return run_("sh " + btHelper_ + " pair " + quoted(mac)) == "ok";
-}
-
-bool AbnetBackend::btRemove(const string &mac) {
-    return run_("sh " + btHelper_ + " remove " + quoted(mac)) == "ok";
-}
-
-string AbnetBackend::timezone() {
-    return run_(string(Settime) + " tz");
-}
-
-void AbnetBackend::setTimezone(const string &zone) {
-    run_(string(Settime) + " tzone " + quoted(zone));
-}
-
-vector<string> AbnetBackend::listTimezones() {
-    vector<string> zones = runLines_("timedatectl list-timezones");
-    sort(zones.begin(), zones.end());
-    zones.erase(unique(zones.begin(), zones.end()), zones.end());
-    return zones;
+    return stage == BtPairStage::Done;
 }
 
 //*******************************
-// FakeBackend
+// FakeBackend: the clock and the work
 //*******************************
-void FakeBackend::configureWifi(const string &ssid, const string &password, const string &driverMode) {
-    PLOG_INFO << "fake abnet configure \"" << ssid << "\" (password of " << password.size() << " chars), driver "
-              << driverMode;
+long long FakeBackend::nowMs() const {
+    return chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+bool FakeBackend::work(int ms) {
+    if (!slow_)
+        return keepWaiting();
+    const long long until = nowMs() + ms;
+    while (nowMs() < until) {
+        if (!keepWaiting())
+            return false;
+        this_thread::sleep_for(chrono::milliseconds(20));
+    }
+    return true;
+}
+
+BtDevice *FakeBackend::device(const string &mac) {
+    for (BtDevice &d : btDevices_)
+        if (d.mac == mac)
+            return &d;
+    return nullptr;
+}
+
+//*******************************
+// FakeBackend: WiFi
+//*******************************
+vector<WifiNetwork> FakeBackend::scanNetworks() {
+    PLOG_INFO << "fake scanNetworks";
+    lastError_.clear();
+    if (!work(2500)) {
+        lastError_ = _("cancelled");
+        return {};
+    }
+    auto network = [](const string &ssid, int signal, const string &flags) {
+        WifiNetwork n;
+        n.ssid = ssid;
+        n.signal = signal;
+        n.flags = flags;
+        return n;
+    };
+    return {network("Home Network", -48, "[WPA2-PSK-CCMP][ESS]"), network("Cafe Corner", -63, "[ESS]"),
+            network("Neighbour 5G", -79, "[WPA2-PSK-CCMP][ESS]")};
+}
+
+void FakeBackend::configureWifi(const string &ssid, const string &password) {
+    PLOG_INFO << "fake configureWifi \"" << ssid << "\" (password of " << password.size() << " chars)";
+    lastError_.clear();
+    work(600);
     configuredSsid = ssid;
     configuredPassword = password;
-    configuredDriverMode = driverMode;
 }
 
 void FakeBackend::restartNetwork() {
-    PLOG_INFO << "fake abnet restart";
+    PLOG_INFO << "fake restartNetwork";
+    lastError_.clear();
+    work(1500);
     restarts++;
 }
 
+bool FakeBackend::wifiStatus(WpaStatus &out) {
+    out = WpaStatus();
+    out.wpaState = connectedSsid_.empty() ? "DISCONNECTED" : "COMPLETED";
+    out.ssid = connectedSsid_;
+    out.ipAddress = connectedSsid_.empty() ? "" : "192.168.1.23";
+    return true;
+}
+
+void FakeBackend::beginWifiConnect(const string &ssid) {
+    watchStart_ = nowMs();
+    watch_ = make_unique<WifiConnectWatch>(ssid, watchStart_);
+    connectedSsid_.clear();
+}
+
+// a connection played out on the clock: wpa_supplicant up, the scan, the association, the handshake, the address -
+// or, for "Neighbour 5G", the handshake refused as wpa_supplicant reports a wrong key. Without `slow` all at once
+const WifiConnectWatch &FakeBackend::pumpWifiConnect() {
+    if (!watch_)
+        beginWifiConnect(configuredSsid);
+    WifiConnectWatch &watch = *watch_;
+    const long long now = nowMs();
+    const long long elapsed = slow_ ? now - watchStart_ : 100000;
+    auto status = [&](const char *state, const string &ip) {
+        WpaStatus s;
+        s.wpaState = state;
+        s.ssid = string(state) == "COMPLETED" ? watch.ssid() : "";
+        s.ipAddress = ip;
+        watch.onStatus(s, ip, now);
+    };
+    if (elapsed >= 300)
+        watch.supplicantRunning(true, now);
+    if (elapsed >= 300 && elapsed < 1300)
+        status("SCANNING", "");
+    if (elapsed >= 1300 && elapsed < 2300)
+        status("ASSOCIATING", "");
+    if (elapsed >= 2300 && elapsed < 3300)
+        status("4WAY_HANDSHAKE", "");
+    if (elapsed >= 3300) {
+        if (watch.ssid() == "Neighbour 5G") {
+            watch.onEvent("<3>CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\"Neighbour 5G\" auth_failures=1 duration=10 "
+                          "reason=WRONG_KEY",
+                          now);
+        } else if (elapsed < 4300) {
+            status("COMPLETED", "");
+        } else {
+            status("COMPLETED", "192.168.1.23");
+            connectedSsid_ = watch.ssid();
+        }
+    }
+    watch.tick(watchStart_ + (slow_ ? elapsed : 0));
+    return watch;
+}
+
+//*******************************
+// FakeBackend: Bluetooth
+//*******************************
 vector<BtDevice> FakeBackend::btScan() {
-    PLOG_INFO << "fake bt_scan";
+    PLOG_INFO << "fake btScan";
+    btError_.clear();
+    work(4000);        // a cancel only ends it early: what was found is shown
     return btDevices_; // a scan reveals everything nearby, paired or not
 }
 
 vector<BtDevice> FakeBackend::btPairedDevices() {
+    // the Xbox pad goes out of range a few refreshes into the pairing screen (the dev host's "dropped")
+    if (slow_ && ++pairedReads_ == 4) {
+        if (BtDevice *xbox = device("A0:AB:51:33:44:55")) {
+            xbox->connected = false;
+            xbox->battery = BtBattery();
+        }
+    }
     vector<BtDevice> out;
     for (const BtDevice &d : btDevices_)
         if (d.paired)
@@ -181,30 +191,83 @@ vector<BtDevice> FakeBackend::btPairedDevices() {
     return out;
 }
 
-bool FakeBackend::btPair(const string &mac) {
-    PLOG_INFO << "fake bt_pair " << mac;
-    for (BtDevice &d : btDevices_)
-        if (d.mac == mac) {
-            d.paired = true;
-            d.connected = true;
-            return true;
-        }
-    return false;
+bool FakeBackend::btBeginPair(const string &mac) {
+    PLOG_INFO << "fake btBeginPair " << mac;
+    btError_.clear();
+    pairMac_ = mac;
+    if (device(mac) == nullptr) {
+        btError_ = _("the controller is not known") + " (" + mac + ")";
+        pairStage_ = BtPairStage::Failed;
+        return false;
+    }
+    pairStart_ = nowMs();
+    pairStage_ = BtPairStage::Discovering;
+    return true;
+}
+
+BtPairStage FakeBackend::btPumpPair() {
+    if (pairStage_ == BtPairStage::Done || pairStage_ == BtPairStage::Failed || pairStage_ == BtPairStage::Idle)
+        return pairStage_;
+    if (slow_)
+        this_thread::sleep_for(chrono::milliseconds(15)); // a pump reads the bus for a moment
+    const long long elapsed = slow_ ? nowMs() - pairStart_ : 100000;
+    BtDevice *d = device(pairMac_);
+    if (elapsed < 1000) {
+        pairStage_ = BtPairStage::Discovering;
+    } else if (elapsed < 2500) {
+        pairStage_ = BtPairStage::Pairing;
+    } else if (pairMac_ == "E4:17:D8:AA:BB:CC") {
+        btError_ =
+            _("the controller refused the pairing") + " (org.bluez.Error.AuthenticationFailed: Authentication Failed)";
+        pairStage_ = BtPairStage::Failed;
+    } else if (elapsed < 3500) {
+        pairStage_ = BtPairStage::Connecting;
+    } else {
+        d->paired = true;
+        d->connected = true;
+        d->battery = {80, "Discharging"};
+        pairStage_ = BtPairStage::Done;
+    }
+    return pairStage_;
+}
+
+void FakeBackend::btCancelPair() {
+    if (pairStage_ == BtPairStage::Done || pairStage_ == BtPairStage::Failed || pairStage_ == BtPairStage::Idle)
+        return;
+    btError_ = _("cancelled");
+    pairStage_ = BtPairStage::Failed;
 }
 
 bool FakeBackend::btRemove(const string &mac) {
-    PLOG_INFO << "fake bt_remove " << mac;
-    for (BtDevice &d : btDevices_)
-        if (d.mac == mac) {
-            d.paired = false;
-            d.connected = false;
-            return true;
-        }
+    PLOG_INFO << "fake btRemove " << mac;
+    btError_.clear();
+    work(700);
+    if (BtDevice *d = device(mac)) {
+        d->paired = false;
+        d->connected = false;
+        d->battery = BtBattery();
+        return true;
+    }
+    btError_ = _("the controller is not known") + " (" + mac + ")";
     return false;
 }
 
+BtBattery FakeBackend::btBattery(const string &mac) {
+    BtDevice *d = device(mac);
+    return d != nullptr ? d->battery : BtBattery();
+}
+
+string FakeBackend::btLastError() const {
+    return btAdapter_ ? btError_ : _("no Bluetooth adapter");
+}
+
+//*******************************
+// FakeBackend: the timezone
+//*******************************
 void FakeBackend::setTimezone(const string &zone) {
-    PLOG_INFO << "fake settime tzone " << zone;
+    PLOG_INFO << "fake setTimezone " << zone;
+    lastError_.clear();
+    work(800);
     timezone_ = zone;
 }
 

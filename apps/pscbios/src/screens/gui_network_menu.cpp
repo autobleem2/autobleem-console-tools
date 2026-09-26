@@ -3,6 +3,7 @@
 //
 #include "gui_network_menu.h"
 #include "gui_ssid_scan_menu.h" // and GuiTimezoneSelect
+#include "pscbios_busy.h"
 #include "../pscbios.h"
 #include "gui/gui.h"
 #include "gui/screens/gui_confirm.h"
@@ -40,44 +41,94 @@ void GuiNetworkMenu::init() {
 //*******************************
 // GuiNetworkMenu::refresh / fill
 //*******************************
+// the connection: wpa_supplicant's state (a short STATUS) and the interface's address - "Connected, 192.168.1.23",
+// "Looking for the network", "Not connected", "-" without a WiFi dongle
 void GuiNetworkMenu::refresh() {
     lastRefresh = gui->platform().ticks();
     ConsoleBackend &console = PscBios::get().console();
-    ipAddress = NetworkStatus::addressText(console.interfaceFound("wlan0"), console.ipOf("wlan0"));
+    const string iface = console.wifiInterface(); // any name, not only wlan0
+    if (iface.empty()) {
+        connection = "-";
+    } else {
+        string ip = console.ipOf(iface);
+        WpaStatus status;
+        if (!console.wifiStatus(status)) {
+            connection = ip.empty() ? _("Not connected") : ip;
+        } else if (status.wpaState == "COMPLETED") {
+            if (ip.empty())
+                ip = status.ipAddress;
+            connection = ip.empty() ? wifiStageText(WifiConnectStage::GettingAddress) : _("Connected") + ", " + ip;
+        } else {
+            connection = wpaStateText(status.wpaState);
+            if (connection.empty())
+                connection = _("Not connected");
+        }
+    }
     timezone = console.timezone();
 }
 
+GuiNetworkMenu::Row GuiNetworkMenu::rowAt(int index) const {
+    if (index < 0 || index >= static_cast<int>(rows.size()))
+        return Row::Connection;
+    return rows[static_cast<size_t>(index)];
+}
+
+bool GuiNetworkMenu::skipSelectingThisLineWhenMovingByOne(int index) {
+    const Row row = rowAt(index);
+    return row == Row::Connection || row == Row::Message;
+}
+
+// the rows again; the selection stays on the row it was on (the message row coming or going moves the actions)
 void GuiNetworkMenu::fill() {
+    const bool had = !rows.empty();
+    const Row was = rowAt(selected);
     lines.clear();
     values.clear();
-    auto row = [&](const string &label, const string &value) {
+    rows.clear();
+    auto row = [&](Row kind, const string &label, const string &value) {
+        rows.push_back(kind);
         lines.push_back(label);
         values.push_back(value);
     };
-    row(_("SSID:"), config.ssid);
-    row(_("Password:"), masked(config.password)); // on the screen only while it is typed
-    row(_("Driver mode:"), PscBios::get().console().hasDriverMode() ? config.driverMode : _("Automatic"));
-    row(_("Timezone:"), timezone);
-    row(_("IP Address:"), ipAddress);
-    row(_("Write Configuration/Restart Network"), "");
-    row(_("Restart Network"), "");
+    row(Row::Ssid, _("SSID:"), config.ssid);
+    row(Row::Password, _("Password:"),
+        displayAsterisksInsteadOfPassword ? string(config.password.size(), '*') : config.password);
+    row(Row::TimeZone, _("Timezone:"), timezone);
+    row(Row::Connection, _("Connection:"), connection);
+    if (!message_.empty())
+        row(Row::Message, message_, "");
+    row(Row::WriteFile, _("Write Configuration/Restart Network"), "");
+    row(Row::InitNetwork, _("Restart Network"), "");
+    for (size_t i = 0; had && i < rows.size(); i++)
+        if (rows[i] == was)
+            selected = static_cast<int>(i);
+    if (selected >= static_cast<int>(rows.size()))
+        selected = 0;
 }
 
 //*******************************
 // GuiNetworkMenu::renderLineIndexOnRow
 //*******************************
-// the label at the left, the value at the row's right edge
+// the label at the left, the value at the row's right edge; the message row across the whole row
 void GuiNetworkMenu::renderLineIndexOnRow(int index, int row) {
+    const int width = gui->classicContent().w - 64;
+    if (rowAt(index) == Row::Message) {
+        gui->text().renderTextLine(gui->text().elide(font, lines[index], width), row, yoffset, XALIGN_LEFT, 0, font);
+        return;
+    }
     gui->text().renderTextLine(lines[index], row, yoffset, XALIGN_LEFT, 0, font);
-    if (!values[index].empty())
-        gui->text().renderRowValue(values[index], row, yoffset, 0, font);
+    if (!values[index].empty()) {
+        const int labelWidth = gui->text().textWidth(font, lines[index]);
+        gui->text().renderRowValue(gui->text().elide(font, values[index], width - labelWidth - 32), row, yoffset, 0,
+                                   font);
+    }
 }
 
 //*******************************
 // GuiNetworkMenu::render
 //*******************************
 void GuiNetworkMenu::render() {
-    if (gui->platform().ticks() - lastRefresh >= RefreshInterval)
+    if (!busy_ && gui->platform().ticks() - lastRefresh >= RefreshInterval)
         refresh();
     fill();
     GuiStringMenu::render();
@@ -87,20 +138,18 @@ void GuiNetworkMenu::render() {
 // GuiNetworkMenu::getStatusLine
 //*******************************
 string GuiNetworkMenu::getStatusLine() {
-    switch (selected) {
-    case Ssid:
+    if (!busyFooter_.empty())
+        return busyFooter_;
+    switch (rowAt(selected)) {
+    case Row::Ssid:
         return "|@X| " + _("Edit SSID") + "   |@T| " + _("Scan SSID") + "   |@O| " + _("Back");
-    case Password:
+    case Row::Password:
         return "|@X| " + _("Edit Password") + "   |@O| " + _("Back");
-    case WriteFile:
+    case Row::WriteFile:
         return "|@X| " + _("Write Config/Restart Network") + "   |@O| " + _("Back");
-    case InitNetwork:
+    case Row::InitNetwork:
         return "|@X| " + _("Restart Network") + "   |@O| " + _("Back");
-    case DriverMode:
-        if (!PscBios::get().console().hasDriverMode())
-            return "|@O| " + _("Back");
-        return "|@X| " + _("Change") + "   |@O| " + _("Back");
-    case TimeZone:
+    case Row::TimeZone:
         return "|@X| " + _("Change") + "   |@O| " + _("Back");
     default:
         return "|@O| " + _("Back");
@@ -116,7 +165,7 @@ void GuiNetworkMenu::doCircle_Pressed() {
 }
 
 void GuiNetworkMenu::doTriangle_Pressed() {
-    if (selected == Ssid) {
+    if (rowAt(selected) == Row::Ssid) {
         app.audio().cursor.play();
         scanSsid();
     }
@@ -127,35 +176,35 @@ void GuiNetworkMenu::doTriangle_Pressed() {
 //*******************************
 void GuiNetworkMenu::doCross_Pressed() {
     app.audio().cursor.play();
-    switch (selected) {
-    case Ssid:
+    switch (rowAt(selected)) {
+    case Row::Ssid:
         editSsid();
         break;
-    case Password:
+    case Row::Password:
         editPassword();
         break;
-    case DriverMode:
-        if (PscBios::get().console().hasDriverMode())
-            config.driverMode = config.driverMode == "wext" ? "nl80211" : "wext";
-        break;
-    case WriteFile: {
-        writeConfig();
+    case Row::WriteFile: {
+        if (!writeConfig())
+            break;
         GuiConfirm confirm(*gui);
         confirm.label = _("Restart Networking Now?");
         confirm.show();
         if (confirm.result)
-            restartNetwork();
+            restartNetwork(); // and follows the connection
+        else
+            followConnection(); // wpa_supplicant took the network already
         break;
     }
-    case InitNetwork:
+    case Row::InitNetwork:
         restartNetwork();
         break;
-    case TimeZone:
+    case Row::TimeZone:
         pickTimezone();
         break;
     default:
         break;
     }
+    refresh();
     fill();
     render();
 }
@@ -182,50 +231,129 @@ void GuiNetworkMenu::editPassword() {
         config.password = keyboard.result;
 }
 
+// the scan under the spinner over this screen (Circle stops it), then the picker - or why there is nothing to pick
 void GuiNetworkMenu::scanSsid() {
+    ConsoleBackend &console = PscBios::get().console();
+    message_.clear();
+    busy_ = true;
+    busyFooter_ = "|@O| " + _("Stop");
+    vector<WifiNetwork> networks;
+    string error;
+    bool stopped = false;
+    {
+        BusyWork busy(*gui, console, _("Scanning networks"), [this]() { render(); }, true);
+        networks = console.scanNetworks();
+        error = console.lastError();
+        stopped = busy.stopped();
+    }
+    busy_ = false;
+    busyFooter_.clear();
+    if (stopped)
+        return;
+    if (networks.empty()) {
+        // the reason, when there is one: no WiFi dongle, wpa_supplicant not starting or not answering
+        message_ = _("No networks found") + (error.empty() ? string() : ": " + error);
+        return;
+    }
     GuiSsidScanMenu scan(*gui);
+    scan.networks = networks;
     scan.show();
     if (!scan.cancelled)
         config.ssid = scan.newSsid;
-    fill();
 }
 
-void GuiNetworkMenu::writeConfig() {
+// on the console, a WiFi password is required (it is written to ssid.cfg for the kernel); NetworkManager
+// (keepsWifiSettings()) keeps the credentials itself once connected, so an open network needs none
+bool GuiNetworkMenu::writeConfig() {
+    message_.clear();
     ConsoleBackend &console = PscBios::get().console();
-    if (console.keepsWifiSettings()) {
-        // no ssid.cfg (no password on the stick); an open network has no password
-        if (!config.ssid.empty())
-            console.configureWifi(config.ssid, config.password, config.driverMode);
+    if (config.ssid.empty() || (!console.keepsWifiSettings() && config.password.empty())) {
+        message_ = _("Enter the SSID and the password first");
+        return false;
+    }
+    if (!console.keepsWifiSettings() && !config.save(SsidConfig::defaultPath())) {
+        message_ = _("WiFi configuration failed") + ": " + _("cannot write") + " (" + SsidConfig::defaultPath() + ")";
+        return false;
+    }
+    busy_ = true;
+    {
+        BusyWork busy(*gui, console, _("Saving the WiFi settings"), [this]() { render(); }, false);
+        console.configureWifi(config.ssid, config.password);
+    }
+    busy_ = false;
+    if (!console.lastError().empty()) {
+        message_ = _("WiFi configuration failed") + ": " + console.lastError();
+        return false;
+    }
+    return true;
+}
+
+// wpa_supplicant stopped and dhcpcd restarted (its hook starts wpa_supplicant again) under the spinner, then the
+// connection followed
+void GuiNetworkMenu::restartNetwork() {
+    message_.clear();
+    ConsoleBackend &console = PscBios::get().console();
+    busy_ = true;
+    {
+        BusyWork busy(*gui, console, _("Reinitializing Network"), [this]() { render(); }, false);
+        console.restartNetwork();
+    }
+    busy_ = false;
+    if (!console.lastError().empty()) {
+        message_ = _("Network restart failed") + ": " + console.lastError();
         return;
     }
-    if (!config.save(SsidConfig::defaultPath()))
-        return; // an empty SSID or password: nothing to hand the kernel
-    console.configureWifi(config.ssid, config.password, config.driverMode);
+    followConnection();
 }
 
-// the two messages are the only feedback abnet gives: the spinner over this screen, with each in turn
-void GuiNetworkMenu::restartNetwork() {
-    showBusy(_("Reinitializing Network"), 2000);
-    PscBios::get().console().restartNetwork();
-    showBusy(_("Restarted Wi-Fi  With SSID:") + " " + config.ssid, 2000);
-    refresh();
-}
-
-void GuiNetworkMenu::showBusy(const string &message, int ms) {
-    gui->beginBusy(message, [this]() { render(); });
-    const unsigned int until = gui->platform().ticks() + ms;
-    while (gui->platform().ticks() < until) {
-        gui->busyTick();
-        gui->platform().delay(20);
+// the connection's stages on the spinner ("Home Network: Checking the password"), pumped once a frame until it is
+// connected or failed; Circle stops following it (the connection goes on without us)
+void GuiNetworkMenu::followConnection() {
+    if (config.ssid.empty())
+        return;
+    ConsoleBackend &console = PscBios::get().console();
+    busy_ = true;
+    busyFooter_ = "|@O| " + _("Stop");
+    WifiConnectWatch result("", 0);
+    {
+        console.beginWifiConnect(config.ssid);
+        BusyWork busy(
+            *gui, console, config.ssid + ": " + wifiStageText(WifiConnectStage::Starting), [this]() { render(); },
+            true);
+        for (;;) {
+            const WifiConnectWatch &watch = console.pumpWifiConnect();
+            if (watch.finished()) {
+                result = watch;
+                break;
+            }
+            busy.setMessage(config.ssid + ": " + wifiStageText(watch.stage()));
+            if (!busy.frame()) {
+                result = watch;
+                result.cancel();
+                break;
+            }
+        }
     }
-    gui->endBusy();
+    busy_ = false;
+    busyFooter_.clear();
+    if (result.stage() == WifiConnectStage::Failed && result.failure() != WifiFailure::Cancelled)
+        message_ = _("Could not connect to") + " " + config.ssid + ": " + result.text();
+    refresh();
 }
 
 void GuiNetworkMenu::pickTimezone() {
     GuiTimezoneSelect zones(*gui);
     zones.show();
-    if (!zones.cancelled) {
-        PscBios::get().console().setTimezone(zones.newTimezone);
-        refresh();
+    if (zones.cancelled)
+        return;
+    message_.clear();
+    ConsoleBackend &console = PscBios::get().console();
+    busy_ = true;
+    {
+        BusyWork busy(*gui, console, _("Changing the timezone"), [this]() { render(); }, false);
+        console.setTimezone(zones.newTimezone);
     }
+    busy_ = false;
+    if (!console.lastError().empty())
+        message_ = _("Timezone change failed") + ": " + console.lastError();
 }

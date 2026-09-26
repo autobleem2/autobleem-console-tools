@@ -1,5 +1,5 @@
 //
-// pscbios_core: the console backend's command lines and parsing, ssid.cfg, gamecontrollerdb.txt editing
+// pscbios_core: the dev host's backend and the main screen's facts, ssid.cfg, gamecontrollerdb.txt editing
 // and the mapping wizard's logic - everything PSC-Bios does that is not a screen.
 //
 #include "doctest/doctest.h"
@@ -7,6 +7,9 @@
 #include "support/env_fixture.h"
 #include "support/temp_dir.h"
 
+#include "fake_bluez_bus.h"
+
+#include "core/bt_device_list.h"
 #include "core/console_backend.h"
 #include "core/game_controller_db.h"
 #include "core/network_status.h"
@@ -14,130 +17,15 @@
 #include "core/pad_mapping.h"
 #include "core/ssid_config.h"
 
+#include <chrono>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
 using std::string;
 using std::vector;
-
-//*******************************
-// a scripted shell for AbnetBackend
-//*******************************
-namespace {
-std::map<string, string> answers;          // command -> one-line answer
-std::map<string, vector<string>> listings; // command -> lines
-vector<string> ran;                        // every command, in order
-
-string scriptedRun(const string &cmd) {
-    ran.push_back(cmd);
-    auto it = answers.find(cmd);
-    return it == answers.end() ? "" : it->second;
-}
-vector<string> scriptedRunLines(const string &cmd) {
-    ran.push_back(cmd);
-    auto it = listings.find(cmd);
-    return it == listings.end() ? vector<string>() : it->second;
-}
-struct ScriptedShell {
-    ScriptedShell() {
-        answers.clear();
-        listings.clear();
-        ran.clear();
-    }
-};
-} // namespace
-
-TEST_CASE("AbnetBackend asks the kernel's scripts the way the 2020 tool did") {
-    ScriptedShell shell;
-    answers["/bin/abnet list_ifaces"] = "lo eth0 wlan0";
-    answers["/bin/abnet wlan_on"] = "yes";
-    answers["/bin/abnet is_up wlan0"] = "yes";
-    answers["/bin/abnet is_up eth0"] = "no";
-    answers["/bin/abnet show_ip wlan0"] = "192.168.68.144";
-    answers["/bin/abnet bt_up "] = "yes";
-    answers["/bin/abnet bt_name "] = "hci0 00:11:22:33:44:55";
-    answers["/bin/settime tz"] = "Europe/Warsaw";
-    listings["/bin/abnet scan"] = {"Zeta", "Alpha", "Zeta", "Mid"};
-    listings["timedatectl list-timezones"] = {"UTC", "Europe/Warsaw", "Africa/Cairo", "UTC"};
-    AbnetBackend backend(scriptedRun, scriptedRunLines, true);
-
-    CHECK(backend.kernelInstalled());
-    CHECK(backend.interfaceFound("wlan0"));
-    CHECK(backend.interfaceFound("eth0"));
-    CHECK_FALSE(backend.interfaceFound("usb0"));
-    CHECK(backend.wlanOn());
-    CHECK(backend.isUp("wlan0"));
-    CHECK_FALSE(backend.isUp("eth0"));
-    CHECK(backend.ipOf("wlan0") == "192.168.68.144");
-    CHECK(backend.ipOf("usb0") == ""); // no such interface: show_ip is never asked
-    CHECK(backend.btUp());
-    CHECK(backend.btName() == "hci0 00:11:22:33:44:55");
-    CHECK(backend.timezone() == "Europe/Warsaw");
-    CHECK(backend.scanSsids() == vector<string>{"Alpha", "Mid", "Zeta"}); // sorted, unique
-    CHECK(backend.listTimezones() == vector<string>{"Africa/Cairo", "Europe/Warsaw", "UTC"});
-
-    ran.clear();
-    backend.configureWifi("My \"Net\"", "pa$s", "nl80211");
-    REQUIRE(ran.size() == 2);
-    CHECK(ran[0] == "/bin/abnet configure \"My \\\"Net\\\"\" \"pa\\$s\"");
-    CHECK(ran[1] == "/bin/abnet driver_mode nl80211");
-    ran.clear();
-    backend.setTimezone("Europe/Warsaw");
-    CHECK(ran == vector<string>{"/bin/settime tzone \"Europe/Warsaw\""});
-    ran.clear();
-    backend.restartNetwork();
-    CHECK(ran == vector<string>{"/bin/abnet restart"});
-}
-
-TEST_CASE("AbnetBackend does not scan without a WiFi interface that is up") {
-    ScriptedShell shell;
-    answers["/bin/abnet list_ifaces"] = "lo eth0";
-    listings["/bin/abnet scan"] = {"Alpha"};
-    AbnetBackend backend(scriptedRun, scriptedRunLines, true);
-    CHECK(backend.scanSsids().empty());
-    for (const string &cmd : ran)
-        CHECK(cmd != "/bin/abnet scan");
-}
-
-TEST_CASE("AbnetBackend pairs via the bt bluetoothctl helper and parses the device lines") {
-    ScriptedShell shell;
-    answers["/bin/abnet bt_up "] = "yes"; // adapter check stays on abnet (works on the old kernel too)
-    listings["sh bt scan"] = {"00:1B:DC:0F:11:22 Wireless Controller", "E4:17:D8:AA:BB:CC 8BitDo Pro 2",
-                              "not a device line", "AA:BB:CC:DD:EE:FF"};
-    listings["sh bt paired"] = {"A0:AB:51:33:44:55 Xbox Wireless Controller"};
-    answers["sh bt pair \"00:1B:DC:0F:11:22\""] = "ok";
-    answers["sh bt remove \"A0:AB:51:33:44:55\""] = "ok";
-    AbnetBackend backend(scriptedRun, scriptedRunLines, true, "bt");
-
-    auto scanned = backend.btScan();
-    REQUIRE(scanned.size() == 3); // the line without a mac is dropped
-    CHECK(scanned[0].mac == "00:1B:DC:0F:11:22");
-    CHECK(scanned[0].name == "Wireless Controller");
-    CHECK_FALSE(scanned[0].paired);
-    CHECK(scanned[2].mac == "AA:BB:CC:DD:EE:FF");
-    CHECK(scanned[2].name == "AA:BB:CC:DD:EE:FF"); // a mac with no name keeps the mac as its name
-
-    auto paired = backend.btPairedDevices();
-    REQUIRE(paired.size() == 1);
-    CHECK(paired[0].paired);
-    CHECK(paired[0].name == "Xbox Wireless Controller");
-
-    CHECK(backend.btPair("00:1B:DC:0F:11:22"));
-    CHECK(backend.btRemove("A0:AB:51:33:44:55"));
-    CHECK_FALSE(backend.btPair("de:ad:be:ef:00:00")); // no scripted "ok" -> failure
-}
-
-TEST_CASE("AbnetBackend does not touch Bluetooth without an adapter") {
-    ScriptedShell shell;
-    answers["/bin/abnet bt_up "] = "no";
-    listings["sh bt scan"] = {"00:1B:DC:0F:11:22 Something"};
-    AbnetBackend backend(scriptedRun, scriptedRunLines, true, "bt");
-    CHECK(backend.btScan().empty());
-    CHECK(backend.btPairedDevices().empty());
-    for (const string &cmd : ran)
-        CHECK(cmd != "sh bt scan");
-}
+using std::map;
 
 TEST_CASE("FakeBackend pairs and removes Bluetooth controllers, and can report no adapter") {
     FakeBackend fake;
@@ -155,6 +43,7 @@ TEST_CASE("FakeBackend pairs and removes Bluetooth controllers, and can report n
     fake.btAdapter_ = false;
     CHECK_FALSE(fake.btUp());
     CHECK(fake.btName().empty());
+    CHECK(fake.btLastError() == "no Bluetooth adapter");
     CHECK(fake.btScan().size() == 3); // the fake still lists its devices; the screen gates on btUp()
 }
 
@@ -162,41 +51,362 @@ TEST_CASE("NetworkStatus gathers the main screen's facts from the backend") {
     FakeBackend fake;
     NetworkStatus status;
     status.refresh(fake);
+    CHECK(status.wirelessIface == "wlan0"); // the backend's WiFi interface, whatever its name
     CHECK(status.wirelessFound);
     CHECK(status.wirelessActive);
     CHECK(status.wirelessAddr == "192.168.1.23");
     CHECK_FALSE(status.ethFound);
+    CHECK(status.ethIface.empty());
     CHECK(status.btActive);
+    CHECK(status.btStatusText() == "Found/Active");
+    CHECK(status.btDetails() == "hci0 PSC-BT 00:11:22:33:44:55");
     CHECK(status.timezone == "Europe/Warsaw");
     CHECK(NetworkStatus::dongleStatus(true, false) == "Found/Not active");
     CHECK(NetworkStatus::addressText(false, "") == "-");
     CHECK(NetworkStatus::addressText(true, "") == "Waiting for IP Address...");
     CHECK(NetworkStatus::addressText(true, "10.0.0.2") == "10.0.0.2");
 
+    // no adapter: "Not found", and the reason as the details
+    fake.btAdapter_ = false;
+    status.refresh(fake);
+    CHECK(status.btStatusText() == "Not found/Not active");
+    CHECK(status.btDetails() == "no Bluetooth adapter");
+    // the bus or BlueZ not answering: unavailable, with the reason
+    status.btError = "BlueZ does not answer: org.freedesktop.DBus.Error.ServiceUnknown";
+    CHECK(status.btStatusText() == "Unavailable");
+    CHECK(status.btDetails() == status.btError);
+    fake.btAdapter_ = true;
+
     fake.setTimezone("UTC");
-    fake.configureWifi("Home Network", "secret", "wext");
+    fake.configureWifi("Home Network", "secret");
     CHECK(fake.configuredSsid == "Home Network");
     CHECK(fake.timezone() == "UTC");
 }
 
-TEST_CASE("SsidConfig reads and writes the three-line ssid.cfg") {
+//*******************************
+// FakeBackend: the state machines and the wait hook
+//*******************************
+TEST_CASE("FakeBackend pairs through the pumped state machine, and refuses the 8BitDo pad with a reason") {
+    FakeBackend fake;
+    REQUIRE(fake.btBeginPair("00:1B:DC:0F:11:22"));
+    CHECK(fake.btPumpPair() == BtPairStage::Done);
+    CHECK(fake.btPairConnected());
+    CHECK(fake.btBattery("00:1B:DC:0F:11:22").percent == 80);
+
+    REQUIRE(fake.btBeginPair("E4:17:D8:AA:BB:CC"));
+    CHECK(fake.btPumpPair() == BtPairStage::Failed);
+    CHECK(fake.btLastError() ==
+          "the controller refused the pairing (org.bluez.Error.AuthenticationFailed: Authentication Failed)");
+
+    CHECK_FALSE(fake.btBeginPair("no:such:mac"));
+    CHECK(fake.btLastError() == "the controller is not known (no:such:mac)");
+}
+
+TEST_CASE("FakeBackend: a wait hook that says stop cancels a slow pairing and a slow scan") {
+    FakeBackend fake(true); // the dev host's: every action takes its time
+    int asked = 0;
+    fake.setWaitHook([&]() { return ++asked < 2; });
+    const auto start = std::chrono::steady_clock::now();
+    CHECK_FALSE(fake.btPair("00:1B:DC:0F:11:22"));
+    CHECK(fake.btLastError() == "cancelled");
+    CHECK(fake.scanNetworks().empty());
+    CHECK(fake.lastError() == "cancelled");
+    const auto waited =
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+    CHECK(waited < 1500); // neither ran its full time
+}
+
+TEST_CASE("FakeBackend plays a WiFi connection out: connected, or a wrong password for Neighbour 5G") {
+    FakeBackend fake;
+    vector<WifiNetwork> networks = fake.scanNetworks();
+    REQUIRE(networks.size() == 3);
+    CHECK(networks[0].ssid == "Home Network");
+    CHECK(networks[0].secured());
+    CHECK_FALSE(networks[1].secured()); // Cafe Corner is open
+
+    fake.beginWifiConnect("Home Network");
+    const WifiConnectWatch &ok = fake.pumpWifiConnect();
+    CHECK(ok.stage() == WifiConnectStage::Connected);
+    CHECK(ok.text() == "Connected, 192.168.1.23");
+
+    fake.beginWifiConnect("Neighbour 5G");
+    const WifiConnectWatch &wrong = fake.pumpWifiConnect();
+    CHECK(wrong.stage() == WifiConnectStage::Failed);
+    CHECK(wrong.failure() == WifiFailure::WrongPassword);
+    CHECK(wrong.text().compare(0, 16, "wrong password (") == 0);
+    WpaStatus status;
+    REQUIRE(fake.wifiStatus(status));
+    CHECK(status.wpaState == "DISCONNECTED");
+}
+
+//*******************************
+// WifiConnectWatch
+//*******************************
+TEST_CASE("WifiConnectWatch follows wpa_supplicant's states to Connected") {
+    WifiConnectWatch watch("Home", 0);
+    CHECK(watch.stage() == WifiConnectStage::Starting);
+    watch.supplicantRunning(true, 100);
+    CHECK(watch.stage() == WifiConnectStage::Searching);
+    WpaStatus status;
+    status.wpaState = "ASSOCIATING";
+    watch.onStatus(status, "", 600);
+    CHECK(watch.stage() == WifiConnectStage::Associating);
+    status.wpaState = "4WAY_HANDSHAKE";
+    watch.onStatus(status, "", 1100);
+    CHECK(watch.stage() == WifiConnectStage::Handshake);
+    CHECK(watch.text() == "Checking the password");
+    status.wpaState = "COMPLETED";
+    status.ssid = "Home";
+    watch.onStatus(status, "", 1600);
+    CHECK(watch.stage() == WifiConnectStage::GettingAddress);
+    CHECK_FALSE(watch.finished());
+    watch.onStatus(status, "192.168.1.40", 2100); // getifaddrs' address
+    CHECK(watch.stage() == WifiConnectStage::Connected);
+    CHECK(watch.address() == "192.168.1.40");
+    CHECK(watch.text() == "Connected, 192.168.1.40");
+    watch.onEvent("<3>CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\"Home\" reason=WRONG_KEY", 2200);
+    CHECK(watch.stage() == WifiConnectStage::Connected); // finished is finished
+
+    // COMPLETED on another network (what an earlier set-up left) is not ours
+    WifiConnectWatch other("Home", 0);
+    status.ssid = "Neighbour";
+    other.onStatus(status, "10.0.0.2", 100);
+    CHECK(other.stage() == WifiConnectStage::Associating);
+    // STATUS's own ip_address will do when getifaddrs has none yet
+    status.ssid = "Home";
+    status.ipAddress = "10.0.0.3";
+    other.onStatus(status, "", 200);
+    CHECK(other.address() == "10.0.0.3");
+}
+
+TEST_CASE("WifiConnectWatch knows a wrong password from wpa_supplicant's events") {
+    std::string detail;
+    CHECK(WifiConnectWatch::failureOfEvent(
+              "<3>CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\"Home\" auth_failures=1 duration=10 reason=WRONG_KEY",
+              detail) == WifiFailure::WrongPassword);
+    CHECK(detail == "CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\"Home\" auth_failures=1 duration=10 reason=WRONG_KEY");
+    CHECK(WifiConnectWatch::failureOfEvent("<3>WPA: 4-Way Handshake failed - pre-shared key may be incorrect",
+                                           detail) == WifiFailure::WrongPassword);
+    CHECK(WifiConnectWatch::failureOfEvent("<3>CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\"x\" reason=CONN_FAILED",
+                                           detail) == WifiFailure::AssociationRejected);
+    CHECK(WifiConnectWatch::failureOfEvent("<3>CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\"x\" reason=AUTH_FAILED",
+                                           detail) == WifiFailure::AuthenticationRejected);
+    CHECK(WifiConnectWatch::failureOfEvent("<3>CTRL-EVENT-SCAN-RESULTS ", detail) == WifiFailure::None);
+    CHECK(WifiConnectWatch::eventText("<2>CTRL-EVENT-CONNECTED - Connection to aa:bb completed\n") ==
+          "CTRL-EVENT-CONNECTED - Connection to aa:bb completed");
+
+    WifiConnectWatch watch("Home", 0);
+    watch.supplicantRunning(true, 10);
+    watch.onEvent("<3>CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\"Home\" auth_failures=1 duration=10 reason=WRONG_KEY",
+                  500);
+    CHECK(watch.stage() == WifiConnectStage::Failed);
+    CHECK(watch.failure() == WifiFailure::WrongPassword);
+    CHECK(watch.text() == "wrong password (CTRL-EVENT-SSID-TEMP-DISABLED id=0 ssid=\"Home\" auth_failures=1 "
+                          "duration=10 reason=WRONG_KEY)");
+}
+
+TEST_CASE("WifiConnectWatch gives each way of not connecting its reason") {
+    WifiConnectTimeouts t;
+    t.startMs = 100;
+    t.totalMs = 1000;
+    t.notFoundEvents = 2;
+
+    WifiConnectWatch never("Home", 0, t); // wpa_supplicant never came up
+    never.tick(99);
+    CHECK_FALSE(never.finished());
+    never.tick(100);
+    CHECK(never.failure() == WifiFailure::NoSupplicant);
+
+    WifiConnectWatch notFound("Home", 0, t); // the network is not there
+    notFound.supplicantRunning(true, 10);
+    notFound.onEvent("<3>CTRL-EVENT-NETWORK-NOT-FOUND", 200);
+    CHECK_FALSE(notFound.finished());
+    notFound.onEvent("<3>CTRL-EVENT-NETWORK-NOT-FOUND", 400);
+    CHECK(notFound.failure() == WifiFailure::NetworkNotFound);
+
+    WifiConnectWatch searching("Home", 0, t); // an older wpa_supplicant says nothing: the time runs out searching
+    searching.supplicantRunning(true, 10);
+    searching.tick(1000);
+    CHECK(searching.failure() == WifiFailure::NetworkNotFound);
+
+    WifiConnectWatch rejected("Home", 0, t); // refused, tried again, never in
+    rejected.supplicantRunning(true, 10);
+    rejected.onEvent("<3>CTRL-EVENT-ASSOC-REJECT bssid=aa:bb:cc:dd:ee:ff status_code=17", 300);
+    CHECK_FALSE(rejected.finished());
+    rejected.tick(1000);
+    CHECK(rejected.failure() == WifiFailure::AssociationRejected);
+    CHECK(rejected.detail() == "CTRL-EVENT-ASSOC-REJECT bssid=aa:bb:cc:dd:ee:ff status_code=17");
+
+    WifiConnectWatch noDhcp("Home", 0, t); // in, but no address
+    WpaStatus completed;
+    completed.wpaState = "COMPLETED";
+    noDhcp.onStatus(completed, "", 50);
+    noDhcp.tick(1000);
+    CHECK(noDhcp.failure() == WifiFailure::NoAddress);
+    CHECK(noDhcp.text() == "no address from the network (DHCP)");
+
+    WifiConnectWatch stuck("Home", 0, t); // associating for ever
+    WpaStatus associating;
+    associating.wpaState = "ASSOCIATING";
+    stuck.onStatus(associating, "", 50);
+    stuck.tick(1000);
+    CHECK(stuck.failure() == WifiFailure::Timeout);
+
+    WifiConnectWatch cancelled("Home", 0, t);
+    cancelled.cancel();
+    CHECK(cancelled.failure() == WifiFailure::Cancelled);
+
+    // a restart under the watch: back to Starting until it is up again, not a failure
+    WifiConnectWatch restarted("Home", 0, t);
+    restarted.supplicantRunning(true, 10);
+    restarted.supplicantRunning(false, 50);
+    CHECK(restarted.stage() == WifiConnectStage::Starting);
+    restarted.supplicantRunning(true, 90);
+    CHECK(restarted.stage() == WifiConnectStage::Searching);
+}
+
+TEST_CASE("The WiFi texts: the connection row, the signal, the stages") {
+    CHECK(wpaStateText("COMPLETED") == "Connected");
+    CHECK(wpaStateText("SCANNING") == "Looking for the network");
+    CHECK(wpaStateText("4WAY_HANDSHAKE") == "Checking the password");
+    CHECK(wpaStateText("ASSOCIATING") == "Connecting");
+    CHECK(wpaStateText("DISCONNECTED") == "Not connected");
+    CHECK(wpaStateText("INTERFACE_DISABLED") == "WiFi is off");
+    CHECK(wpaStateText("").empty());
+    CHECK(WifiNetwork::signalText(-40) == "Excellent");
+    CHECK(WifiNetwork::signalText(-60) == "Good");
+    CHECK(WifiNetwork::signalText(-70) == "Fair");
+    CHECK(WifiNetwork::signalText(-85) == "Weak");
+    WifiNetwork n;
+    n.flags = "[WPA2-PSK-CCMP][ESS]";
+    CHECK(n.secured());
+    n.flags = "[WEP][ESS]";
+    CHECK(n.secured());
+    n.flags = "[ESS]";
+    CHECK_FALSE(n.secured());
+    CHECK(wifiFailureText(WifiFailure::WrongPassword) == "wrong password");
+    CHECK(wifiStageText(WifiConnectStage::GettingAddress) == "Getting an address");
+}
+
+//*******************************
+// BtDeviceList
+//*******************************
+namespace {
+BtDevice btDevice(const string &mac, const string &name, bool paired, bool connected, int battery = -1) {
+    BtDevice d;
+    d.mac = mac;
+    d.name = name;
+    d.paired = paired;
+    d.connected = connected;
+    d.battery.percent = battery;
+    d.battery.status = battery >= 0 ? "Discharging" : "";
+    return d;
+}
+} // namespace
+
+TEST_CASE("BtDeviceList merges the scan with the paired pads, and sees one drop") {
+    BtDeviceList list;
+    list.updatePaired({btDevice("AA", "Xbox", true, true, 55)});
+    REQUIRE(list.rows().size() == 1);
+    CHECK(list.rows()[0].state == BtRowState::Connected);
+    CHECK(BtDeviceList::stateText(list.rows()[0]) == "connected, battery 55%");
+
+    list.setScanned({btDevice("BB", "Wireless Controller", false, false)});
+    REQUIRE(list.rows().size() == 2); // the paired pad the scan missed stays
+    CHECK(list.find("BB")->state == BtRowState::New);
+    CHECK(BtDeviceList::stateText(*list.find("BB")) == "new");
+
+    // the Xbox pad goes out of range: dropped; back again: connected
+    list.updatePaired({btDevice("AA", "Xbox", true, false)});
+    CHECK(list.find("AA")->state == BtRowState::Dropped);
+    CHECK(BtDeviceList::stateText(*list.find("AA")) == "dropped");
+    list.updatePaired({btDevice("AA", "Xbox", true, true, 50)});
+    CHECK(list.find("AA")->state == BtRowState::Connected);
+
+    // forgotten elsewhere: back to new
+    list.updatePaired({});
+    CHECK(list.find("AA")->state == BtRowState::New);
+    CHECK_FALSE(list.find("AA")->device.paired);
+
+    // a paired pad never seen connected is just paired
+    list.updatePaired({btDevice("CC", "8BitDo", true, false)});
+    CHECK(list.find("CC")->state == BtRowState::Paired);
+    CHECK(list.indexOf("CC") == 2);
+    CHECK(list.indexOf("ZZ") == -1);
+}
+
+TEST_CASE("BtDeviceList follows a pairing's stages and how it ended") {
+    BtDeviceList list;
+    list.setScanned({btDevice("BB", "Wireless Controller", false, false)});
+    list.pairStage("BB", BtPairStage::Discovering);
+    CHECK(BtDeviceList::stateText(*list.find("BB")) == "discovering...");
+    list.pairStage("BB", BtPairStage::WaitingForPaired);
+    CHECK(BtDeviceList::stateText(*list.find("BB")) == "pairing...");
+    list.updatePaired({}); // a refresh meanwhile does not undo the stage
+    CHECK(list.find("BB")->state == BtRowState::Pairing);
+    list.pairStage("BB", BtPairStage::Connecting);
+    CHECK(BtDeviceList::stateText(*list.find("BB")) == "connecting...");
+
+    list.pairFinished("BB", false, false, "the controller refused the pairing (org.bluez.Error.AuthenticationFailed)");
+    CHECK(list.find("BB")->state == BtRowState::Failed);
+    CHECK(BtDeviceList::stateText(*list.find("BB")) == "failed");
+    CHECK_FALSE(list.find("BB")->error.empty());
+
+    list.pairStage("BB", BtPairStage::Pairing); // tried again: the error goes
+    CHECK(list.find("BB")->error.empty());
+    list.pairFinished("BB", false, false, ""); // cancelled: new again
+    CHECK(list.find("BB")->state == BtRowState::New);
+
+    list.pairFinished("BB", true, false, "the controller is off or out of range (...)"); // paired, not connected
+    CHECK(list.find("BB")->state == BtRowState::Paired);
+    list.pairFinished("BB", true, true, "");
+    CHECK(list.find("BB")->state == BtRowState::Connected);
+
+    list.removed("BB", false, "the controller could not be removed (org.bluez.Error.Failed: nope)");
+    CHECK(list.find("BB")->state == BtRowState::Connected);
+    CHECK_FALSE(list.find("BB")->error.empty());
+    list.removed("BB", true, "");
+    CHECK(list.find("BB")->state == BtRowState::New);
+}
+
+TEST_CASE("BtDeviceList's battery text") {
+    BtBattery b;
+    CHECK(BtDeviceList::batteryText(b).empty());
+    b.percent = 80;
+    CHECK(BtDeviceList::batteryText(b) == "battery 80%");
+    b.status = "Charging";
+    CHECK(BtDeviceList::batteryText(b) == "charging 80%");
+    b.status = "Full";
+    CHECK(BtDeviceList::batteryText(b) == "battery full");
+}
+
+TEST_CASE("SsidConfig reads and writes the two-line ssid.cfg") {
     TempDir tmp("ssid");
     SsidConfig cfg;
     CHECK_FALSE(cfg.load(tmp.at("ssid.cfg")));
-    CHECK(cfg.driverMode == "wext");
 
-    tmp.writeFile("ssid.cfg", "Home\r\nsecret\r\n\r\n"); // CRLF and an empty driver line survive
+    tmp.writeFile("ssid.cfg", "Home\r\nsecret\r\n"); // CRLF survives
     REQUIRE(cfg.load(tmp.at("ssid.cfg")));
     CHECK(cfg.ssid == "Home");
     CHECK(cfg.password == "secret");
-    CHECK(cfg.driverMode == "wext");
 
-    cfg.driverMode = "nl80211";
     REQUIRE(cfg.save(tmp.at("out.cfg")));
-    CHECK(tmp.readFile("out.cfg") == "Home\nsecret\nnl80211\n");
+    CHECK(tmp.readFile("out.cfg") == "Home\nsecret\n");
 
     cfg.password.clear();
     CHECK_FALSE(cfg.save(tmp.at("out2.cfg"))); // no password: nothing written
+}
+
+TEST_CASE("SsidConfig reads a legacy ssid.cfg with a driver-mode third line, and ignores it") {
+    TempDir tmp("ssid-legacy");
+    SsidConfig cfg;
+    tmp.writeFile("ssid.cfg", "Home\nsecret\nnl80211\n");
+    REQUIRE(cfg.load(tmp.at("ssid.cfg")));
+    CHECK(cfg.ssid == "Home");
+    CHECK(cfg.password == "secret");
+
+    REQUIRE(cfg.save(tmp.at("out.cfg"))); // written back with two lines only
+    CHECK(tmp.readFile("out.cfg") == "Home\nsecret\n");
 }
 
 TEST_CASE("SsidConfig falls back to the SSID in wpa_supplicant.conf, except the old tool's \"1\"") {
@@ -369,12 +579,40 @@ TEST_CASE("PadMapping::cleanName keeps what SDL accepts in a mapping line") {
 
 //*******************************
 // NmBackend - the answers are what a Raspberry Pi 400 (Raspberry Pi OS trixie, NetworkManager 1.52.1,
-// BlueZ 5.82) printed on 2026-09-26
+// BlueZ 5.82) printed on 2026-09-26. Ported against the new ConsoleBackend shape 2026-09-26: no
+// hasDriverMode()/wlanOn() any more (X6 - the interface has neither), scanNetworks() returns
+// vector<WifiNetwork> from SSID,SIGNAL,SECURITY (not a bare SSID list), configureWifi() takes no driver
+// mode, and Bluetooth goes through the same BluezClient/fake bus NativeBackend's tests use - never the
+// deleted `bt` bluetoothctl wrapper.
 //*******************************
 namespace {
 const char *const DeviceStatus = "nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null";
 const vector<string> PiDevices = {"wlan0:wifi:connected", "lo:loopback:connected (externally)",
                                   "p2p-dev-wlan0:wifi-p2p:disconnected", "eth0:ethernet:unavailable"};
+
+// the Runner/LinesRunner test seam: NmBackend takes plain function pointers (no captures), so the script
+// is global state a ScriptedShell resets before each test
+vector<string> ran;
+map<string, string> answers;
+map<string, vector<string>> listings;
+
+string scriptedRun(const string &cmd) {
+    ran.push_back(cmd);
+    auto it = answers.find(cmd);
+    return it != answers.end() ? it->second : string();
+}
+vector<string> scriptedRunLines(const string &cmd) {
+    ran.push_back(cmd);
+    auto it = listings.find(cmd);
+    return it != listings.end() ? it->second : vector<string>();
+}
+struct ScriptedShell {
+    ScriptedShell() {
+        ran.clear();
+        answers.clear();
+        listings.clear();
+    }
+};
 } // namespace
 
 TEST_CASE("NmBackend::splitTerse undoes nmcli's escapes") {
@@ -392,32 +630,37 @@ TEST_CASE("NmBackend reads the devices, addresses and time zone the way a Pi 400
     answers["timedatectl show -p Timezone --value 2>/dev/null"] = "Europe/Dublin";
     listings["timedatectl list-timezones 2>/dev/null"] = {"Africa/Abidjan", "Africa/Accra", "Europe/Dublin",
                                                           "Africa/Accra"};
-    listings["nmcli -t -f SSID device wifi list --rescan yes 2>/dev/null"] = {"DecoMeshArt",
-                                                                              "DecoMeshArt_Guest",
-                                                                              "",
-                                                                              "",
-                                                                              "DecoMeshArt",
-                                                                              "FRITZ!Box 4040 BN",
-                                                                              "Mark's Office 2.4ghz (Private)"};
+    // SSID,SIGNAL,SECURITY - a hidden network (no name) dropped; SIGNAL is nmcli's 0-100 percentage,
+    // approximated to dBm (percent/2 - 100), sorted strongest first
+    listings["nmcli -t -f SSID,SIGNAL,SECURITY device wifi list --rescan yes 2>/dev/null"] = {
+        "DecoMeshArt:88:WPA2", "DecoMeshArt_Guest:70:--", ":50:WPA2", "FRITZ!Box 4040 BN:60:WPA2",
+        "Mark's Office 2.4ghz (Private):40:WPA2"};
     listings["nmcli -t -f ACTIVE,SSID device wifi list --rescan no 2>/dev/null"] = {
         "no:DecoMeshArt", "no:DecoMeshArt_Guest", "no:", "yes:DecoMeshArt", "no:SKY45280"};
-    NmBackend backend(scriptedRun, scriptedRunLines, true, "bt");
+    NmBackend backend(scriptedRun, scriptedRunLines, true, nullptr);
 
-    CHECK(backend.kernelInstalled());
-    CHECK_FALSE(backend.hasDriverMode());
+    CHECK(backend.kernelInstalled()); // here: nmcli is there
     CHECK(backend.keepsWifiSettings());
     CHECK(backend.interfaceFound("wlan0"));
     CHECK(backend.interfaceFound("eth0"));
-    CHECK(backend.wlanOn());
     CHECK(backend.isUp("wlan0"));
     CHECK_FALSE(backend.isUp("eth0")); // unplugged: "unavailable"
     CHECK(backend.ipOf("wlan0") == "192.168.68.144");
     CHECK(backend.ipOf("eth0") == "");
     CHECK(backend.timezone() == "Europe/Dublin");
     CHECK(backend.listTimezones() == vector<string>{"Africa/Abidjan", "Africa/Accra", "Europe/Dublin"});
-    // hidden networks (no name) dropped, sorted, unique
-    CHECK(backend.scanSsids() ==
-          vector<string>{"DecoMeshArt", "DecoMeshArt_Guest", "FRITZ!Box 4040 BN", "Mark's Office 2.4ghz (Private)"});
+
+    vector<WifiNetwork> networks = backend.scanNetworks();
+    REQUIRE(networks.size() == 4); // the hidden one dropped
+    CHECK(networks[0].ssid == "DecoMeshArt");
+    CHECK(networks[0].signal == 88 / 2 - 100);
+    CHECK(networks[0].flags == "[WPA2]");
+    CHECK(networks[0].secured());
+    CHECK(networks[1].ssid == "DecoMeshArt_Guest");
+    CHECK(networks[1].flags.empty()); // SECURITY "--" -> no flags
+    CHECK_FALSE(networks[1].secured());
+    CHECK(networks[2].ssid == "FRITZ!Box 4040 BN");
+    CHECK(networks[3].ssid == "Mark's Office 2.4ghz (Private)");
     CHECK(backend.currentSsid() == "DecoMeshArt");
 
     ran.clear();
@@ -429,94 +672,142 @@ TEST_CASE("NmBackend maps the screens' wlan0/eth0 to a PC's slot-named devices")
     ScriptedShell shell;
     listings[DeviceStatus] = {"enp3s0:ethernet:connected", "wlp2s0:wifi:disconnected", "lo:loopback:unmanaged"};
     answers["nmcli -g IP4.ADDRESS device show 'enp3s0' 2>/dev/null"] = "10.0.2.15/24 | 10.0.3.1/16";
-    NmBackend backend(scriptedRun, scriptedRunLines, true, "bt");
-    CHECK(backend.interfaceFound("wlan0"));
-    CHECK(backend.wlanOn()); // disconnected, but the radio is on
-    CHECK_FALSE(backend.isUp("wlan0"));
-    CHECK(backend.isUp("eth0"));
-    CHECK(backend.ipOf("eth0") == "10.0.2.15");
+    NmBackend backend(scriptedRun, scriptedRunLines, true, nullptr);
+    // wifiInterface()/ethernetInterface() are what the screens actually ask for - the real slot names,
+    // never a hard-coded "wlan0"/"eth0"
+    CHECK(backend.wifiInterface() == "wlp2s0");
+    CHECK(backend.ethernetInterface() == "enp3s0");
+    CHECK(backend.interfaceFound("wlp2s0"));
+    CHECK_FALSE(backend.isUp("wlp2s0"));
+    CHECK(backend.isUp("enp3s0"));
+    CHECK(backend.ipOf("enp3s0") == "10.0.2.15");
     CHECK_FALSE(backend.interfaceFound("usb0"));
 
-    // a radio that is off (or rfkill-blocked) reads "unavailable"
-    listings[DeviceStatus] = {"wlp2s0:wifi:unavailable"};
-    CHECK(backend.interfaceFound("wlan0"));
-    CHECK_FALSE(backend.wlanOn());
-    // no Wi-Fi device at all: nothing is scanned
+    // no Wi-Fi device at all: scanNetworks() reports it and asks nothing else
     listings[DeviceStatus] = {"enp3s0:ethernet:connected"};
     ran.clear();
-    CHECK(backend.scanSsids().empty());
+    CHECK(backend.scanNetworks().empty());
+    CHECK(backend.lastError() == "no WiFi interface");
     CHECK(ran == vector<string>{DeviceStatus});
 }
 
 TEST_CASE("NmBackend connects on restartNetwork, the password through the environment, never the command") {
     ScriptedShell shell;
     listings[DeviceStatus] = PiDevices;
-    NmBackend backend(scriptedRun, scriptedRunLines, true, "bt");
+    NmBackend backend(scriptedRun, scriptedRunLines, true, nullptr);
+    // an empty answer is not success (restartNetwork() requires !answer.empty() && no "Error:") - nmcli's
+    // real success line names the connection it just brought up
+    const string ok = "Device 'wlan0' successfully activated with '11111111-2222-3333-4444-555555555555'.";
 
-    backend.configureWifi("Mark's Office", "s3cr3t pass", "nl80211");
+    backend.configureWifi("Mark's Office", "s3cr3t pass"); // remembered only - no driver mode argument any more
     for (const string &cmd : ran)
-        CHECK(cmd.find("connect") == string::npos); // remembered only
+        CHECK(cmd.find("connect") == string::npos);
     ran.clear();
+    answers["nmcli --wait 30 device wifi connect 'Mark'\\''s Office' password \"$AB_WIFI_PSK\" ifname 'wlan0' "
+            "2>&1"] = ok;
     backend.restartNetwork();
     REQUIRE_FALSE(ran.empty());
     CHECK(ran.back() ==
           "nmcli --wait 30 device wifi connect 'Mark'\\''s Office' password \"$AB_WIFI_PSK\" ifname 'wlan0' 2>&1");
     for (const string &cmd : ran)
         CHECK(cmd.find("s3cr3t") == string::npos);
+    CHECK(backend.lastError().empty());
 
     // an open network: no password argument; a restart with nothing new reconnects the device
-    backend.configureWifi("Cafe", "", "");
+    backend.configureWifi("Cafe", "");
+    answers["nmcli --wait 30 device wifi connect 'Cafe' ifname 'wlan0' 2>&1"] = ok;
     backend.restartNetwork();
     CHECK(ran.back() == "nmcli --wait 30 device wifi connect 'Cafe' ifname 'wlan0' 2>&1");
+    answers["nmcli --wait 30 device connect 'wlan0' 2>&1"] = ok;
     backend.restartNetwork();
     CHECK(ran.back() == "nmcli --wait 30 device connect 'wlan0' 2>&1");
+
+    // nmcli's own "Error:" in the answer: the network could not be joined, the answer kept as the detail
+    backend.configureWifi("Neighbour 5G", "wrongpass");
+    answers["nmcli --wait 30 device wifi connect 'Neighbour 5G' password \"$AB_WIFI_PSK\" ifname 'wlan0' 2>&1"] =
+        "Error: Connection activation failed: Secrets were required, but not provided.";
+    backend.restartNetwork();
+    CHECK(backend.lastError() ==
+          "the network could not be joined (Error: Connection activation failed: Secrets were required, "
+          "but not provided.)");
+
+    // beginWifiConnect/pumpWifiConnect just report restartNetwork()'s own outcome - nmcli already waited
+    // out the whole attempt, there is no wpa_supplicant event stream to follow afterwards
+    backend.configureWifi("Mark's Office", "s3cr3t pass");
+    answers["nmcli --wait 30 device wifi connect 'Mark'\\''s Office' password \"$AB_WIFI_PSK\" ifname 'wlan0' "
+            "2>&1"] = ok;
+    answers["nmcli -g IP4.ADDRESS device show 'wlan0' 2>/dev/null"] = "192.168.68.144/24"; // onStatus needs an address to reach Connected
+    backend.restartNetwork();
+    backend.beginWifiConnect("Mark's Office");
+    const WifiConnectWatch &watch = backend.pumpWifiConnect();
+    CHECK(watch.finished());
+    CHECK(watch.stage() == WifiConnectStage::Connected);
 }
 
 TEST_CASE("NmBackend without nmcli asks nothing of the network") {
     ScriptedShell shell;
     listings[DeviceStatus] = PiDevices;
-    NmBackend backend(scriptedRun, scriptedRunLines, false, "bt");
+    NmBackend backend(scriptedRun, scriptedRunLines, false, nullptr);
     CHECK_FALSE(backend.kernelInstalled());
     CHECK_FALSE(backend.interfaceFound("wlan0"));
     CHECK(backend.currentSsid().empty());
     CHECK(ran.empty());
 }
 
-TEST_CASE("NmBackend reads the Bluetooth controller from bluetoothctl show, pairs through the bt helper") {
+//*******************************
+// NmBackend: Bluetooth, over the same BluezClient/fake bus as NativeBackend (fake_bluez_bus.h) - never
+// bluetoothctl or the deleted `bt` wrapper
+//*******************************
+TEST_CASE("NmBackend's Bluetooth goes through the shared BluezClient, exactly like NativeBackend's") {
     ScriptedShell shell;
-    const char *const show = "timeout 5 bluetoothctl show 2>/dev/null";
-    listings[show] = {"Controller DC:A6:32:E3:04:97 (public)",
-                      "Manufacturer: 0x000f (15)",
-                      "Name: autobleem",
-                      "Alias: autobleem",
-                      "Powered: no",
-                      "PowerState: off-blocked",
-                      "Discoverable: no",
-                      "Discovering: no",
-                      "Advertising Features:",
-                      "ActiveInstances: 0x00 (0)"};
-    listings["sh 'bt' scan"] = {"00:1B:DC:0F:11:22 Wireless Controller"};
-    listings["sh 'bt' paired"] = {};
-    answers["sh 'bt' pair '00:1B:DC:0F:11:22'"] = "ok";
-    NmBackend backend(scriptedRun, scriptedRunLines, true, "bt");
+    listings[DeviceStatus] = PiDevices;
 
-    CHECK(backend.btUp()); // there, though blocked and off: the helper switches it on for a scan
-    CHECK(backend.btName() == "autobleem DC:A6:32:E3:04:97 (off)");
-    auto scanned = backend.btScan();
-    REQUIRE(scanned.size() == 1);
-    CHECK(scanned[0].name == "Wireless Controller");
-    CHECK(backend.btPairedDevices().empty());
+    auto state = std::make_shared<fakebluez::State>();
+    state->objects["/org/bluez"]["org.bluez.AgentManager1"];
+    state->objects[fakebluez::Adapter] = fakebluez::adapter("DC:A6:32:E3:04:97", true);
+    state->objects[fakebluez::devicePath("A0:AB:51:33:44:55")] =
+        fakebluez::device("A0:AB:51:33:44:55", "Xbox Wireless Controller", true, true);
+    state->discoverable[fakebluez::devicePath("00:1B:DC:0F:11:22")] =
+        fakebluez::device("00:1B:DC:0F:11:22", "Wireless Controller");
+    int connects = 0;
+    NmBackend backend(scriptedRun, scriptedRunLines, true,
+                      [&](BusError &) {
+                          ++connects;
+                          return fakebluez::makeBus(state);
+                      });
+
+    CHECK(backend.btUp());
+    CHECK(backend.btName() == "hci0 PSC DC:A6:32:E3:04:97"); // fakebluez::adapter()'s fixed Alias "PSC"
+
+    vector<BtDevice> paired = backend.btPairedDevices();
+    REQUIRE(paired.size() == 1);
+    CHECK(paired[0].mac == "A0:AB:51:33:44:55");
+    CHECK(paired[0].connected);
+
+    vector<BtDevice> found = backend.btScan();
+    REQUIRE(found.size() == 2);
+    bool sawNew = false;
+    for (const BtDevice &d : found)
+        if (d.mac == "00:1B:DC:0F:11:22")
+            sawNew = true;
+    CHECK(sawNew);
+
     CHECK(backend.btPair("00:1B:DC:0F:11:22"));
+    CHECK(backend.btLastError().empty());
+    CHECK(backend.btPairedDevices().size() == 2);
+    CHECK(connects == 1); // one bus connection for all of it, exactly like NativeBackend
 
-    listings[show] = {"\x1b[1;39mController DC:A6:32:E3:04:97 (public)\x1b[0m", "Name: pi", "Powered: yes"};
-    CHECK(backend.btName() == "pi DC:A6:32:E3:04:97");
-    // no controller (or no bluetoothd - the timeout ends the wait): nothing is scanned
-    listings[show] = {"Waiting to connect to bluetoothd..."};
-    ran.clear();
+    CHECK(backend.btRemove("A0:AB:51:33:44:55"));
+    CHECK_FALSE(backend.btRemove("A0:AB:51:33:44:55"));
+    CHECK(backend.btLastError() == "the controller is not known (A0:AB:51:33:44:55)");
+}
+
+TEST_CASE("NmBackend without a BlueZ bus factory: no Bluetooth support") {
+    ScriptedShell shell;
+    listings[DeviceStatus] = PiDevices;
+    NmBackend backend(scriptedRun, scriptedRunLines, true, nullptr); // a host with no libdbus-1
     CHECK_FALSE(backend.btUp());
-    CHECK(backend.btScan().empty());
-    for (const string &cmd : ran)
-        CHECK(cmd != "sh 'bt' scan");
+    CHECK(backend.btLastError() == "no Bluetooth support");
 }
 
 TEST_CASE("PadMapping: the raw input behind Circle, and whether it is held (the wizard's hold-to-exit)") {

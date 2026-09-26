@@ -10,6 +10,9 @@
 #include "core/nm_backend.h"
 #include "screens/gui_network_hub.h"
 #include "screens/gui_pscbios_main.h"
+#ifdef PSCBIOS_NATIVE_BACKEND
+#include "core/native_backend.h"
+#endif
 
 #include "core/main.h"
 #include "core/services/environment.h"
@@ -22,15 +25,17 @@
 using namespace std;
 
 namespace {
-// the platform's backend: a fake with canned answers on a dev host, the kernel's abnet/settime scripts on the
-// console, NetworkManager + BlueZ on a Pi and the PC stick
+// the platform's backend: a fake with canned answers on a dev host, the console asked directly (sysfs,
+// wpa_supplicant's socket, BlueZ over D-Bus, settime - no shell scripts) on the console, NetworkManager +
+// BlueZ over D-Bus on a Pi and the PC stick
 unique_ptr<ConsoleBackend> makeBackend() {
 #if defined(AB_DEBUG_HOST)
-    return make_unique<FakeBackend>();
-#elif defined(AB_PLATFORM_PSC)
-    unique_ptr<ConsoleBackend> console = make_unique<AbnetBackend>();
-    if (!console->kernelInstalled())
-        PLOG_WARNING << "No AutoBleem kernel (" << AbnetBackend::Abnet << " missing): the network rows are off";
+    return make_unique<FakeBackend>(true); // slow: the spinner and the stages show
+#elif defined(PSCBIOS_NATIVE_BACKEND) && defined(AB_PLATFORM_PSC)
+    unique_ptr<ConsoleBackend> console = make_unique<NativeBackend>();
+    if (!console->kernelInstalled()) {
+        PLOG_WARNING << "No AutoBleem kernel (" << NativePaths().kernelMarker << " missing): the network rows are off";
+    }
     return console;
 #else
     unique_ptr<ConsoleBackend> console = make_unique<NmBackend>();
@@ -63,7 +68,7 @@ public:
     }
 
 private:
-    // the tool's own files (DS3.png, the bt helper, ssid.cfg off the console) are found through
+    // the tool's own files (DS3.png, ssid.cfg off the console) are found through
     // Env::getAppDir(), as they were when it was a program started in its folder: that is the extension's
     // folder while it runs, and whatever it was before afterwards
     void withTool(const function<void()> &screens) {
