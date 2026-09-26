@@ -12,7 +12,9 @@
 using namespace std;
 
 namespace {
-enum Item { WifiNetwork = 0, BluetoothPairing, DualShock3, Mapping };
+// WifiSettings, not WifiNetwork: the develop merge (native-backend work) added a ::WifiNetwork struct
+// (wifi_connect.h, a scan's network) that this enumerator's unqualified name would collide with
+enum Item { WifiSettings = 0, BluetoothPairing, DualShock3, Mapping };
 
 // the Wi-Fi screen needs the platform's network tools: the AutoBleem kernel's abnet on the console,
 // NetworkManager's nmcli on a Pi or the PC stick
@@ -41,7 +43,7 @@ void showNetworkHub(ableem::GuiBase &gui) {
     for (;;) {
         menu.show();
         switch (menu.result) {
-        case WifiNetwork:
+        case WifiSettings:
             if (PscBios::get().console().kernelInstalled()) {
                 GuiNetworkMenu network(gui);
                 network.show();
