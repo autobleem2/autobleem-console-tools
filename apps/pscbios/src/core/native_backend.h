@@ -93,7 +93,7 @@ public:
     std::vector<BtDevice> btPairedDevices() override;
     bool btBeginPair(const std::string &mac) override;
     BtPairStage btPumpPair() override;
-    void btCancelPair() override;
+    BtPairStage btCancelPair() override;
     bool btPairConnected() const override;
     bool btRemove(const std::string &mac) override;
     BtBattery btBattery(const std::string &mac) override;

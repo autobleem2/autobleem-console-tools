@@ -80,6 +80,10 @@ struct State {
     bool pairSetsPaired = true;           // a Pair that succeeds leaves Paired=true
     int asyncPumps = 3;                   // pumps until a started Pair/Connect answers
     bool asyncNeverAnswers = false;
+    // models CancelPairing losing its race with Pair()/Connect() finishing on BlueZ's side: cancelAsync() (what
+    // giving up on the client's own wait for the reply does) lands the property change anyway, as if bluetoothd
+    // had already committed it a moment before the cancel arrived
+    bool completesDespiteCancel = false;
     int callTimeout = 5000;           // what setCallTimeout() left
     std::vector<int> refreshTimeouts; // the timeout each GetManagedObjects was made with
     std::function<bool()> waitHook;   // what setWaitHook() was given
@@ -191,6 +195,14 @@ public:
         return s_->asyncState;
     }
     void cancelAsync() override {
+        if (s_->completesDespiteCancel && s_->asyncState == AsyncState::Pending) {
+            if (DbusProperties *p = s_->props(s_->pendingPath, "org.bluez.Device1")) {
+                if (s_->pendingMethod == "Pair" && s_->pairSetsPaired)
+                    (*p)["Paired"] = DbusValue::ofBool(true);
+                if (s_->pendingMethod == "Connect")
+                    (*p)["Connected"] = DbusValue::ofBool(true);
+            }
+        }
         s_->asyncState = AsyncState::None;
         s_->pendingMethod.clear();
     }

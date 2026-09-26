@@ -42,10 +42,8 @@ bool ConsoleBackend::btPair(const string &mac) {
         return false;
     BtPairStage stage = btPumpPair();
     while (stage != BtPairStage::Done && stage != BtPairStage::Failed) {
-        if (!keepWaiting()) {
-            btCancelPair();
-            return false;
-        }
+        if (!keepWaiting())
+            return btCancelPair() == BtPairStage::Done; // Done: it could not be stopped, and paired anyway
         stage = btPumpPair();
     }
     return stage == BtPairStage::Done;
@@ -231,11 +229,22 @@ BtPairStage FakeBackend::btPumpPair() {
     return pairStage_;
 }
 
-void FakeBackend::btCancelPair() {
+BtPairStage FakeBackend::btCancelPair() {
     if (pairStage_ == BtPairStage::Done || pairStage_ == BtPairStage::Failed || pairStage_ == BtPairStage::Idle)
-        return;
+        return pairStage_;
+    if (raceOnCancel_) {
+        // models the real backend's race: CancelPairing arrived too late, the pad paired (and connected) anyway
+        if (BtDevice *d = device(pairMac_)) {
+            d->paired = true;
+            d->connected = true;
+            d->battery = {80, "Discharging"};
+        }
+        pairStage_ = BtPairStage::Done;
+        return pairStage_;
+    }
     btError_ = _("cancelled");
     pairStage_ = BtPairStage::Failed;
+    return pairStage_;
 }
 
 bool FakeBackend::btRemove(const string &mac) {

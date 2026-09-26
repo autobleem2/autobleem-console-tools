@@ -569,13 +569,48 @@ void BluezClient::finishPair() {
     }
 }
 
-void BluezClient::cancelPair() {
+BtPairStage BluezClient::cancelPair() {
+    if (stage_ == BtPairStage::Idle || stage_ == BtPairStage::Done || stage_ == BtPairStage::Failed) {
+        finishPair();
+        return stage_;
+    }
+    const string mac = pairMac_;
+    const BluezDevice *device = findDevice(mac);
+    const string path =
+        device != nullptr ? device->path : (adapter_.path.empty() ? string() : adapter_.path + devicePathSuffix(mac));
+    // Pair()/Connect() keep running on bluetoothd's side even once we give up on waiting for the reply
+    // (cancelAsync() only drops OUR wait) - ask BlueZ itself to stop. Best-effort: "nothing to cancel" (no
+    // pairing in progress on its side, or the device not known yet) is not a problem, what actually happened is
+    // checked below regardless
+    if (!path.empty()) {
+        BusError cancelError;
+        if (!bus_->call(path, Device1, "CancelPairing", cancelError))
+            PLOG_INFO << "bluetooth: CancelPairing " << mac << ": " << cancelError.text();
+    }
     bus_->cancelAsync();
-    if (stage_ != BtPairStage::Idle && stage_ != BtPairStage::Done && stage_ != BtPairStage::Failed) {
-        fail(_("cancelled"), BusError(), pairMac_);
+
+    // CancelPairing can lose that race - Pair() may already have finished on BlueZ's side by the time it
+    // arrived. Check for real and undo it if it did: a half-paired device left behind would show as "new" and
+    // hide that it is not
+    refresh();
+    device = findDevice(mac);
+    if (device != nullptr && device->paired) {
+        PLOG_WARNING << "bluetooth: cancelling the pairing of " << mac << " did not stop it in time - removing it";
+        removeDevice(mac);        // best-effort; refresh() inside it may run even when RemoveDevice itself fails
+        device = findDevice(mac); // never reused across that refresh - re-fetch rather than risk a stale pointer
+    }
+    if (device != nullptr && device->paired) {
+        // still could not undo it: the caller shows this pad as paired, never "new"
+        pairConnected_ = device->connected;
+        lastError_.clear();
+        lastBusError_.clear();
+        enter(BtPairStage::Done);
+    } else {
+        fail(_("cancelled"), BusError(), mac);
         stage_ = BtPairStage::Failed;
     }
     finishPair();
+    return stage_;
 }
 
 BtPairStage BluezClient::pump(int timeoutMs) {

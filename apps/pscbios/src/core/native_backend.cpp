@@ -538,11 +538,12 @@ BtPairStage NativeBackend::btPumpPair() {
     return stage;
 }
 
-void NativeBackend::btCancelPair() {
+BtPairStage NativeBackend::btCancelPair() {
     if (!bluez_)
-        return;
-    bluez_->cancelPair();
+        return BtPairStage::Failed;
+    const BtPairStage stage = bluez_->cancelPair();
     takeBtError();
+    return stage;
 }
 
 bool NativeBackend::btPairConnected() const {

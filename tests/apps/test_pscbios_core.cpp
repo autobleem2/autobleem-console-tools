@@ -102,6 +102,20 @@ TEST_CASE("FakeBackend pairs through the pumped state machine, and refuses the 8
     CHECK(fake.btLastError() == "the controller is not known (no:such:mac)");
 }
 
+TEST_CASE("FakeBackend: a cancel that loses the race leaves the pad paired instead of reporting it as new") {
+    FakeBackend fake;
+    REQUIRE(fake.btBeginPair("00:1B:DC:0F:11:22"));
+    fake.raceOnCancel_ = true; // models CancelPairing arriving after bluetoothd already committed the pairing
+    CHECK(fake.btCancelPair() == BtPairStage::Done); // not Failed: the caller must not call this "new"
+    CHECK(fake.btPairConnected());
+    CHECK(fake.btLastError().empty());
+    // and the plain cancel, unaffected, still reports "cancelled"
+    REQUIRE(fake.btBeginPair("E4:17:D8:AA:BB:CC"));
+    fake.raceOnCancel_ = false;
+    CHECK(fake.btCancelPair() == BtPairStage::Failed);
+    CHECK(fake.btLastError() == "cancelled");
+}
+
 TEST_CASE("FakeBackend: a wait hook that says stop cancels a slow pairing and a slow scan") {
     FakeBackend fake(true); // the dev host's: every action takes its time
     int asked = 0;

@@ -392,11 +392,48 @@ TEST_CASE("BluezClient cancels a pairing: the call dropped, the agent unregister
     REQUIRE(client->beginPair(Ds4));
     client->pump(1); // trust, Pair started
     CHECK(client->pairStage() == BtPairStage::Pairing);
-    client->cancelPair();
+    CHECK(client->cancelPair() == BtPairStage::Failed);
     CHECK(client->pairStage() == BtPairStage::Failed);
     CHECK(client->lastError() == "cancelled");
+    CHECK(called(state, "CancelPairing " + devicePath(Ds4))); // BlueZ told to really stop it, not just dropped
     CHECK(state->calls.back() == "UnregisterAgent /org/autobleem/pscbios/agent");
     CHECK(state->asyncState == BluezBus::AsyncState::None);
+    CHECK_FALSE(client->findDevice(Ds4)->paired); // truly not paired
+}
+
+TEST_CASE("BluezClient: a Pair() that wins the race with cancel is undone") {
+    // CancelPairing arrives after bluetoothd already committed the pairing (dropping OUR wait for the reply,
+    // which is all the old code did, never told BlueZ anything) - the device is found Paired and removed again
+    auto state = consoleWithAdapter();
+    state->objects[devicePath(Ds4)] = device(Ds4, "Wireless Controller");
+    state->asyncNeverAnswers = true;
+    state->completesDespiteCancel = true;
+    auto client = clientFor(state);
+    REQUIRE(client->beginPair(Ds4));
+    client->pump(1);
+    CHECK(client->pairStage() == BtPairStage::Pairing);
+    CHECK(client->cancelPair() == BtPairStage::Failed); // undone: reported exactly as a plain cancel
+    CHECK(client->lastError() == "cancelled");
+    CHECK(called(state, "CancelPairing " + devicePath(Ds4)));
+    CHECK(called(state, "RemoveDevice")); // Adapter1.RemoveDevice(the device's path) - the argument, not the target
+    CHECK(client->findDevice(Ds4) == nullptr); // removed
+}
+
+TEST_CASE("BluezClient: shown as paired when a race-won pairing cannot be undone either") {
+    auto state = consoleWithAdapter();
+    state->objects[devicePath(Ds4)] = device(Ds4, "Wireless Controller");
+    state->asyncNeverAnswers = true;
+    state->completesDespiteCancel = true;
+    state->errors["RemoveDevice"] = {"org.bluez.Error.Failed", "Failed"}; // cannot even undo it
+    auto client = clientFor(state);
+    REQUIRE(client->beginPair(Ds4));
+    client->pump(1);
+    CHECK(client->cancelPair() == BtPairStage::Done); // could not be stopped: never shown as "new"
+    CHECK(client->lastError().empty());
+    CHECK_FALSE(client->pairConnected()); // Connect was never reached
+    const BluezDevice *d = client->findDevice(Ds4);
+    REQUIRE(d != nullptr);
+    CHECK(d->paired);
 }
 
 TEST_CASE("BluezClient: the destructor ends a pairing still running") {
