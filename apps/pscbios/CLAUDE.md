@@ -27,8 +27,7 @@ only, no fallback). `NativeBackend` asks the console itself:
   entry; the wired one is ARPHRD_ETHER with a `device`, not `rndis*` - the AutoBleem kernel's USB gadget - nor
   `bnep*`), addresses by `getifaddrs`;
 - WiFi through **wpa_supplicant's control socket** (`/var/run/wpa_supplicant/<iface>`); with none running,
-  `/etc/wpa_supplicant.conf` written and `dhcpcd -n <iface>` (its `10-wpa_supplicant` hook starts it); the
-  driver mode is `/etc/autobleem/dhcpcd.conf.<wext|nl80211>` copied over `/etc/dhcpcd.conf`; a restart is
+  `/etc/wpa_supplicant.conf` written and `dhcpcd -n <iface>` (its `10-wpa_supplicant` hook starts it); a restart is
   TERMINATE + `systemctl restart dhclient`;
 - Bluetooth through **BlueZ over D-Bus** (libdbus-1, the system bus) - adapter, discovery, pairing with an agent
   of its own, removal, battery. DualShock 3 is NOT here - it pairs over USB through the sixaxis BlueZ plugin;
@@ -64,13 +63,13 @@ status reads a screen repeats (the main screen every 2 s, the pairing and WiFi s
 GetManagedObjects waits 1.5 s at most and a bluetoothd that did not answer is not asked again for 15 s (the
 same reason shown meanwhile); STATUS waits 1 s.
 
-Plus two files: `/etc/autobleem/ssid.cfg` (three lines: SSID, password, driver mode - what the WiFi settings
-screen keeps) and `/etc/wpa_supplicant.conf` (read, for the SSID an earlier setup left there; its `"1"` means
-none). `/etc/autobleem` is `Env::getPathToKernelConfigDir()`, set by `EnvironmentSetup::fromRoot()` on the
-console only; off the console `SsidConfig` keeps `ssid.cfg` next to the tool. Without the AutoBleem kernel
-(`kernelInstalled()`: `/bin/abnet` exists - only looked at, as the 2020 tool did; the kernel's overlay brings
-settime, dhcpcd's hook and the driver variants too) the network rows and WiFi settings are off and the pad
-wizard still works - the 2020 tool exited after "Custom Firmware Kernel Not Found".
+Plus two files: `/etc/autobleem/ssid.cfg` (two lines: SSID, password - what the WiFi settings screen keeps) and
+`/etc/wpa_supplicant.conf` (read, for the SSID an earlier setup left there; its `"1"` means none). `/etc/autobleem`
+is `Env::getPathToKernelConfigDir()`, set by `EnvironmentSetup::fromRoot()` on the console only; off the console
+`SsidConfig` keeps `ssid.cfg` next to the tool. Without the AutoBleem kernel (`kernelInstalled()`: `/bin/abnet`
+exists - only looked at, as the 2020 tool did; the kernel's overlay brings settime and dhcpcd's hook) the network
+rows and WiFi settings are off and the pad wizard still works - the 2020 tool exited after "Custom Firmware Kernel
+Not Found".
 
 ## Layout
 

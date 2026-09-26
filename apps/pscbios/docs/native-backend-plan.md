@@ -41,7 +41,10 @@ change until step 4.
 - With no wpa_supplicant running yet (no configuration at all): PSC-Bios writes the minimal file
   (`ctrl_interface`, `update_config=1`) and has dhcpcd take the interface again, whose `10-wpa_supplicant` hook
   starts it (the payload since f4d1e5c; the 2020 overlay always had the hook).
-- Driver mode (nl80211/wext): the dhcpcd.conf variant chosen as today, as a file copy.
+- **Driver mode (nl80211/wext) was dropped (X6, 2026-09-26)**: the kernel now sets the wpa_supplicant driver
+  globally (`env wpa_supplicant_driver=nl80211,wext` in dhcpcd.conf), and PSC-Bios no longer touches
+  `/etc/dhcpcd.conf`. Legacy `ssid.cfg` third lines and `/etc/autobleem/dhcpcd.conf.{wext,nl80211}` copies are
+  read and ignored for backwards compatibility; the variant files will be removed after the next release.
 
 ### Unchanged
 
