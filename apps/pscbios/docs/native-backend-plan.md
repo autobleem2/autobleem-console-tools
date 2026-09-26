@@ -144,3 +144,12 @@ The timezone (`settime`), the pad mapping wizard, `ssid.cfg`.
   after the PS button; its battery from `sony_controller_battery_<mac>`; `systemctl stop bluetooth` while the pairing
   screen is open (one stall of at most 1.5 s, then the reason, no further stalls for 15 s); `kill -STOP` of bluetoothd
   (the hung case: the same, the main screen keeps its 2 s clock).
+- **Step 5 (2026-09-26, the owner's console, psc-kernel-payload `feature/pad-drivers`)** - proven: a WiFi join
+  from the new screens, saved and still there after a reboot (`network 0 set to "DecoMeshArt" and saved`, after
+  cce8ff8 - wpa_supplicant refused SAVE_CONFIG while the conf file lacked `update_config=1`, so the client now
+  sends `SET update_config 1` first); a DS4 paired in 3 s and connected 4 s later, its pairing stored in the
+  persistent `etc/bluetooth/bluetoothd`; abbtagent BlueZ's default agent again after ours unregistered ("Default
+  agent set to ... /org/autobleem/agent"); the battery read from `sony_controller_battery_<mac>` (55 %). Fixed
+  on the way: the pad test took a pad's Start as its Reset ("Next pad"), switching away from a DS4 under test
+  (14bfdde - only the front Reset button does it on a device). Not yet run there: a wrong password, a cancelled
+  pairing, bluetoothd stopped or hung, a WiFi dongle not named wlan0.
