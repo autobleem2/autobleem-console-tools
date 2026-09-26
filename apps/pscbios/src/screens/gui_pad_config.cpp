@@ -4,6 +4,7 @@
 #include "gui_pad_config.h"
 #include "core/game_controller_db.h"
 #include "gui/gui.h"
+#include "core/services/environment.h"
 #include "gui/screens/gui_keyboard.h"
 
 #include <ableem/engine/log.h>
@@ -390,8 +391,13 @@ void GuiPadConfig::loop() {
             if (e.type == Event::Type::Quit)
                 menuVisible = false;
             bool power = e.type == Event::Type::KeyDown && (e.key == Key::Sleep || e.key == Key::Escape);
-            bool reset = (e.type == Event::Type::KeyDown && e.key == Key::Reset) ||
-                         (e.type == Event::Type::ButtonDown && e.button == Button::Start);
+            bool reset = e.type == Event::Type::KeyDown && e.key == Key::Reset;
+#ifdef AB_DEBUG_HOST
+            // a dev host's keyboard stands in for Reset through keyboard-as-pad (Space = Start). Never on a
+            // device: there a Start (or a Select arriving as one) is the pad under test, and it switched the
+            // screen to the next pad in the middle of a DS4 test (2026-09-26)
+            reset = reset || (e.type == Event::Type::ButtonDown && e.button == Button::Start);
+#endif
             bool open = e.type == Event::Type::KeyDown && (e.key == Key::Open || e.key == Key::Return);
             if (power) {
                 app.audio().cursor.play();
