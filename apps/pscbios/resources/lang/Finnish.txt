@@ -47,7 +47,6 @@ Could not connect to=Yhteys ei onnistunut verkkoon
 Current Time:=Nykyinen aika:
 discovering...=etsitään...
 Dongle status:=Sovittimen tila:
-Driver mode:=Ajuritila:
 dropped=yhteys katkesi
 DualShock3/SixAxis Wireless Pairing=DualShock3/SixAxis langaton pariliitos
 Edit Network WPA WiFi Credentials=Muokkaa WPA-WiFi-tunnuksia

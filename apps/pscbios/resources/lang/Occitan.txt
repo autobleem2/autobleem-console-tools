@@ -47,7 +47,6 @@ Could not connect to=Impossible de se connectar a
 Current Time:=Ora actuala :
 discovering...=recèrca...
 Dongle status:=Estat del dongle :
-Driver mode:=Mòde del pilòt :
 dropped=desconnectada
 DualShock3/SixAxis Wireless Pairing=Apariament sens fial DualShock3/SixAxis
 Edit Network WPA WiFi Credentials=Modificar los identificants WiFi WPA

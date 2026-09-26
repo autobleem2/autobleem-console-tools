@@ -28,9 +28,7 @@ bool SsidConfig::load(const string &path) {
         return false;
     ssid = lineWithoutCr(in);
     password = lineWithoutCr(in);
-    driverMode = lineWithoutCr(in);
-    if (driverMode.empty())
-        driverMode = "wext";
+    lineWithoutCr(in); // a legacy driver-mode line, if there is one - read and discarded
     return true;
 }
 
@@ -43,7 +41,7 @@ bool SsidConfig::save(const string &path) const {
     ofstream out(path, ios::binary | ios::trunc);
     if (!DirEntry::checkWritable(out, path))
         return false;
-    out << ssid << "\n" << password << "\n" << driverMode << "\n";
+    out << ssid << "\n" << password << "\n";
     return out.good();
 }
 

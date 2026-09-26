@@ -72,7 +72,7 @@ TEST_CASE("NetworkStatus gathers the main screen's facts from the backend") {
     fake.btAdapter_ = true;
 
     fake.setTimezone("UTC");
-    fake.configureWifi("Home Network", "secret", "wext");
+    fake.configureWifi("Home Network", "secret");
     CHECK(fake.configuredSsid == "Home Network");
     CHECK(fake.timezone() == "UTC");
 }
@@ -374,24 +374,33 @@ TEST_CASE("BtDeviceList's battery text") {
     CHECK(BtDeviceList::batteryText(b) == "battery full");
 }
 
-TEST_CASE("SsidConfig reads and writes the three-line ssid.cfg") {
+TEST_CASE("SsidConfig reads and writes the two-line ssid.cfg") {
     TempDir tmp("ssid");
     SsidConfig cfg;
     CHECK_FALSE(cfg.load(tmp.at("ssid.cfg")));
-    CHECK(cfg.driverMode == "wext");
 
-    tmp.writeFile("ssid.cfg", "Home\r\nsecret\r\n\r\n"); // CRLF and an empty driver line survive
+    tmp.writeFile("ssid.cfg", "Home\r\nsecret\r\n"); // CRLF survives
     REQUIRE(cfg.load(tmp.at("ssid.cfg")));
     CHECK(cfg.ssid == "Home");
     CHECK(cfg.password == "secret");
-    CHECK(cfg.driverMode == "wext");
 
-    cfg.driverMode = "nl80211";
     REQUIRE(cfg.save(tmp.at("out.cfg")));
-    CHECK(tmp.readFile("out.cfg") == "Home\nsecret\nnl80211\n");
+    CHECK(tmp.readFile("out.cfg") == "Home\nsecret\n");
 
     cfg.password.clear();
     CHECK_FALSE(cfg.save(tmp.at("out2.cfg"))); // no password: nothing written
+}
+
+TEST_CASE("SsidConfig reads a legacy ssid.cfg with a driver-mode third line, and ignores it") {
+    TempDir tmp("ssid-legacy");
+    SsidConfig cfg;
+    tmp.writeFile("ssid.cfg", "Home\nsecret\nnl80211\n");
+    REQUIRE(cfg.load(tmp.at("ssid.cfg")));
+    CHECK(cfg.ssid == "Home");
+    CHECK(cfg.password == "secret");
+
+    REQUIRE(cfg.save(tmp.at("out.cfg"))); // written back with two lines only
+    CHECK(tmp.readFile("out.cfg") == "Home\nsecret\n");
 }
 
 TEST_CASE("SsidConfig falls back to the SSID in wpa_supplicant.conf, except the old tool's \"1\"") {

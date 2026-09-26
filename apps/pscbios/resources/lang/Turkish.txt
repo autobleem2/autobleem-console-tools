@@ -47,7 +47,6 @@ Could not connect to=Şu ağa bağlanılamadı
 Current Time:=Şu anki saat:
 discovering...=aranıyor...
 Dongle status:=Adaptör durumu:
-Driver mode:=Sürücü modu:
 dropped=bağlantı koptu
 DualShock3/SixAxis Wireless Pairing=DualShock3/SixAxis kablosuz eşleştirme
 Edit Network WPA WiFi Credentials=WPA WiFi ağ bilgilerini düzenle

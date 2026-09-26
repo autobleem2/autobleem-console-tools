@@ -47,7 +47,6 @@ Could not connect to=Nepodarilo sa pripojiť k
 Current Time:=Aktuálny čas:
 discovering...=hľadanie...
 Dongle status:=Stav Dongle:
-Driver mode:=Režim ovládača:
 dropped=odpojené
 DualShock3/SixAxis Wireless Pairing=Bezdrôtové párovanie DualShock3/SixAxis
 Edit Network WPA WiFi Credentials=Upraviť sieťové poverenia WPA WiFi

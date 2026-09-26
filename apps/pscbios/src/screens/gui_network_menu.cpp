@@ -78,7 +78,6 @@ void GuiNetworkMenu::fill() {
     row(Row::Ssid, _("SSID:"), config.ssid);
     row(Row::Password, _("Password:"),
         displayAsterisksInsteadOfPassword ? string(config.password.size(), '*') : config.password);
-    row(Row::DriverMode, _("Driver mode:"), config.driverMode);
     row(Row::TimeZone, _("Timezone:"), timezone);
     row(Row::Connection, _("Connection:"), connection);
     if (!message_.empty())
@@ -135,7 +134,6 @@ string GuiNetworkMenu::getStatusLine() {
         return "|@X| " + _("Write Config/Restart Network") + "   |@O| " + _("Back");
     case Row::InitNetwork:
         return "|@X| " + _("Restart Network") + "   |@O| " + _("Back");
-    case Row::DriverMode:
     case Row::TimeZone:
         return "|@X| " + _("Change") + "   |@O| " + _("Back");
     default:
@@ -169,9 +167,6 @@ void GuiNetworkMenu::doCross_Pressed() {
         break;
     case Row::Password:
         editPassword();
-        break;
-    case Row::DriverMode:
-        config.driverMode = config.driverMode == "wext" ? "nl80211" : "wext";
         break;
     case Row::WriteFile: {
         if (!writeConfig())
@@ -266,7 +261,7 @@ bool GuiNetworkMenu::writeConfig() {
     busy_ = true;
     {
         BusyWork busy(*gui, console, _("Saving the WiFi settings"), [this]() { render(); }, false);
-        console.configureWifi(config.ssid, config.password, config.driverMode);
+        console.configureWifi(config.ssid, config.password);
     }
     busy_ = false;
     if (!console.lastError().empty()) {

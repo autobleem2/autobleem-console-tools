@@ -73,7 +73,7 @@ public:
     // the networks in range, strongest first, one per SSID (hidden ones left out); empty without WiFi, or when the
     // hook stopped it before anything came back
     virtual std::vector<WifiNetwork> scanNetworks() = 0;
-    virtual void configureWifi(const std::string &ssid, const std::string &password, const std::string &driverMode) = 0;
+    virtual void configureWifi(const std::string &ssid, const std::string &password) = 0;
     virtual void restartNetwork() = 0;
     // the connection now (wpa_supplicant's STATUS, a short timeout): false when nothing manages the WiFi interface
     virtual bool wifiStatus(WpaStatus &out) = 0;
@@ -139,7 +139,7 @@ public:
     bool isUp(const std::string &iface) override { return iface == "wlan0"; }
     std::string ipOf(const std::string &iface) override { return iface == "wlan0" ? "192.168.1.23" : ""; }
     std::vector<WifiNetwork> scanNetworks() override;
-    void configureWifi(const std::string &ssid, const std::string &password, const std::string &driverMode) override;
+    void configureWifi(const std::string &ssid, const std::string &password) override;
     void restartNetwork() override;
     bool wifiStatus(WpaStatus &out) override;
     void beginWifiConnect(const std::string &ssid) override;
@@ -160,7 +160,7 @@ public:
     void setTimezone(const std::string &zone) override;
     std::vector<std::string> listTimezones() override;
 
-    std::string configuredSsid, configuredPassword, configuredDriverMode; // what configureWifi() was given
+    std::string configuredSsid, configuredPassword; // what configureWifi() was given
     int restarts = 0;
     bool btAdapter_ = true; // a test can clear this to exercise the "no adapter" path
 

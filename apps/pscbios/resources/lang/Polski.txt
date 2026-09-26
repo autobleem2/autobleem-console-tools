@@ -47,7 +47,6 @@ Could not connect to=Nie udało się połączyć z
 Current Time:=Aktualny czas:
 discovering...=wyszukiwanie...
 Dongle status:=Urządzenie USB:
-Driver mode:=Tryb sterownika:
 dropped=rozłączony
 DualShock3/SixAxis Wireless Pairing=Bezprzewodowe parowanie DualShock3/SixAxis
 Edit Network WPA WiFi Credentials=Edytuj dane logowania WiFi WPA

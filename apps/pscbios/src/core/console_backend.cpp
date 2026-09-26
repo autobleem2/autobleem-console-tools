@@ -98,14 +98,12 @@ vector<WifiNetwork> FakeBackend::scanNetworks() {
             network("Neighbour 5G", -79, "[WPA2-PSK-CCMP][ESS]")};
 }
 
-void FakeBackend::configureWifi(const string &ssid, const string &password, const string &driverMode) {
-    PLOG_INFO << "fake configureWifi \"" << ssid << "\" (password of " << password.size() << " chars), driver "
-              << driverMode;
+void FakeBackend::configureWifi(const string &ssid, const string &password) {
+    PLOG_INFO << "fake configureWifi \"" << ssid << "\" (password of " << password.size() << " chars)";
     lastError_.clear();
     work(600);
     configuredSsid = ssid;
     configuredPassword = password;
-    configuredDriverMode = driverMode;
 }
 
 void FakeBackend::restartNetwork() {

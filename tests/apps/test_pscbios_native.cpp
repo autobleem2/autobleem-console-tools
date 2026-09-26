@@ -158,14 +158,10 @@ NativePaths pathsIn(const TempDir &tmp) {
     tmp.makeSubDir("net");
     tmp.makeSubDir("run");
     tmp.makeSubDir("etc/autobleem");
-    tmp.writeFile("etc/autobleem/dhcpcd.conf.wext", "env wpa_supplicant_driver=wext\n");
-    tmp.writeFile("etc/autobleem/dhcpcd.conf.nl80211", "env wpa_supplicant_driver=nl80211\n");
     NativePaths paths;
     paths.sysClassNet = tmp.at("net");
     paths.wpaRunDir = tmp.at("run");
     paths.wpaSupplicantConf = tmp.at("etc/wpa_supplicant.conf");
-    paths.dhcpcdConf = tmp.at("etc/dhcpcd.conf");
-    paths.kernelConfigDir = tmp.at("etc/autobleem");
     paths.ctrlGroup = "";
     paths.supplicantStartMs = 300;
     paths.kernelMarker = tmp.at("bin/abnet");
@@ -438,14 +434,13 @@ TEST_CASE("NativeBackend configures WiFi through a running wpa_supplicant") {
 
     fake.clearCommands();
     fake.reply("ADD_NETWORK", "0\n");
-    backend.configureWifi("Home Network", "secret123", "wext");
+    backend.configureWifi("Home Network", "secret123");
     CHECK(backend.lastError().empty());
     CHECK(fake.commands() == vector<string>{"REMOVE_NETWORK all", "ADD_NETWORK", "SET_NETWORK 0 ssid \"Home Network\"",
                                             "SET_NETWORK 0 psk \"secret123\"", "ENABLE_NETWORK 0",
                                             "SET update_config 1", "SAVE_CONFIG"});
-    CHECK(tmp.readFile("etc/dhcpcd.conf") == "env wpa_supplicant_driver=wext\n"); // the driver variant copied
-    CHECK_FALSE(ableem::DirEntry::exists(paths.wpaSupplicantConf));               // wpa_supplicant writes its own file
-    CHECK(runs.lines.empty());                                                    // nothing restarted
+    CHECK_FALSE(ableem::DirEntry::exists(paths.wpaSupplicantConf)); // wpa_supplicant writes its own file
+    CHECK(runs.lines.empty());                                      // nothing restarted
 
     WpaStatus status;
     fake.reply("STATUS", "wpa_state=COMPLETED\nssid=Home Network\n");
@@ -465,7 +460,7 @@ TEST_CASE("NativeBackend writes wpa_supplicant.conf and has dhcpcd start it when
     RecordedRuns runs;
     NativeBackend backend(paths, runs.runner());
 
-    backend.configureWifi("Home Network", "secret123", "nl80211");
+    backend.configureWifi("Home Network", "secret123");
     CHECK(backend.lastError().empty());
     CHECK(tmp.readFile("etc/wpa_supplicant.conf") == "ctrl_interface=DIR=" + paths.wpaRunDir +
                                                          "\n"
@@ -475,11 +470,10 @@ TEST_CASE("NativeBackend writes wpa_supplicant.conf and has dhcpcd start it when
                                                          "\tssid=\"Home Network\"\n"
                                                          "\tpsk=\"secret123\"\n"
                                                          "}\n");
-    CHECK(tmp.readFile("etc/dhcpcd.conf") == "env wpa_supplicant_driver=nl80211\n");
     CHECK(runs.lines == vector<string>{"dhcpcd -n wlan0"});
 
     runs.lines.clear();
-    backend.configureWifi("Home Network", "short", "nl80211"); // refused, the file kept
+    backend.configureWifi("Home Network", "short"); // refused, the file kept
     CHECK_FALSE(backend.lastError().empty());
     CHECK(tmp.readFile("etc/wpa_supplicant.conf").find("secret123") != string::npos);
     CHECK(runs.lines.empty());
@@ -506,7 +500,7 @@ TEST_CASE("NativeBackend without a WiFi interface scans nothing and only writes 
     CHECK_FALSE(backend.wlanOn());
     CHECK(backend.scanNetworks().empty());
     CHECK(backend.lastError() == "no WiFi interface");
-    backend.configureWifi("Home Network", "secret123", "wext");
+    backend.configureWifi("Home Network", "secret123");
     CHECK(ableem::DirEntry::exists(paths.wpaSupplicantConf)); // for the dongle plugged in later
     CHECK(runs.lines.empty());
 }

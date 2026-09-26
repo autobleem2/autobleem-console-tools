@@ -27,8 +27,6 @@ struct NativePaths {
     std::string sysClassNet = "/sys/class/net";
     std::string wpaRunDir = "/var/run/wpa_supplicant";          // wpa_supplicant's ctrl_interface DIR
     std::string wpaSupplicantConf = "/etc/wpa_supplicant.conf"; // what dhcpcd's hook starts it with
-    std::string dhcpcdConf = "/etc/dhcpcd.conf";
-    std::string kernelConfigDir = "/etc/autobleem"; // dhcpcd.conf.wext / dhcpcd.conf.nl80211
     // the ctrl_interface GROUP written into a new wpa_supplicant.conf - left out when the system has no such
     // group (wpa_supplicant refuses an unknown one), and when empty
     std::string ctrlGroup = "netdev";
@@ -44,7 +42,7 @@ struct NativePaths {
     int btStatusTimeoutMs = 1500;
     int btRetryMs = 15000;
     // the AutoBleem kernel: its overlay's /bin/abnet is what the 2020 tool (and AbnetBackend) checked - only
-    // looked at, never run; the overlay also brings settime, dhcpcd's wpa_supplicant hook and the driver variants
+    // looked at, never run; the overlay also brings settime and dhcpcd's wpa_supplicant hook
     std::string kernelMarker = "/bin/abnet";
     std::string settime = "/bin/settime";            // the kernel's `settime tzone <zone>` (a bash script)
     std::string timezoneFile = "/etc/timezone";      // what `settime tz` printed (it is a cat of this file)
@@ -78,7 +76,7 @@ public:
     bool isUp(const std::string &iface) override;
     std::string ipOf(const std::string &iface) override;
     std::vector<WifiNetwork> scanNetworks() override;
-    void configureWifi(const std::string &ssid, const std::string &password, const std::string &driverMode) override;
+    void configureWifi(const std::string &ssid, const std::string &password) override;
     void restartNetwork() override;
     bool wifiStatus(WpaStatus &out) override; // of wifiInterface()
     // the connection followed on an attached control connection (re-attached when wpa_supplicant restarts), STATUS
@@ -132,7 +130,6 @@ public:
 
 private:
     bool writeSupplicantConf(const std::string &ssid, const std::string &password);
-    void selectDriverMode(const std::string &driverMode);
     // dhcpcd takes the interface again; its 10-wpa_supplicant hook starts wpa_supplicant from the conf file
     void rebindDhcpcd(const std::string &iface);
     bool waitForSupplicant(const std::string &iface);

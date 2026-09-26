@@ -1,6 +1,6 @@
 //
 // GuiNetworkMenu: the WiFi settings - the SSID (typed, or picked from a scan with each network's signal), the
-// password, the driver mode, the timezone, the connection as wpa_supplicant has it now (re-read every
+// password, the timezone, the connection as wpa_supplicant has it now (re-read every
 // RefreshInterval), and the two actions: writing the settings and restarting the network, or a restart alone.
 // Every action that waits runs under the busy spinner, and after a write or a restart the connection is followed
 // to Connected or the reason it failed (a wrong password, the network not found, no address...) - Circle stops
@@ -39,7 +39,7 @@ public:
     static const unsigned int RefreshInterval = 2000; // ms between re-reads of the connection and timezone
 
 private:
-    enum class Row { Ssid, Password, DriverMode, TimeZone, Connection, Message, WriteFile, InitNetwork };
+    enum class Row { Ssid, Password, TimeZone, Connection, Message, WriteFile, InitNetwork };
     SsidConfig config;
     std::string connection, timezone;
     std::string message_;            // the last failure and why ("" for none): the Message row

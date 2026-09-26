@@ -47,7 +47,6 @@ Could not connect to=Kunne ikke forbinde til
 Current Time:=Aktuel tid:
 discovering...=søger...
 Dongle status:=Dongle-status:
-Driver mode:=Drivertilstand:
 dropped=afbrudt
 DualShock3/SixAxis Wireless Pairing=Trådløs parring af DualShock3/SixAxis
 Edit Network WPA WiFi Credentials=Rediger WPA-WiFi-loginoplysninger

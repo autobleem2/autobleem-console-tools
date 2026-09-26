@@ -47,7 +47,6 @@ Could not connect to=无法连接到
 Current Time:=当前时间：
 discovering...=正在搜索...
 Dongle status:=适配器状态：
-Driver mode:=驱动模式：
 dropped=已断开
 DualShock3/SixAxis Wireless Pairing=DualShock3/SixAxis 无线配对
 Edit Network WPA WiFi Credentials=编辑 WPA WiFi 网络凭据

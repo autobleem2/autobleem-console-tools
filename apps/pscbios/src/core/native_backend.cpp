@@ -280,9 +280,8 @@ vector<WifiNetwork> NativeBackend::scanNetworks() {
 //*******************************
 // NativeBackend::configureWifi
 //*******************************
-void NativeBackend::configureWifi(const string &ssid, const string &password, const string &driverMode) {
+void NativeBackend::configureWifi(const string &ssid, const string &password) {
     lastError_.clear();
-    selectDriverMode(driverMode);
     string iface = wifiInterface();
     if (!iface.empty()) {
         WpaCtrlClient client(iface, paths_.wpaRunDir);
@@ -305,7 +304,7 @@ void NativeBackend::configureWifi(const string &ssid, const string &password, co
 // NativeBackend::restartNetwork
 //*******************************
 // what abnet restart did: wpa_supplicant stopped (TERMINATE, where abnet did a killall), dhcpcd (the
-// dhclient service) restarted - its hook starts wpa_supplicant again, with a changed driver mode too
+// dhclient service) restarted - its hook starts wpa_supplicant again
 void NativeBackend::restartNetwork() {
     lastError_.clear();
     for (const string &iface : wirelessInterfaces()) {
@@ -365,23 +364,6 @@ bool NativeBackend::writeSupplicantConf(const string &ssid, const string &passwo
     }
     PLOG_INFO << "wrote " << paths_.wpaSupplicantConf << (ssid.empty() ? " (no network)" : " for \"" + ssid + "\"");
     return true;
-}
-
-//*******************************
-// NativeBackend::selectDriverMode
-//*******************************
-// dhcpcd.conf sets the driver dhcpcd's hook starts wpa_supplicant with (env wpa_supplicant_driver): one of
-// the kernel's two variants copied over it, as abnet driver_mode did
-void NativeBackend::selectDriverMode(const string &driverMode) {
-    string mode = driverMode == "wext" ? "wext" : "nl80211";
-    string source = paths_.kernelConfigDir + sep + "dhcpcd.conf." + mode;
-    if (!DirEntry::exists(source)) {
-        PLOG_WARNING << "no " << source << " - the driver mode is left as it is";
-        return;
-    }
-    if (!DirEntry::copyFile(source, paths_.dhcpcdConf)) {
-        PLOG_WARNING << "cannot copy " << source << " to " << paths_.dhcpcdConf;
-    }
 }
 
 //*******************************
