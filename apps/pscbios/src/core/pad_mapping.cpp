@@ -167,6 +167,10 @@ string PadMapping::circleInput(const vector<Element> &elements, const string &ma
     return rawInput(mappingLine, "b");
 }
 
+bool PadMapping::isExitKey(ableem::Key key) {
+    return key == ableem::Key::Sleep || key == ableem::Key::Escape || key == ableem::Key::Backspace;
+}
+
 //*******************************
 // PadMapping::mergeAxis
 //*******************************

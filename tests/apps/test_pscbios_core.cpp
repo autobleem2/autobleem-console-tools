@@ -556,3 +556,16 @@ TEST_CASE("PadMapping: the raw input behind Circle, and whether it is held (the 
     CHECK_FALSE(PadMapping::inputHeld("", initial, now));
     CHECK_FALSE(PadMapping::inputHeld("x1", initial, now));
 }
+
+TEST_CASE("PadMapping::isExitKey is Power or a keyboard's Esc/Backspace, never a pad button") {
+    CHECK(PadMapping::isExitKey(ableem::Key::Sleep));
+    CHECK(PadMapping::isExitKey(ableem::Key::Escape));
+    CHECK(PadMapping::isExitKey(ableem::Key::Backspace));
+    // a real pad's Circle is a Button, never a Key - the wizard's loop() only calls isExitKey on a
+    // KeyDown, so a short press of a real pad's Circle cannot reach it at all; only these keys, or the
+    // 2 s hold (PadMapping::inputHeld on the raw joystick), leave the wizard
+    CHECK_FALSE(PadMapping::isExitKey(ableem::Key::Return));
+    CHECK_FALSE(PadMapping::isExitKey(ableem::Key::Reset));
+    CHECK_FALSE(PadMapping::isExitKey(ableem::Key::Open));
+    CHECK_FALSE(PadMapping::isExitKey(ableem::Key::Other));
+}

@@ -440,9 +440,21 @@ void GuiPadConfig::render() {
 // the console's front buttons drive this screen (the pad under test is not to be trusted): Power, Reset
 // and Open; on a keyboard Escape, Start (Space) and Return do the same. Input hands the power button over
 // as a key for the duration instead of powering off.
+//
+// keyboardAsPad is off here, the way GuiKeyboard turns it off: the screen's own job is reading a *pad*
+// raw, so a keyboard's Esc/Backspace must read as keys, never remapped into the very Button::Circle event
+// a real pad also sends (Test stage: the wizard opens it as a GameController too, for the picture, and SDL
+// keeps delivering its events even though Input let its own pads go - see PadMapping::isExitKey). Without
+// this, a short press of a real pad's Circle looked exactly like a keyboard's Esc and closed the wizard at
+// once, instead of only the 2 s hold doing that (checkHoldToExit, below).
 void GuiPadConfig::loop() {
     menuVisible = true;
-    gui->input().setPowerKeyAsKey(true);
+    ableem::Input &input = gui->input();
+    const bool keyboardAsPad = input.keyboardAsPad();
+    const bool rawKeyboard = input.rawKeyboard();
+    input.setKeyboardAsPad(false);
+    input.setRawKeyboard(true);
+    input.setPowerKeyAsKey(true);
     while (menuVisible) {
         render();
         if (!menuVisible)
@@ -451,10 +463,9 @@ void GuiPadConfig::loop() {
         while (gui->input().poll(e)) {
             if (e.type == Event::Type::Quit)
                 menuVisible = false;
-            // a keyboard's Esc (and Backspace) arrive as Circle wherever the keyboard is a pad - the pads
-            // themselves are let go of while this screen shows, so a Circle here is the keyboard's
-            bool power = (e.type == Event::Type::KeyDown && (e.key == Key::Sleep || e.key == Key::Escape)) ||
-                         (e.type == Event::Type::ButtonDown && e.button == Button::Circle);
+            // Power, or a keyboard's Esc/Backspace (isExitKey) - never a pad's own Circle: that only
+            // leaves by the 2 s hold, above
+            bool power = e.type == Event::Type::KeyDown && PadMapping::isExitKey(e.key);
             bool reset = (e.type == Event::Type::KeyDown && e.key == Key::Reset) ||
                          (e.type == Event::Type::ButtonDown && e.button == Button::Start);
             bool open = e.type == Event::Type::KeyDown && (e.key == Key::Open || e.key == Key::Return);
@@ -497,6 +508,8 @@ void GuiPadConfig::loop() {
             }
         }
     }
-    gui->input().setPowerKeyAsKey(false);
+    input.setPowerKeyAsKey(false);
+    input.setKeyboardAsPad(keyboardAsPad);
+    input.setRawKeyboard(rawKeyboard);
     joystick.close();
 }

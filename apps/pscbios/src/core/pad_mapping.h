@@ -9,6 +9,7 @@
 //
 #pragma once
 
+#include <ableem/ui/input.h>    // Key
 #include <ableem/ui/joystick.h> // JoystickState, a plain struct - no SDL behind it
 
 #include <string>
@@ -58,6 +59,15 @@ public:
     // the raw input that is Circle ("b") on this pad: what the wizard mapped it to this time, else what the
     // pad's mapping line says, "" when neither knows - what the wizard's hold-to-exit watches
     static std::string circleInput(const std::vector<Element> &elements, const std::string &mappingLine);
+
+    // Power (Key::Sleep) or a keyboard's Esc/Backspace leaves the wizard at once. The wizard turns
+    // keyboardAsPad off while it shows (ableem::Input::setKeyboardAsPad(false)/setRawKeyboard(true), the
+    // way GuiKeyboard does), so these arrive as keys, never remapped into a Button::Circle event - a real
+    // pad's own Circle only ever reaches the wizard as a button (Test stage: it is opened as a
+    // GameController too, for the picture; SDL keeps sending its events even though Input let its own pads
+    // go), and only the 2 s hold (HoldToExitMs, via inputHeld on the raw joystick) leaves for that; a short
+    // press is mapped/tested as usual
+    static bool isExitKey(ableem::Key key);
 
     static const unsigned HoldToExitMs = 2000; // Circle held this long leaves the wizard
 
