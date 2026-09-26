@@ -1,6 +1,6 @@
 # AutoBleem Dutch Translation - pscbios
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 1 / Total: 102
+# Untranslated: 1 / Total: 114
 
  - Mapping (Available):= - Toewijzing (beschikbaar):
  - Mapping (Not found)= - Toewijzing (niet gevonden)
@@ -13,20 +13,25 @@
 About=
 Active=Actief
 Already paired=Al gekoppeld
+Automatic=Automatisch
 Back=
 Bluetooth controller pairing=Bluetooth-controller koppelen
+Bluetooth controllers=Bluetooth-controllers
 Bluetooth information:=Bluetooth-informatie:
 Buttons:=Knoppen:
 Cancel mapping=Toewijzing annuleren
 Change=Wijzigen
+Choose a network, enter its password, set the time zone=Kies een netwerk, voer het wachtwoord in, stel de tijdzone in
 Code C++ and shell scripts=
 Connect DualShock3 by Bluetooth (Wireless mode)=DualShock3 via Bluetooth verbinden (draadloos)
 Connect other gamepad by Bluetooth=Andere gamepad via Bluetooth verbinden
 connected=verbonden
 Controller=
+Controller mapping=Controllertoewijzing
 Current Time:=Huidige tijd:
 Dongle status:=Dongle-status:
 Driver mode:=Drivermodus:
+DualShock 3 pairing=DualShock 3 koppelen
 DualShock3/SixAxis Wireless Pairing=DualShock3/SixAxis draadloos koppelen
 Edit Network WPA WiFi Credentials=WPA-wifi-gegevens bewerken
 Edit Password=Wachtwoord bewerken
@@ -47,6 +52,7 @@ Gamepad configuration details=Details van de gamepadconfiguratie
 Gamepad input configuration:=Gamepad-invoer:
 Gamepad Support Configuration=Configuratie gamepad-ondersteuning
 Hats:=Hats:
+How a DualShock 3 pairs over its USB cable=Hoe een DualShock 3 via zijn USB-kabel koppelt
 In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.=In AutoBleem worden DualShock/SixAxis-controllers automatisch gekoppeld als je een compatibele Bluetooth-dongle en de AutoBleem-kernel hebt geïnstalleerd.
 Interface details:=Interfacedetails:
 IP Address:=IP-adres:
@@ -58,6 +64,7 @@ Localization support=
 Mapping Complete - press (OPEN) to save. (POWER) to cancel.=Toewijzing voltooid - druk op (OPEN) om op te slaan, (POWER) om te annuleren.
 Mapping stored to database=Toewijzing opgeslagen in de database
 Move your sticks to state shown or press (OPEN) if stick position not avaliable.=Beweeg de sticks zoals getoond of druk op (OPEN) als die stickpositie niet bestaat.
+Network & Controllers=Netwerk & controllers
 new=nieuw
 Next pad=Volgende pad
 No Bluetooth adapter found.=Geen Bluetooth-adapter gevonden.
@@ -72,7 +79,9 @@ NOTE 2: In case you pair the controller back to PS3 or other console you have to
 NOTE 3: You do not need to do this procedure in this screen. USB pairing works on any screen as soon console is powered on.=OPMERKING 3: Dit hoeft niet in dit scherm. USB-koppelen werkt in elk scherm zodra de console aanstaat.
 NOTE 4: Pairing information is saved in console, so next time just press PlayStation Home on the controller and it will work in AutoBleem=OPMERKING 4: De koppeling wordt in de console bewaard; de volgende keer is een druk op PlayStation Home op de controller genoeg en werkt hij in AutoBleem
 NOTE: Make sure none of the buttons are pressed before mapping and all analog sticks are in default position.=OPMERKING: Zorg dat er vóór het toewijzen geen knop is ingedrukt en dat alle sticks in de ruststand staan.
+On the console they come with the AutoBleem kernel; elsewhere with NetworkManager.=Op de console komen ze met de AutoBleem-kernel, elders met NetworkManager.
 Pair=Koppelen
+Pair a DualShock 4 or another Bluetooth gamepad=Koppel een DualShock 4 of een andere Bluetooth-gamepad
 paired=gekoppeld
 Pairing=Koppelen met
 Password:=Wachtwoord:
@@ -104,12 +113,15 @@ Setup/Test Game Controller or update mapping=Controller instellen/testen of toew
 SSID:=SSID:
 Support via Discord:=
 System=
+Test a controller and map its buttons=Test een controller en wijs zijn knoppen toe
 Testing=
+The Wi-Fi settings need the system's network tools, which are not there.=De wifi-instellingen hebben de netwerktools van het systeem nodig, en die ontbreken.
 Timezone:=Tijdzone:
 To pair a controller of this kind please follow the procedure=Volg deze procedure om zo'n controller te koppelen
 Update mapping=Toewijzing bijwerken
 Updating mapping=Toewijzing wordt bijgewerkt
 Waiting for IP Address...=Wachten op IP-adres...
+Wi-Fi network=Wifi-netwerk
 WiFi information:=Wifi-informatie:
 WiFi Settings=Wifi-instellingen
 Write Config/Restart Network=Config. wegschrijven/netwerk herstarten

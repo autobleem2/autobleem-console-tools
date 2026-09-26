@@ -45,6 +45,8 @@ ab_add_extension(pscbios ${pscbios_host}
         src/screens/gui_bt_pairing.h
         src/screens/gui_gamepad_menu.cpp
         src/screens/gui_gamepad_menu.h
+        src/screens/gui_network_hub.cpp
+        src/screens/gui_network_hub.h
         src/screens/gui_network_menu.cpp
         src/screens/gui_network_menu.h
         src/screens/gui_pad_config.cpp

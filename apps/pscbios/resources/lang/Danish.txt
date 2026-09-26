@@ -1,6 +1,6 @@
 # AutoBleem Danish Translation - pscbios
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 1 / Total: 102
+# Untranslated: 1 / Total: 114
 
  - Mapping (Available):= - Mapping (tilgængelig):
  - Mapping (Not found)= - Mapping (ikke fundet)
@@ -13,20 +13,25 @@
 About=
 Active=Aktiv
 Already paired=Allerede parret
+Automatic=Automatisk
 Back=
 Bluetooth controller pairing=Parring af Bluetooth-controller
+Bluetooth controllers=Bluetooth-controllere
 Bluetooth information:=Bluetooth-oplysninger:
 Buttons:=Knapper:
 Cancel mapping=Annuller mapping
 Change=Skift
+Choose a network, enter its password, set the time zone=Vælg et netværk, indtast adgangskoden, indstil tidszonen
 Code C++ and shell scripts=
 Connect DualShock3 by Bluetooth (Wireless mode)=Tilslut DualShock3 via Bluetooth (trådløst)
 Connect other gamepad by Bluetooth=Tilslut en anden gamepad via Bluetooth
 connected=tilsluttet
 Controller=
+Controller mapping=Controller-tilknytning
 Current Time:=Aktuel tid:
 Dongle status:=Dongle-status:
 Driver mode:=Drivertilstand:
+DualShock 3 pairing=Parring af DualShock 3
 DualShock3/SixAxis Wireless Pairing=Trådløs parring af DualShock3/SixAxis
 Edit Network WPA WiFi Credentials=Rediger WPA-WiFi-loginoplysninger
 Edit Password=Rediger adgangskode
@@ -47,6 +52,7 @@ Gamepad configuration details=Detaljer om gamepad-konfiguration
 Gamepad input configuration:=Gamepad-input:
 Gamepad Support Configuration=Konfiguration af gamepad-understøttelse
 Hats:=Hats:
+How a DualShock 3 pairs over its USB cable=Sådan parres en DualShock 3 via sit USB-kabel
 In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.=I AutoBleem parres DualShock/SixAxis-controllere automatisk, hvis du har en kompatibel Bluetooth-dongle og AutoBleem-kernen installeret.
 Interface details:=Interfacedetaljer:
 IP Address:=IP-adresse:
@@ -58,6 +64,7 @@ Localization support=
 Mapping Complete - press (OPEN) to save. (POWER) to cancel.=Mapping fuldført - tryk (OPEN) for at gemme, (POWER) for at annullere.
 Mapping stored to database=Mapping gemt i databasen
 Move your sticks to state shown or press (OPEN) if stick position not avaliable.=Flyt styrepindene som vist, eller tryk (OPEN), hvis positionen ikke findes.
+Network & Controllers=Netværk og controllere
 new=ny
 Next pad=Næste pad
 No Bluetooth adapter found.=Ingen Bluetooth-adapter fundet.
@@ -72,7 +79,9 @@ NOTE 2: In case you pair the controller back to PS3 or other console you have to
 NOTE 3: You do not need to do this procedure in this screen. USB pairing works on any screen as soon console is powered on.=BEMÆRK 3: Proceduren behøver ikke udføres på dette skærmbillede. USB-parring virker overalt, så snart konsollen er tændt.
 NOTE 4: Pairing information is saved in console, so next time just press PlayStation Home on the controller and it will work in AutoBleem=BEMÆRK 4: Parringen gemmes i konsollen; næste gang er et tryk på PlayStation Home på controlleren nok, og den virker i AutoBleem
 NOTE: Make sure none of the buttons are pressed before mapping and all analog sticks are in default position.=BEMÆRK: Sørg for, at ingen knapper er trykket ned før mapping, og at alle styrepinde står i hvilestilling.
+On the console they come with the AutoBleem kernel; elsewhere with NetworkManager.=På konsollen følger de med AutoBleem-kernen, andre steder med NetworkManager.
 Pair=Parre
+Pair a DualShock 4 or another Bluetooth gamepad=Par en DualShock 4 eller en anden Bluetooth-gamepad
 paired=parret
 Pairing=Parrer
 Password:=Adgangskode:
@@ -104,12 +113,15 @@ Setup/Test Game Controller or update mapping=Opsæt/test controller eller opdate
 SSID:=SSID:
 Support via Discord:=
 System=
+Test a controller and map its buttons=Test en controller og tilknyt dens knapper
 Testing=
+The Wi-Fi settings need the system's network tools, which are not there.=Wi-Fi-indstillingerne kræver systemets netværksværktøjer, som ikke findes.
 Timezone:=Tidszone:
 To pair a controller of this kind please follow the procedure=Følg denne fremgangsmåde for at parre en controller af denne type
 Update mapping=Opdater mapping
 Updating mapping=Opdaterer mapping
 Waiting for IP Address...=Venter på IP-adresse...
+Wi-Fi network=Wi-Fi-netværk
 WiFi information:=WiFi-oplysninger:
 WiFi Settings=WiFi-indstillinger
 Write Config/Restart Network=Skriv konfiguration/genstart netværk

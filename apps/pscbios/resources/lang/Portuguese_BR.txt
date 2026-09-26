@@ -1,6 +1,6 @@
 # AutoBleem Portuguese_BR Translation - pscbios
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 1 / Total: 102
+# Untranslated: 1 / Total: 114
 
  - Mapping (Available):= - Mapeamento (disponível):
  - Mapping (Not found)= - Mapeamento (não encontrado)
@@ -13,20 +13,25 @@
 About=Sobre o Produto
 Active=Ativo
 Already paired=Já pareado
+Automatic=Automático
 Back=
 Bluetooth controller pairing=Pareamento de controle Bluetooth
+Bluetooth controllers=Controles Bluetooth
 Bluetooth information:=Informações do Bluetooth:
 Buttons:=Botões:
 Cancel mapping=Cancelar mapeamento
 Change=Mudar
+Choose a network, enter its password, set the time zone=Escolha uma rede, digite a senha, defina o fuso horário
 Code C++ and shell scripts=
 Connect DualShock3 by Bluetooth (Wireless mode)=Conectar DualShock3 por Bluetooth (sem fio)
 Connect other gamepad by Bluetooth=Conectar outro controle por Bluetooth
 connected=conectado
 Controller=
+Controller mapping=Mapeamento do controle
 Current Time:=Dia/Hora atual:
 Dongle status:=Status do Conector:
 Driver mode:=Modo do driver:
+DualShock 3 pairing=Pareamento do DualShock 3
 DualShock3/SixAxis Wireless Pairing=Pareamento sem fio DualShock3/SixAxis
 Edit Network WPA WiFi Credentials=Editar Credenciais de Rede WPA WiFi
 Edit Password=Editar Senha
@@ -47,6 +52,7 @@ Gamepad configuration details=Detalhes da configuração do controle
 Gamepad input configuration:=Entradas do controle:
 Gamepad Support Configuration=Configuração de suporte a controles
 Hats:=Direcionais:
+How a DualShock 3 pairs over its USB cable=Como um DualShock 3 é pareado pelo cabo USB
 In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.=No AutoBleem, controles DualShock/SixAxis são pareados automaticamente se você tiver um adaptador Bluetooth compatível e o kernel do AutoBleem instalado.
 Interface details:=Detalhes da Interface:
 IP Address:=Endereço IP:
@@ -58,6 +64,7 @@ Localization support=
 Mapping Complete - press (OPEN) to save. (POWER) to cancel.=Mapeamento concluído - pressione (OPEN) para salvar, (POWER) para cancelar.
 Mapping stored to database=Mapeamento salvo no banco de dados
 Move your sticks to state shown or press (OPEN) if stick position not avaliable.=Mova os analógicos como mostrado ou pressione (OPEN) se essa posição não existir.
+Network & Controllers=Rede e controles
 new=novo
 Next pad=Próximo controle
 No Bluetooth adapter found.=Nenhum adaptador Bluetooth encontrado.
@@ -72,7 +79,9 @@ NOTE 2: In case you pair the controller back to PS3 or other console you have to
 NOTE 3: You do not need to do this procedure in this screen. USB pairing works on any screen as soon console is powered on.=NOTA 3: Não é preciso fazer isso nesta tela. O pareamento por USB funciona em qualquer tela assim que o console está ligado.
 NOTE 4: Pairing information is saved in console, so next time just press PlayStation Home on the controller and it will work in AutoBleem=NOTA 4: O pareamento fica salvo no console; da próxima vez basta pressionar PlayStation Home no controle e ele funcionará no AutoBleem
 NOTE: Make sure none of the buttons are pressed before mapping and all analog sticks are in default position.=NOTA: Antes de mapear, verifique que nenhum botão está pressionado e que todos os analógicos estão na posição de repouso.
+On the console they come with the AutoBleem kernel; elsewhere with NetworkManager.=No console eles vêm com o kernel AutoBleem; em outros lugares, com o NetworkManager.
 Pair=Parear
+Pair a DualShock 4 or another Bluetooth gamepad=Pareie um DualShock 4 ou outro controle Bluetooth
 paired=pareado
 Pairing=Pareando
 Password:=Senha:
@@ -104,12 +113,15 @@ Setup/Test Game Controller or update mapping=Configurar/testar um controle ou at
 SSID:=SSID:
 Support via Discord:=Suporte via Discord:
 System=
+Test a controller and map its buttons=Teste um controle e mapeie seus botões
 Testing=
+The Wi-Fi settings need the system's network tools, which are not there.=As configurações de Wi-Fi precisam das ferramentas de rede do sistema, que não estão presentes.
 Timezone:=Fuso horário:
 To pair a controller of this kind please follow the procedure=Para parear um controle desse tipo, siga o procedimento
 Update mapping=Atualizar mapeamento
 Updating mapping=Atualizando mapeamento
 Waiting for IP Address...=Esperando por Endereço IP...
+Wi-Fi network=Rede Wi-Fi
 WiFi information:=Informações de WiFi:
 WiFi Settings=COnfigurações de WiFi:
 Write Config/Restart Network=Salvar Config/Reiniciar Rede

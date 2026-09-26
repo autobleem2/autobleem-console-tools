@@ -1,6 +1,6 @@
 # AutoBleem Finnish Translation - pscbios
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 1 / Total: 102
+# Untranslated: 1 / Total: 114
 
  - Mapping (Available):= - Määritys (saatavilla):
  - Mapping (Not found)= - Määritys (ei löydy)
@@ -13,20 +13,25 @@
 About=
 Active=Aktiivinen
 Already paired=Jo pariliitetty
+Automatic=Automaattinen
 Back=
 Bluetooth controller pairing=Bluetooth-ohjaimen pariliitos
+Bluetooth controllers=Bluetooth-ohjaimet
 Bluetooth information:=Bluetooth-tiedot:
 Buttons:=Painikkeet:
 Cancel mapping=Peruuta määritys
 Change=Muuta
+Choose a network, enter its password, set the time zone=Valitse verkko, anna salasana, aseta aikavyöhyke
 Code C++ and shell scripts=
 Connect DualShock3 by Bluetooth (Wireless mode)=Yhdistä DualShock3 Bluetoothilla (langaton)
 Connect other gamepad by Bluetooth=Yhdistä muu ohjain Bluetoothilla
 connected=yhdistetty
 Controller=
+Controller mapping=Ohjaimen määritys
 Current Time:=Nykyinen aika:
 Dongle status:=Sovittimen tila:
 Driver mode:=Ajuritila:
+DualShock 3 pairing=DualShock 3 -yhdistäminen
 DualShock3/SixAxis Wireless Pairing=DualShock3/SixAxis langaton pariliitos
 Edit Network WPA WiFi Credentials=Muokkaa WPA-WiFi-tunnuksia
 Edit Password=Muokkaa salasanaa
@@ -47,6 +52,7 @@ Gamepad configuration details=Ohjaimen määrityksen tiedot
 Gamepad input configuration:=Ohjaimen syötteet:
 Gamepad Support Configuration=Ohjaintuen määritys
 Hats:=Ristiohjaimet:
+How a DualShock 3 pairs over its USB cable=Miten DualShock 3 yhdistetään USB-kaapelilla
 In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.=AutoBleemissä DualShock/SixAxis-ohjaimet pariliitetään automaattisesti, jos sinulla on yhteensopiva Bluetooth-sovitin ja AutoBleem-ydin asennettuna.
 Interface details:=Liitännän tiedot:
 IP Address:=IP-osoite:
@@ -58,6 +64,7 @@ Localization support=
 Mapping Complete - press (OPEN) to save. (POWER) to cancel.=Määritys valmis - tallenna painamalla (OPEN), peruuta painamalla (POWER).
 Mapping stored to database=Määritys tallennettu tietokantaan
 Move your sticks to state shown or press (OPEN) if stick position not avaliable.=Siirrä tatit näytettyyn asentoon tai paina (OPEN), jos asentoa ei ole.
+Network & Controllers=Verkko ja ohjaimet
 new=uusi
 Next pad=Seuraava ohjain
 No Bluetooth adapter found.=Bluetooth-sovitinta ei löytynyt.
@@ -72,7 +79,9 @@ NOTE 2: In case you pair the controller back to PS3 or other console you have to
 NOTE 3: You do not need to do this procedure in this screen. USB pairing works on any screen as soon console is powered on.=HUOMAUTUS 3: Toimenpidettä ei tarvitse tehdä tässä näkymässä. USB-pariliitos toimii missä tahansa näkymässä heti, kun konsoli on päällä.
 NOTE 4: Pairing information is saved in console, so next time just press PlayStation Home on the controller and it will work in AutoBleem=HUOMAUTUS 4: Pariliitos tallentuu konsoliin; seuraavalla kerralla riittää PlayStation Home -painikkeen painallus ohjaimessa, ja se toimii AutoBleemissä
 NOTE: Make sure none of the buttons are pressed before mapping and all analog sticks are in default position.=HUOMAUTUS: Varmista ennen määritystä, ettei mikään painike ole painettuna ja että kaikki tatit ovat lepoasennossa.
+On the console they come with the AutoBleem kernel; elsewhere with NetworkManager.=Konsolissa ne tulevat AutoBleem-ytimen mukana, muualla NetworkManagerin.
 Pair=Pariliitä
+Pair a DualShock 4 or another Bluetooth gamepad=Yhdistä DualShock 4 tai muu Bluetooth-peliohjain
 paired=pariliitetty
 Pairing=Pariliitetään
 Password:=Salasana:
@@ -104,12 +113,15 @@ Setup/Test Game Controller or update mapping=Määritä/testaa ohjain tai päivi
 SSID:=SSID:
 Support via Discord:=
 System=
+Test a controller and map its buttons=Testaa ohjain ja määritä sen painikkeet
 Testing=
+The Wi-Fi settings need the system's network tools, which are not there.=Wi-Fi-asetukset tarvitsevat järjestelmän verkkotyökaluja, joita ei ole.
 Timezone:=Aikavyöhyke:
 To pair a controller of this kind please follow the procedure=Pariliitä tällainen ohjain seuraavasti
 Update mapping=Päivitä määritys
 Updating mapping=Päivitetään määritystä
 Waiting for IP Address...=Odotetaan IP-osoitetta...
+Wi-Fi network=Wi-Fi-verkko
 WiFi information:=WiFi-tiedot:
 WiFi Settings=WiFi-asetukset
 Write Config/Restart Network=Kirjoita asetukset/käynnistä verkko uudelleen

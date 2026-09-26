@@ -1,6 +1,6 @@
 # AutoBleem Italiano Translation - pscbios
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 1 / Total: 102
+# Untranslated: 1 / Total: 114
 
  - Mapping (Available):= - Mappatura (disponibile):
  - Mapping (Not found)= - Mappatura (non trovata)
@@ -13,20 +13,25 @@
 About=Informazioni sul
 Active=Attivo
 Already paired=Già associato
+Automatic=Automatico
 Back=
 Bluetooth controller pairing=Associazione controller Bluetooth
+Bluetooth controllers=Controller Bluetooth
 Bluetooth information:=Informazioni Bluetooth:
 Buttons:=Tasti:
 Cancel mapping=Annulla mappatura
 Change=Cambia
+Choose a network, enter its password, set the time zone=Scegli una rete, inserisci la password, imposta il fuso orario
 Code C++ and shell scripts=
 Connect DualShock3 by Bluetooth (Wireless mode)=Collega DualShock3 via Bluetooth (senza fili)
 Connect other gamepad by Bluetooth=Collega un altro gamepad via Bluetooth
 connected=connesso
 Controller=
+Controller mapping=Mappatura del controller
 Current Time:=Ora Corrente:
 Dongle status:=Stato del dongle:
 Driver mode:=Modalita' driver:
+DualShock 3 pairing=Associazione DualShock 3
 DualShock3/SixAxis Wireless Pairing=Associazione senza fili DualShock3/SixAxis
 Edit Network WPA WiFi Credentials=Modifica le Credenziali della Rete WiFi
 Edit Password=Modifica Password
@@ -47,6 +52,7 @@ Gamepad configuration details=Dettagli della configurazione del gamepad
 Gamepad input configuration:=Ingressi del gamepad:
 Gamepad Support Configuration=Configurazione del supporto gamepad
 Hats:=Croce:
+How a DualShock 3 pairs over its USB cable=Come si associa un DualShock 3 tramite il cavo USB
 In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.=In AutoBleem i controller DualShock/SixAxis si associano automaticamente se hai un dongle Bluetooth compatibile e il kernel AutoBleem installato.
 Interface details:=Dettagli interfaccia:
 IP Address:=Indirizzo IP:
@@ -58,6 +64,7 @@ Localization support=
 Mapping Complete - press (OPEN) to save. (POWER) to cancel.=Mappatura completata - premi (OPEN) per salvare, (POWER) per annullare.
 Mapping stored to database=Mappatura salvata nel database
 Move your sticks to state shown or press (OPEN) if stick position not avaliable.=Muovi gli stick come mostrato o premi (OPEN) se quella posizione non esiste.
+Network & Controllers=Rete e controller
 new=nuovo
 Next pad=Pad successivo
 No Bluetooth adapter found.=Nessun adattatore Bluetooth trovato.
@@ -72,7 +79,9 @@ NOTE 2: In case you pair the controller back to PS3 or other console you have to
 NOTE 3: You do not need to do this procedure in this screen. USB pairing works on any screen as soon console is powered on.=NOTA 3: Non serve farlo in questa schermata. L'associazione USB funziona in qualsiasi schermata appena la console è accesa.
 NOTE 4: Pairing information is saved in console, so next time just press PlayStation Home on the controller and it will work in AutoBleem=NOTA 4: L'associazione viene salvata nella console: la prossima volta basta premere PlayStation Home sul controller e funzionerà in AutoBleem
 NOTE: Make sure none of the buttons are pressed before mapping and all analog sticks are in default position.=NOTA: Prima della mappatura assicurati che nessun tasto sia premuto e che tutti gli stick analogici siano a riposo.
+On the console they come with the AutoBleem kernel; elsewhere with NetworkManager.=Sulla console arrivano con il kernel AutoBleem; altrove con NetworkManager.
 Pair=Associa
+Pair a DualShock 4 or another Bluetooth gamepad=Associa un DualShock 4 o un altro gamepad Bluetooth
 paired=associato
 Pairing=Associazione di
 Password:=Password:
@@ -104,12 +113,15 @@ Setup/Test Game Controller or update mapping=Configura/prova un controller o agg
 SSID:=SSID:
 Support via Discord:=Supporto via Discord:
 System=
+Test a controller and map its buttons=Prova un controller e mappa i suoi tasti
 Testing=
+The Wi-Fi settings need the system's network tools, which are not there.=Le impostazioni Wi-Fi richiedono gli strumenti di rete del sistema, che mancano.
 Timezone:=Fuso Orario:
 To pair a controller of this kind please follow the procedure=Per associare un controller di questo tipo segui la procedura
 Update mapping=Aggiorna mappatura
 Updating mapping=Aggiornamento della mappatura
 Waiting for IP Address...=In attesa dell'Indirizzo IP...
+Wi-Fi network=Rete Wi-Fi
 WiFi information:=Informazioni WiFi:
 WiFi Settings=Impostazioni WiFi
 Write Config/Restart Network=Scrivi Configurazione/Riavvia Rete

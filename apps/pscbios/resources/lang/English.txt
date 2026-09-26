@@ -1,6 +1,6 @@
 # AutoBleem English Translation
 # Format: English Text=Translated Text
-# Untranslated: 0 / Total: 114
+# Untranslated: 0 / Total: 126
 
  - Mapping (Available):= - Mapping (Available):
  - Mapping (Not found)= - Mapping (Not found)
@@ -13,20 +13,25 @@
 About=About
 Active=Active
 Already paired=Already paired
+Automatic=Automatic
 Back=Back
 Bluetooth controller pairing=Bluetooth controller pairing
+Bluetooth controllers=Bluetooth controllers
 Bluetooth information:=Bluetooth information:
 Buttons:=Buttons:
 Cancel mapping=Cancel mapping
 Change=Change
+Choose a network, enter its password, set the time zone=Choose a network, enter its password, set the time zone
 Code C++ and shell scripts=Code C++ and shell scripts
 Connect DualShock3 by Bluetooth (Wireless mode)=Connect DualShock3 by Bluetooth (Wireless mode)
 Connect other gamepad by Bluetooth=Connect other gamepad by Bluetooth
 connected=connected
 Controller=Controller
+Controller mapping=Controller mapping
 Current Time:=Current Time:
 Dongle status:=Dongle status:
 Driver mode:=Driver mode:
+DualShock 3 pairing=DualShock 3 pairing
 DualShock3/SixAxis Wireless Pairing=DualShock3/SixAxis Wireless Pairing
 Edit Network WPA WiFi Credentials=Edit Network WPA WiFi Credentials
 Edit Password=Edit Password
@@ -47,6 +52,7 @@ Gamepad configuration details=Gamepad configuration details
 Gamepad input configuration:=Gamepad input configuration:
 Gamepad Support Configuration=Gamepad Support Configuration
 Hats:=Hats:
+How a DualShock 3 pairs over its USB cable=How a DualShock 3 pairs over its USB cable
 In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.=In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.
 Interface details:=Interface details:
 IP Address:=IP Address:
@@ -58,6 +64,7 @@ Localization support=Localization support
 Mapping Complete - press (OPEN) to save. (POWER) to cancel.=Mapping Complete - press (OPEN) to save. (POWER) to cancel.
 Mapping stored to database=Mapping stored to database
 Move your sticks to state shown or press (OPEN) if stick position not avaliable.=Move your sticks to state shown or press (OPEN) if stick position not avaliable.
+Network & Controllers=Network & Controllers
 new=new
 Next pad=Next pad
 No Bluetooth adapter found.=No Bluetooth adapter found.
@@ -72,7 +79,9 @@ NOTE 2: In case you pair the controller back to PS3 or other console you have to
 NOTE 3: You do not need to do this procedure in this screen. USB pairing works on any screen as soon console is powered on.=NOTE 3: You do not need to do this procedure in this screen. USB pairing works on any screen as soon console is powered on.
 NOTE 4: Pairing information is saved in console, so next time just press PlayStation Home on the controller and it will work in AutoBleem=NOTE 4: Pairing information is saved in console, so next time just press PlayStation Home on the controller and it will work in AutoBleem
 NOTE: Make sure none of the buttons are pressed before mapping and all analog sticks are in default position.=NOTE: Make sure none of the buttons are pressed before mapping and all analog sticks are in default position.
+On the console they come with the AutoBleem kernel; elsewhere with NetworkManager.=On the console they come with the AutoBleem kernel; elsewhere with NetworkManager.
 Pair=Pair
+Pair a DualShock 4 or another Bluetooth gamepad=Pair a DualShock 4 or another Bluetooth gamepad
 paired=paired
 Pairing=Pairing
 Password:=Password:
@@ -104,12 +113,15 @@ Setup/Test Game Controller or update mapping=Setup/Test Game Controller or updat
 SSID:=SSID:
 Support via Discord:=Support via Discord:
 System=System
+Test a controller and map its buttons=Test a controller and map its buttons
 Testing=Testing
+The Wi-Fi settings need the system's network tools, which are not there.=The Wi-Fi settings need the system's network tools, which are not there.
 Timezone:=Timezone:
 To pair a controller of this kind please follow the procedure=To pair a controller of this kind please follow the procedure
 Update mapping=Update mapping
 Updating mapping=Updating mapping
 Waiting for IP Address...=Waiting for IP Address...
+Wi-Fi network=Wi-Fi network
 WiFi information:=WiFi information:
 WiFi Settings=WiFi Settings
 Write Config/Restart Network=Write Config/Restart Network

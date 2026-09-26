@@ -26,8 +26,12 @@ string masked(const string &password) {
 //*******************************
 void GuiNetworkMenu::init() {
     GuiMenuBase::init();
-    // ssid.cfg if there is one, else the SSID an earlier setup left in wpa_supplicant.conf
-    if (!config.load(SsidConfig::defaultPath()))
+    ConsoleBackend &console = PscBios::get().console();
+    // NetworkManager (a Pi, the PC stick) keeps the credentials itself: the network it is on is the start.
+    // The console: ssid.cfg if there is one, else the SSID an earlier setup left in wpa_supplicant.conf
+    if (console.keepsWifiSettings())
+        config.ssid = console.currentSsid();
+    else if (!config.load(SsidConfig::defaultPath()))
         config.ssid = SsidConfig::ssidFromWpaSupplicant(SsidConfig::wpaSupplicantPath());
     refresh();
     fill();
@@ -52,7 +56,7 @@ void GuiNetworkMenu::fill() {
     };
     row(_("SSID:"), config.ssid);
     row(_("Password:"), masked(config.password)); // on the screen only while it is typed
-    row(_("Driver mode:"), config.driverMode);
+    row(_("Driver mode:"), PscBios::get().console().hasDriverMode() ? config.driverMode : _("Automatic"));
     row(_("Timezone:"), timezone);
     row(_("IP Address:"), ipAddress);
     row(_("Write Configuration/Restart Network"), "");
@@ -93,6 +97,9 @@ string GuiNetworkMenu::getStatusLine() {
     case InitNetwork:
         return "|@X| " + _("Restart Network") + "   |@O| " + _("Back");
     case DriverMode:
+        if (!PscBios::get().console().hasDriverMode())
+            return "|@O| " + _("Back");
+        return "|@X| " + _("Change") + "   |@O| " + _("Back");
     case TimeZone:
         return "|@X| " + _("Change") + "   |@O| " + _("Back");
     default:
@@ -128,7 +135,8 @@ void GuiNetworkMenu::doCross_Pressed() {
         editPassword();
         break;
     case DriverMode:
-        config.driverMode = config.driverMode == "wext" ? "nl80211" : "wext";
+        if (PscBios::get().console().hasDriverMode())
+            config.driverMode = config.driverMode == "wext" ? "nl80211" : "wext";
         break;
     case WriteFile: {
         writeConfig();
@@ -183,9 +191,16 @@ void GuiNetworkMenu::scanSsid() {
 }
 
 void GuiNetworkMenu::writeConfig() {
+    ConsoleBackend &console = PscBios::get().console();
+    if (console.keepsWifiSettings()) {
+        // no ssid.cfg (no password on the stick); an open network has no password
+        if (!config.ssid.empty())
+            console.configureWifi(config.ssid, config.password, config.driverMode);
+        return;
+    }
     if (!config.save(SsidConfig::defaultPath()))
         return; // an empty SSID or password: nothing to hand the kernel
-    PscBios::get().console().configureWifi(config.ssid, config.password, config.driverMode);
+    console.configureWifi(config.ssid, config.password, config.driverMode);
 }
 
 // the two messages are the only feedback abnet gives: the spinner over this screen, with each in turn

@@ -1,6 +1,6 @@
 # AutoBleem Chinese_Simplified Translation - pscbios
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 1 / Total: 102
+# Untranslated: 1 / Total: 114
 
  - Mapping (Available):= - 映射（可用）：
  - Mapping (Not found)= - 映射（未找到）
@@ -13,20 +13,25 @@
 About=
 Active=已启用
 Already paired=已配对
+Automatic=自动
 Back=
 Bluetooth controller pairing=蓝牙手柄配对
+Bluetooth controllers=蓝牙手柄
 Bluetooth information:=蓝牙信息：
 Buttons:=按键：
 Cancel mapping=取消映射
 Change=更改
+Choose a network, enter its password, set the time zone=选择网络、输入密码、设置时区
 Code C++ and shell scripts=
 Connect DualShock3 by Bluetooth (Wireless mode)=通过蓝牙连接 DualShock3（无线模式）
 Connect other gamepad by Bluetooth=通过蓝牙连接其他手柄
 connected=已连接
 Controller=
+Controller mapping=手柄映射
 Current Time:=当前时间：
 Dongle status:=适配器状态：
 Driver mode:=驱动模式：
+DualShock 3 pairing=DualShock 3 配对
 DualShock3/SixAxis Wireless Pairing=DualShock3/SixAxis 无线配对
 Edit Network WPA WiFi Credentials=编辑 WPA WiFi 网络凭据
 Edit Password=编辑密码
@@ -47,6 +52,7 @@ Gamepad configuration details=手柄配置详情
 Gamepad input configuration:=手柄输入：
 Gamepad Support Configuration=手柄支持配置
 Hats:=方向键：
+How a DualShock 3 pairs over its USB cable=如何通过 USB 线配对 DualShock 3
 In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.=在 AutoBleem 中，如果装有兼容的蓝牙适配器和 AutoBleem 内核，DualShock/SixAxis 手柄会自动配对。
 Interface details:=接口详情：
 IP Address:=IP 地址：
@@ -58,6 +64,7 @@ Localization support=
 Mapping Complete - press (OPEN) to save. (POWER) to cancel.=映射完成 - 按 (OPEN) 保存，按 (POWER) 取消。
 Mapping stored to database=映射已保存到数据库
 Move your sticks to state shown or press (OPEN) if stick position not avaliable.=请把摇杆推到所示位置；若没有该位置，请按 (OPEN)。
+Network & Controllers=网络与手柄
 new=新
 Next pad=下一个手柄
 No Bluetooth adapter found.=未找到蓝牙适配器。
@@ -72,7 +79,9 @@ NOTE 2: In case you pair the controller back to PS3 or other console you have to
 NOTE 3: You do not need to do this procedure in this screen. USB pairing works on any screen as soon console is powered on.=注 3：不必在此画面进行。只要主机开机，USB 配对在任何画面都有效。
 NOTE 4: Pairing information is saved in console, so next time just press PlayStation Home on the controller and it will work in AutoBleem=注 4：配对信息保存在主机中，下次只需按手柄上的 PlayStation Home 键即可在 AutoBleem 中使用
 NOTE: Make sure none of the buttons are pressed before mapping and all analog sticks are in default position.=注意：映射前请确认没有按下任何按键，并且所有摇杆都处于回中位置。
+On the console they come with the AutoBleem kernel; elsewhere with NetworkManager.=在主机上它们随 AutoBleem 内核提供；在其他系统上随 NetworkManager 提供。
 Pair=配对
+Pair a DualShock 4 or another Bluetooth gamepad=配对 DualShock 4 或其他蓝牙手柄
 paired=已配对
 Pairing=正在配对
 Password:=密码：
@@ -104,12 +113,15 @@ Setup/Test Game Controller or update mapping=设置/测试手柄或更新映射
 SSID:=SSID：
 Support via Discord:=
 System=
+Test a controller and map its buttons=测试手柄并映射其按键
 Testing=
+The Wi-Fi settings need the system's network tools, which are not there.=Wi-Fi 设置需要系统的网络工具，但它们不存在。
 Timezone:=时区：
 To pair a controller of this kind please follow the procedure=配对此类手柄请按以下步骤操作
 Update mapping=更新映射
 Updating mapping=正在更新映射
 Waiting for IP Address...=正在等待 IP 地址...
+Wi-Fi network=Wi-Fi 网络
 WiFi information:=WiFi 信息：
 WiFi Settings=WiFi 设置
 Write Config/Restart Network=写入配置/重启网络

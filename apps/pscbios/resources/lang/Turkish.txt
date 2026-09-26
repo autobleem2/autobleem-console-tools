@@ -1,6 +1,6 @@
 # AutoBleem Turkish Translation - pscbios
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 1 / Total: 102
+# Untranslated: 1 / Total: 114
 
  - Mapping (Available):= - Eşleme (mevcut):
  - Mapping (Not found)= - Eşleme (bulunamadı)
@@ -13,20 +13,25 @@
 About=
 Active=Etkin
 Already paired=Zaten eşleştirilmiş
+Automatic=Otomatik
 Back=
 Bluetooth controller pairing=Bluetooth kumanda eşleştirme
+Bluetooth controllers=Bluetooth kumandalar
 Bluetooth information:=Bluetooth bilgileri:
 Buttons:=Düğmeler:
 Cancel mapping=Eşlemeyi iptal et
 Change=Değiştir
+Choose a network, enter its password, set the time zone=Bir ağ seçin, parolasını girin, saat dilimini ayarlayın
 Code C++ and shell scripts=
 Connect DualShock3 by Bluetooth (Wireless mode)=DualShock3'ü Bluetooth ile bağla (kablosuz)
 Connect other gamepad by Bluetooth=Başka bir kumandayı Bluetooth ile bağla
 connected=bağlı
 Controller=
+Controller mapping=Kumanda eşleme
 Current Time:=Şu anki saat:
 Dongle status:=Adaptör durumu:
 Driver mode:=Sürücü modu:
+DualShock 3 pairing=DualShock 3 eşleştirme
 DualShock3/SixAxis Wireless Pairing=DualShock3/SixAxis kablosuz eşleştirme
 Edit Network WPA WiFi Credentials=WPA WiFi ağ bilgilerini düzenle
 Edit Password=Parolayı düzenle
@@ -47,6 +52,7 @@ Gamepad configuration details=Kumanda yapılandırma ayrıntıları
 Gamepad input configuration:=Kumanda girişleri:
 Gamepad Support Configuration=Kumanda desteği yapılandırması
 Hats:=Yön tuşları:
+How a DualShock 3 pairs over its USB cable=DualShock 3 USB kablosuyla nasıl eşleştirilir
 In AutoBleem DualShock/SixAxis type controller are automatically paired if you have a compatible BlueTooth dongle and an AutoBleem Kernel installed.=AutoBleem'de uyumlu bir Bluetooth adaptörü ve AutoBleem çekirdeği kuruluysa DualShock/SixAxis kumandalar otomatik eşleşir.
 Interface details:=Arayüz ayrıntıları:
 IP Address:=IP adresi:
@@ -58,6 +64,7 @@ Localization support=
 Mapping Complete - press (OPEN) to save. (POWER) to cancel.=Eşleme tamamlandı - kaydetmek için (OPEN), iptal için (POWER).
 Mapping stored to database=Eşleme veritabanına kaydedildi
 Move your sticks to state shown or press (OPEN) if stick position not avaliable.=Çubukları gösterilen konuma getirin veya bu konum yoksa (OPEN) tuşuna basın.
+Network & Controllers=Ağ ve kumandalar
 new=yeni
 Next pad=Sonraki kumanda
 No Bluetooth adapter found.=Bluetooth adaptörü bulunamadı.
@@ -72,7 +79,9 @@ NOTE 2: In case you pair the controller back to PS3 or other console you have to
 NOTE 3: You do not need to do this procedure in this screen. USB pairing works on any screen as soon console is powered on.=NOT 3: Bu işlemi bu ekranda yapmanız gerekmez. USB eşleştirme, konsol açılır açılmaz her ekranda çalışır.
 NOTE 4: Pairing information is saved in console, so next time just press PlayStation Home on the controller and it will work in AutoBleem=NOT 4: Eşleştirme bilgisi konsola kaydedilir; bir sonraki sefer kumandada PlayStation Home'a basmanız yeterlidir, AutoBleem'de çalışır
 NOTE: Make sure none of the buttons are pressed before mapping and all analog sticks are in default position.=NOT: Eşlemeden önce hiçbir düğmenin basılı olmadığından ve tüm analog çubukların boşta olduğundan emin olun.
+On the console they come with the AutoBleem kernel; elsewhere with NetworkManager.=Konsolda AutoBleem çekirdeğiyle, diğer sistemlerde NetworkManager ile gelirler.
 Pair=Eşleştir
+Pair a DualShock 4 or another Bluetooth gamepad=Bir DualShock 4 veya başka bir Bluetooth kumandayı eşleştirin
 paired=eşleştirildi
 Pairing=Eşleştiriliyor
 Password:=Parola:
@@ -104,12 +113,15 @@ Setup/Test Game Controller or update mapping=Kumandayı ayarla/test et veya eşl
 SSID:=SSID:
 Support via Discord:=
 System=
+Test a controller and map its buttons=Bir kumandayı test edin ve tuşlarını eşleyin
 Testing=
+The Wi-Fi settings need the system's network tools, which are not there.=Wi-Fi ayarları sistemin ağ araçlarına ihtiyaç duyar, ancak bunlar yok.
 Timezone:=Saat dilimi:
 To pair a controller of this kind please follow the procedure=Bu tür bir kumandayı eşleştirmek için şu adımları izleyin
 Update mapping=Eşlemeyi güncelle
 Updating mapping=Eşleme güncelleniyor
 Waiting for IP Address...=IP adresi bekleniyor...
+Wi-Fi network=Wi-Fi ağı
 WiFi information:=WiFi bilgileri:
 WiFi Settings=WiFi ayarları
 Write Config/Restart Network=Yapılandırmayı yaz/ağı yeniden başlat
