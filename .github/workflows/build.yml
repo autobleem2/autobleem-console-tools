@@ -261,9 +261,9 @@ jobs:
           set -e
           V="${{ needs.plan.outputs.version }}"
           rm -rf stage out && mkdir -p stage/Extensions out
-          # the folder ab_add_extension staged: extension.ini, the icon, lang/, bt, DS3.png and bin/<target>/
+          # the folder ab_add_extension staged: extension.ini, the icon, lang/, DS3.png and bin/<target>/ - no
+          # `bt` any more (native-backend work: NmBackend pairs through BluezClient, never a shell script)
           cp -a build_${{ matrix.target }}/extensions/pscbios stage/Extensions/pscbios
-          chmod +x stage/Extensions/pscbios/bt
           tar -czf "out/console-tools-${{ matrix.target }}-$V.tar.gz" -C stage .
           tar -tzf out/*.tar.gz | head -20
       - uses: actions/upload-artifact@v7
