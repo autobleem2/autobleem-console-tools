@@ -296,8 +296,12 @@ bool WpaCtrlClient::configure(const string &ssid, const string &password) {
     }
     if (!expectOk("ENABLE_NETWORK " + id, "ENABLE_NETWORK", refused))
         return false;
-    // the network is in use from here on; SAVE_CONFIG only makes it survive a reboot (it fails when the
-    // file says update_config=0 - reported, the network stays)
+    // the network is in use from here on; SAVE_CONFIG only makes it survive a reboot. wpa_supplicant refuses it
+    // unless update_config is on, and a file without the line (Buildroot's example, what the payload shipped
+    // until 2026-09-26) has it off - so switch it on first (2.10 answers OK; an older one's refusal is left to
+    // SAVE_CONFIG to report, the network stays)
+    string ignored;
+    request("SET update_config 1", ignored);
     if (!expectOk("SAVE_CONFIG", "SAVE_CONFIG", _("the WiFi settings could not be saved")))
         return false;
     PLOG_INFO << "wpa_supplicant on " << iface_ << ": network " << id << " set to \"" << ssid << "\" and saved";

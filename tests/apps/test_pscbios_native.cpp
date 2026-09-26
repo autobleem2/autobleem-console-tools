@@ -276,12 +276,14 @@ TEST_CASE("WpaCtrlClient configures a network in wpa_supplicant's order") {
 
     REQUIRE(client.configure("My \"Net\"", "pa$s word"));
     CHECK(fake.commands() == vector<string>{"REMOVE_NETWORK all", "ADD_NETWORK", "SET_NETWORK 3 ssid 4d7920224e657422",
-                                            "SET_NETWORK 3 psk \"pa$s word\"", "ENABLE_NETWORK 3", "SAVE_CONFIG"});
+                                            "SET_NETWORK 3 psk \"pa$s word\"", "ENABLE_NETWORK 3",
+                                            "SET update_config 1", "SAVE_CONFIG"});
 
     fake.clearCommands();
     REQUIRE(client.configure("Cafe Corner", "")); // an open network
     CHECK(fake.commands() == vector<string>{"REMOVE_NETWORK all", "ADD_NETWORK", "SET_NETWORK 3 ssid \"Cafe Corner\"",
-                                            "SET_NETWORK 3 key_mgmt NONE", "ENABLE_NETWORK 3", "SAVE_CONFIG"});
+                                            "SET_NETWORK 3 key_mgmt NONE", "ENABLE_NETWORK 3", "SET update_config 1",
+                                            "SAVE_CONFIG"});
 
     fake.clearCommands();
     fake.reply("SET_NETWORK 3 psk \"12345678\"", "FAIL\n");
@@ -439,7 +441,8 @@ TEST_CASE("NativeBackend configures WiFi through a running wpa_supplicant") {
     backend.configureWifi("Home Network", "secret123", "wext");
     CHECK(backend.lastError().empty());
     CHECK(fake.commands() == vector<string>{"REMOVE_NETWORK all", "ADD_NETWORK", "SET_NETWORK 0 ssid \"Home Network\"",
-                                            "SET_NETWORK 0 psk \"secret123\"", "ENABLE_NETWORK 0", "SAVE_CONFIG"});
+                                            "SET_NETWORK 0 psk \"secret123\"", "ENABLE_NETWORK 0",
+                                            "SET update_config 1", "SAVE_CONFIG"});
     CHECK(tmp.readFile("etc/dhcpcd.conf") == "env wpa_supplicant_driver=wext\n"); // the driver variant copied
     CHECK_FALSE(ableem::DirEntry::exists(paths.wpaSupplicantConf));               // wpa_supplicant writes its own file
     CHECK(runs.lines.empty());                                                    // nothing restarted
