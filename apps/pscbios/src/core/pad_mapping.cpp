@@ -118,6 +118,60 @@ bool PadMapping::anythingHeld(const JoystickState &initial, const JoystickState 
 }
 
 //*******************************
+// PadMapping::rawInput / inputHeld / circleInput
+//*******************************
+string PadMapping::rawInput(const string &mappingLine, const string &apiName) {
+    const string key = "," + apiName + ":";
+    size_t at = mappingLine.find(key);
+    if (at == string::npos)
+        return "";
+    at += key.size();
+    return mappingLine.substr(at, mappingLine.find(',', at) - at);
+}
+
+bool PadMapping::inputHeld(const string &raw, const JoystickState &initial, const JoystickState &now) {
+    if (raw.size() < 2)
+        return false;
+    auto index = [](const string &digits) { return digits.empty() ? -1 : atoi(digits.c_str()); };
+    if (raw[0] == 'b') {
+        int n = index(raw.substr(1));
+        return n >= 0 && n < static_cast<int>(now.buttons.size()) && now.buttons[n];
+    }
+    if (raw[0] == 'h') {
+        size_t dot = raw.find('.');
+        if (dot == string::npos)
+            return false;
+        int n = index(raw.substr(1, dot - 1));
+        unsigned mask = static_cast<unsigned>(atoi(raw.c_str() + dot + 1));
+        return n >= 0 && n < static_cast<int>(now.hats.size()) && (now.hats[n] & mask) != 0;
+    }
+    const char sign = raw[0] == '+' || raw[0] == '-' ? raw[0] : 0;
+    const string axis = sign ? raw.substr(1) : raw;
+    if (axis.empty() || axis[0] != 'a')
+        return false;
+    int n = index(axis.substr(1, axis.find('~') == string::npos ? string::npos : axis.find('~') - 1));
+    if (n < 0 || n >= static_cast<int>(now.axes.size()))
+        return false;
+    if (sign == '+')
+        return now.axes[n] > HeldThreshold;
+    if (sign == '-')
+        return now.axes[n] < -HeldThreshold;
+    int rest = n < static_cast<int>(initial.axes.size()) ? initial.axes[n] : 0;
+    return abs(now.axes[n] - rest) > HeldThreshold;
+}
+
+string PadMapping::circleInput(const vector<Element> &elements, const string &mappingLine) {
+    for (const Element &e : elements)
+        if (e.apiName == "b" && !e.value.empty())
+            return e.value;
+    return rawInput(mappingLine, "b");
+}
+
+bool PadMapping::isExitKey(ableem::Key key) {
+    return key == ableem::Key::Sleep || key == ableem::Key::Escape || key == ableem::Key::Backspace;
+}
+
+//*******************************
 // PadMapping::mergeAxis
 //*******************************
 // the "-x" and "+x" halves of a stick axis: both mapped to the two halves of the same raw axis become one

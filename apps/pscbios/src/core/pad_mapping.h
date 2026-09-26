@@ -9,6 +9,7 @@
 //
 #pragma once
 
+#include <ableem/ui/input.h>    // Key
 #include <ableem/ui/joystick.h> // JoystickState, a plain struct - no SDL behind it
 
 #include <string>
@@ -46,6 +47,29 @@ public:
     // came out inverted) when they are the two halves of one raw axis, both dropped when one is missing,
     // kept as two half-axis keys otherwise; every unmapped element dropped; "platform:<platform>" last
     static std::vector<Element> finalElements(const std::vector<Element> &scanned, const std::string &platform);
+
+    // the raw input a mapping line gives an element: rawInput("...,a:b0,b:b1,...", "b") -> "b1"; "" when the
+    // line has no such element
+    static std::string rawInput(const std::string &mappingLine, const std::string &apiName);
+    // the raw input (in the format above) is away from its rest in `now` - a button pressed, the hat in that
+    // direction, a half axis past HeldThreshold on its side, a whole axis that far from where it rested in
+    // `initial`. False for "" or an input the pad does not have
+    static bool inputHeld(const std::string &raw, const ableem::JoystickState &initial,
+                          const ableem::JoystickState &now);
+    // the raw input that is Circle ("b") on this pad: what the wizard mapped it to this time, else what the
+    // pad's mapping line says, "" when neither knows - what the wizard's hold-to-exit watches
+    static std::string circleInput(const std::vector<Element> &elements, const std::string &mappingLine);
+
+    // Power (Key::Sleep) or a keyboard's Esc/Backspace leaves the wizard at once. The wizard turns
+    // keyboardAsPad off while it shows (ableem::Input::setKeyboardAsPad(false)/setRawKeyboard(true), the
+    // way GuiKeyboard does), so these arrive as keys, never remapped into a Button::Circle event - a real
+    // pad's own Circle only ever reaches the wizard as a button (Test stage: it is opened as a
+    // GameController too, for the picture; SDL keeps sending its events even though Input let its own pads
+    // go), and only the 2 s hold (HoldToExitMs, via inputHeld on the raw joystick) leaves for that; a short
+    // press is mapped/tested as usual
+    static bool isExitKey(ableem::Key key);
+
+    static const unsigned HoldToExitMs = 2000; // Circle held this long leaves the wizard
 
     // "<guid>,<name>,<apiName>:<value>,...," as SDL reads it
     static std::string mappingLine(const std::string &guid, const std::string &name,

@@ -1,27 +1,40 @@
 # PSC-Bios - developer context
 
-The console's hardware configuration tool, **an extension of the launcher** since 2026-09-24 (the owner's
-call: a plugin the launcher loads, `Extensions/pscbios/bin/psc/pscbios.so`, shipped with the console package;
-it was an App - a program of its own in `Apps/pscbios/` - until then; ABFlashKit stays an App). The launcher's
-*Hardware Information* item runs it (`SystemMenuAction::HardwareInfo` -> `app.extensions().run("pscbios")`),
-and so does the Extensions list; where it cannot run - a Pi or a PC (it is built for the console only), a
-console without it, one built against another `AB_SDK_ABI`, or disabled by the crash guard - the item shows
-the built-in `GuiHardwareInfo` instead. One screen of facts - the time and timezone, the WiFi/ethernet/Bluetooth
-dongles with their addresses, the pads and whether SDL has a mapping for each - and three things it can
-do: **WiFi settings** (SSID typed or picked from a scan, password, driver mode, written for the kernel and
-the network restarted; the timezone), the **gamepad mapping wizard** (a pad tested raw, every standard
-input asked for in turn, the result written to the `gamecontrollerdb.txt` the launcher loads), a DualShock 3
-USB-pairing page, and an interactive **Bluetooth pairing screen** (`GuiBtPairing`, 2026-09-22) - scan, pick,
-pair/remove a DualShock 4 or other standard Bluetooth gamepad through BlueZ over D-Bus, so it works on the
-original flashed kernel too (its overlay has bluez 5.50 + bluetoothd), not only a freshly built one.
+A hardware configuration extension (since 2026-09-24) and network/controller manager (2026-09-26): a plugin
+the launcher loads, `Extensions/pscbios/bin/{key}/pscbios.so` (console, Pi 32/64-bit, PC stick; not Windows),
+shipped with every package - it was an App, a program of its own in `Apps/pscbios/`, until 2026-09-24;
+ABFlashKit stays an App. The launcher's System menu's *Network & Controllers* item opens it at the `network`
+entry through `Extension::runEntry("network")` (SDK ABI 4, `Provides=network` in `extension.ini`); the
+Extensions list runs the whole tool from `run()`, which shows `GuiPscBiosMain`, a `GuiFactsPage` of facts -
+the time and timezone, the WiFi/ethernet/Bluetooth dongles with their addresses, the pads and whether SDL has
+a mapping for each. Where PSC-Bios cannot run - Windows, a console without the kernel or custom libraries, one
+built against another `AB_SDK_ABI`, or disabled by the crash guard - the *Network & Controllers* item does not
+appear, and *Hardware Information* shows the built-in `GuiHardwareInfo` instead.
+
+`runEntry("network")` opens the **Network & Controllers hub** directly: the same facts page with four
+interactive items on its back side (Select/Square/L1/R1) - **Wi-Fi network** (SSID typed or scanned, password,
+applied and restarted; the timezone - no driver-mode row, see X6 below), **Bluetooth controllers** (scan, pair,
+remove a DualShock 4 or other standard pad through BlueZ over D-Bus - `GuiBtPairing`, 2026-09-22, live state and
+battery at the right edge, re-read every 2 s), **DualShock 3 pairing** (USB via sixaxis), and the **controller
+mapping wizard** (a pad tested raw, every standard input asked for in turn, the result written to the
+`gamecontrollerdb.txt` the launcher loads). The network and Bluetooth items need the AutoBleem kernel on the
+console (section 6.2) or system tools (NetworkManager + BlueZ) on a Pi or PC stick; the wizard works everywhere.
+
 Ported on 2026-09-18 from the 2020 standalone tool (a fork of the
 old AutoBleem GUI, kept in git history under `psctools/pscbios`) onto `lib_ableem` + `ab_core` +
 `ab_classic`; the root CLAUDE.md covers those and the build.
 
-## What the console provides
+## Platform-specific backends
 
-**No shell script is run** (since 2026-09-25, docs/native-backend-plan.md step 3 - the owner's call: native
-only, no fallback). `NativeBackend` asks the console itself:
+The tool provides a **backend abstraction** (`ConsoleBackend` interface) for platform differences, chosen once
+in `pscbios_extension.cpp`'s `makeBackend()`: **`NativeBackend` on the console** (psc), **`NmBackend` on
+Raspberry Pi and the PC stick** (rpi/rpi64/pcusb), and **`FakeBackend` on a dev host** (`AB_DEBUG_HOST`);
+Windows has no backend build and the network item is off. `AbnetBackend` (the AutoBleem kernel's `abnet`/
+`bluetoothctl` scripts) is gone, superseded by `NativeBackend`.
+
+**No shell script is run for the console or a Pi/PC stick** (since 2026-09-25, docs/native-backend-plan.md
+step 3 - the owner's call: native only, no fallback - `resources/bt` and the old `bt` bluetoothctl wrapper are
+deleted). `NativeBackend` asks the console itself:
 
 - the network interfaces from `/sys/class/net` under any name (a wireless one has a `wireless`/`phy80211`
   entry; the wired one is ARPHRD_ETHER with a `device`, not `rndis*` - the AutoBleem kernel's USB gadget - nor
@@ -35,6 +48,18 @@ only, no fallback). `NativeBackend` asks the console itself:
   `/usr/share/zoneinfo/zone1970.tab` + `zone.tab` (what `timedatectl list-timezones` answered) plus UTC; a change
   is the kernel's `/bin/settime tzone <zone>`, run directly through `System::runAndWait` (no `sh -c`), for a
   zone from that list only.
+
+**Raspberry Pi and PC stick** (`NmBackend`): `nmcli connection show`, `nmcli device wifi list`, `nmcli
+device connect <ssid>`, plus `timedatectl list-timezones` and `timedatectl set-timezone`, and - like
+`NativeBackend` - **BlueZ over D-Bus through the same `BluezClient`**, never `bluetoothctl` or the deleted
+`bt` wrapper. The Wi-Fi screen shows the network it is on and writes no config file (NetworkManager
+remembers the connection itself - `keepsWifiSettings()`); there is no driver-mode row here either (X6).
+`nmcli device wifi connect` pauses for a second per character typed and is run through `restartNetwork()`
+(blocking - nmcli's own call already waits out the attempt, so `beginWifiConnect`/`pumpWifiConnect()` just
+report its outcome as an already-finished `WifiConnectWatch`, there being no wpa_supplicant event stream to
+follow afterwards on a Pi/PC); the UI waits with the same spinner. Backend errors (no nmcli, the system bus
+or bluetoothd down) are logged through `lastError()`/`btLastError()`; the item stays available because they
+can be started.
 
 The programs it starts (`dhcpcd`, `systemctl`, `settime`) go through `NativeBackend::CommandRunner`
 (`System::runAndWait`, the tests record them). When something does not answer - no WiFi interface,
@@ -63,31 +88,32 @@ status reads a screen repeats (the main screen every 2 s, the pairing and WiFi s
 GetManagedObjects waits 1.5 s at most and a bluetoothd that did not answer is not asked again for 15 s (the
 same reason shown meanwhile); STATUS waits 1 s.
 
-Plus two files: `/etc/autobleem/ssid.cfg` (two lines: SSID, password - what the WiFi settings screen keeps) and
-`/etc/wpa_supplicant.conf` (read, for the SSID an earlier setup left there; its `"1"` means none). `/etc/autobleem`
-is `Env::getPathToKernelConfigDir()`, set by `EnvironmentSetup::fromRoot()` on the console only; off the console
-`SsidConfig` keeps `ssid.cfg` next to the tool. Without the AutoBleem kernel (`kernelInstalled()`: `/bin/abnet`
-exists - only looked at, as the 2020 tool did; the kernel's overlay brings settime and dhcpcd's hook) the network
-rows and WiFi settings are off and the pad wizard still works - the 2020 tool exited after "Custom Firmware Kernel
-Not Found".
+Plus two files: `/etc/autobleem/ssid.cfg` (two lines: SSID, password - what the WiFi settings screen keeps;
+the driver-mode third line is gone with X6) and `/etc/wpa_supplicant.conf` (read, for the SSID an earlier
+setup left there; its `"1"` means none). `/etc/autobleem` is `Env::getPathToKernelConfigDir()`, set by
+`EnvironmentSetup::fromRoot()` on the console only; off the console `SsidConfig` keeps `ssid.cfg` next to
+the tool. The kernel's overlay brings `settime` and dhcpcd's hook; without it (`kernelInstalled()` false)
+the network rows and WiFi settings are off and the pad wizard still works - the 2020 tool exited after
+"Custom Firmware Kernel Not Found".
 
 ## Layout
 
 ```
 src/core/       pscbios_core (SDL-free, links ab_core; the tests link it)
   console_backend.*   ConsoleBackend interface (wifiInterface()/ethernetInterface() by what they are, lastError() and
-                      btLastError() - the reasons, the wait hook, the pumped pairing and WiFi connection, btBattery)
-                      and FakeBackend (a dev host: wlan0 on 192.168.1.23, three networks, Europe/Warsaw, 16 zones;
-                      `slow` - the extension's - takes the console's time for every action through the hook: the
-                      pairing in three stages, the 8BitDo pad refused, "Neighbour 5G" a wrong password, the Xbox pad
-                      dropping a few refreshes in; the tests' is instant)
+                      btLastError() - the reasons, the wait hook, the pumped pairing and WiFi connection, btBattery,
+                      keepsWifiSettings()/currentSsid()) and FakeBackend (a dev host: wlan0 on 192.168.1.23, three
+                      networks, Europe/Warsaw, 16 zones; `slow` - the extension's - takes the console's time for
+                      every action through the hook: the pairing in three stages, the 8BitDo pad refused, "Neighbour
+                      5G" a wrong password, the Xbox pad dropping a few refreshes in; the tests' is instant).
+                      `AbnetBackend` is gone (superseded by NativeBackend)
   wifi_connect.*      WifiNetwork (a scan's network: signalText, secured), WpaStatus, wpaStateText (the connection row),
                       WifiConnectWatch - a connection followed to Connected or a WifiFailure, from STATUS, the events
                       and the address, the times the caller's (tested without waiting)
   bt_device_list.*    BtDeviceList - the pairing screen's rows: scan + paired merged, new / discovering... / pairing... /
                       connecting... / paired / connected / dropped (was connected, no longer) / failed, the battery,
                       the error
-  native_backend.*    NativeBackend, the console's (Unix only - docs/native-backend-plan.md): interfaces from
+  native_backend.*    NativeBackend, **the console's** (psc; Unix only - docs/native-backend-plan.md): interfaces from
                       /sys/class/net (wireless = a `wireless`/`phy80211` entry, any name; ethernetInterface() the first
                       ARPHRD_ETHER one with a `device`, rndis*/bnep* left out), IPv4 by getifaddrs, WiFi through
                       WpaCtrlClient, or - with no wpa_supplicant running - wpa_supplicant.conf written and
@@ -97,12 +123,21 @@ src/core/       pscbios_core (SDL-free, links ab_core; the tests link it)
                       is /bin/abnet existing. Every path in NativePaths, the programs through a CommandRunner; the
                       short status timeouts and the BlueZ back-off; the connection watch re-attaches to a restarted
                       wpa_supplicant (its socket's inode)
+  nm_backend.*        NmBackend, **Raspberry Pi and the PC stick's** (rpi/rpi64/pcusb): nmcli for the network,
+                      timedatectl for the timezone, the same BluezClient NativeBackend uses for Bluetooth - no
+                      shell script for pairing, ever. `keepsWifiSettings()` true (NetworkManager remembers the
+                      connection, so `writeConfig()` skips `config.save()`); `restartNetwork()` is the blocking
+                      nmcli call, `beginWifiConnect`/`pumpWifiConnect()` just report its already-finished outcome.
+                      Same `Runner`/`LinesRunner` test-seam style as before the rewrite (`splitTerse`,
+                      `parseDevices`, `firstAddress`, `shellQuoted`); takes a `BluezBusFactory` exactly like
+                      NativeBackend for its tests
   wpa_ctrl_client.*   WpaCtrlClient: /var/run/wpa_supplicant/<iface> over third_party/wpa_ctrl (hostap 2.10's client,
                       BSD, README.autobleem.txt lists our two changes) - SCAN (waits for the event, 50 ms slices, the
                       hook asked), SCAN_RESULTS, STATUS, the one-network configure, TERMINATE; a timeout on every
                       request. WpaEventMonitor: an ATTACHed connection read without blocking
-  bluez_client.*      BluezClient (every host): the first adapter from GetManagedObjects and its devices (name, paired,
-                      trusted, connected, modalias, icon, class, RSSI, Battery1), discovery (BR/EDR filter; someone
+  bluez_client.*      BluezClient (every host, shared by NativeBackend and NmBackend): the first adapter from
+                      GetManagedObjects and its devices (name, paired, trusted, connected, modalias, icon, class,
+                      RSSI, Battery1), discovery (BR/EDR filter; someone
                       else's InProgress joined, not stopped), RemoveDevice/Disconnect, the battery (power_supply's
                       sony_controller_battery_<mac> / ps-controller-battery-<mac>, else Battery1), and the pairing as a
                       state machine - beginPair() then pump() (a screen's frame loop) or pair() (blocking): discover
@@ -122,33 +157,42 @@ src/core/       pscbios_core (SDL-free, links ab_core; the tests link it)
   game_controller_db.* GameControllerDb - gamecontrollerdb.txt with one mapping replaced under "#AutoBleem"
   pad_mapping.*       PadMapping - the wizard's logic: the 25 standard elements, detectChange(), the stick-half
                       merge (finalElements), the mapping line; the 2020 right-stick bug is fixed here
-  network_status.*    NetworkStatus - the main screen's facts, one refresh() per RefreshInterval: the dongles by
+  network_status.*    NetworkStatus - the facts screen's/hub's facts, one refresh() per RefreshInterval: the dongles by
                       the backend's wifiInterface()/ethernetInterface() (their names are an "Interface details" row),
                       Bluetooth's btStatusText()/btDetails() (Unavailable + the reason when BlueZ does not answer)
-src/screens/    the screens, on ab_classic (GuiFactsPage, GuiStringMenu, GuiConfirm, GuiKeyboard, GuiTextPage, GuiAbout)
-  gui_pscbios_main.*  the opening screen, a GuiFactsPage (sections: time, WiFi, ethernet, Bluetooth, the controllers
-                      with their mapping and the mapping file); Select = WiFi (kernel only), Square = gamepads,
-                      Triangle = About, Circle = quit
-  gui_network_menu.*  the WiFi settings: option rows (label left, value right - a compact panel), the Connection row
-                      (wpa_state + address, re-read every 2 s), the last failure's row when there is one, the two
-                      actions; the scan, the write, the restart, the connection that follows and the timezone under
-                      the spinner. gui_ssid_scan_menu.* holds both pickers (the scanned networks with their signal,
+src/screens/    the screens, on ab_classic (GuiFactsPage, GuiActionMenu, GuiStringMenu, GuiConfirm, GuiKeyboard,
+                 GuiTextPage, GuiAbout)
+  gui_pscbios_main.*  the opening screen, a GuiFactsPage (sections: time, timezone, WiFi, ethernet, Bluetooth, the
+                      controllers with their mapping and the mapping file). `run()` shows it as the facts screen
+                      (Select = WiFi where the kernel/NetworkManager is there, Square = gamepads, Triangle = About,
+                      Circle = quit); `runEntry("network")` shows it as the **Network & Controllers hub** instead,
+                      with four interactive items in a `GuiActionMenu` on its back side (Select/Square/L1/R1 pick
+                      Wi-Fi network, Bluetooth controllers, DualShock 3 pairing, the mapping wizard)
+  gui_network_menu.*  the WiFi settings: option rows (label left, value right - a compact panel; no driver-mode row,
+                      X6), the Connection row (wpa_state + address, re-read every 2 s), the last failure's row when
+                      there is one, the two actions; the scan, the write, the restart, the connection that follows
+                      and the timezone under the spinner. `writeConfig()` validates the SSID (+ password unless
+                      `console.keepsWifiSettings()`) and skips `config.save()` for a backend that keeps its own
+                      settings. gui_ssid_scan_menu.* holds both pickers (the scanned networks with their signal,
                       the timezones)
   gui_bt_pairing.*    the Bluetooth pairing screen: Scan, the devices with their live state and battery at the right
                       edge (re-read every 2 s), the last failure's row; scan and pairing under the spinner, Circle stops
   pscbios_busy.*      BusyWork - the spinner, the pad and the backend's wait hook for the length of one slow call
   gui_gamepad_menu.*  the gamepad section, a compact three-row list; gui_pad_config.* the wizard: the facts, the
                       stage's message and (while mapping) the entries in two columns down the left of the panel,
-                      the DualShock picture at the right, the front buttons as RESET/OPEN/POWER chips in the footer;
+                      the DualShock picture at the right, the front buttons as RESET/OPEN/POWER chips in the footer
+                      (hold Circle 2 s, or keyboard Esc/Backspace/Power, also exit the wizard);
                       pscbios_pages.* the static texts (the About credits with GuiAbout::HeadingMark headings)
 src/pscbios.*         PscBios - the running tool's shared part: the ConsoleBackend the screens reach as
                       PscBios::get().console(), valid while its screens show
-src/pscbios_extension.cpp  PscBiosExtension (AB_EXTENSION): run() = the backend choice (NativeBackend where it is
-                      built - PSCBIOS_NATIVE_BACKEND, not Windows - FakeBackend under AB_DEBUG_HOST),
-                      Env::setAppDir(the extension's folder) for its duration, the main screen
-resources/            what ships in Extensions/pscbios/ next to bin/psc/pscbios.so: extension.ini (Network=none,
-                      no Background), readme.txt, icon.png, DS3.png (the wizard's picture), gamecontrollerdb.txt
-                      (the seed), lang/
+src/pscbios_extension.cpp  PscBiosExtension (AB_EXTENSION, ABI 4): run() shows the facts screen; runEntry("network")
+                      opens the hub; `makeBackend()` picks NativeBackend under `PSCBIOS_NATIVE_BACKEND` on
+                      `AB_PLATFORM_PSC`, NmBackend on rpi/rpi64/pcusb, FakeBackend under `AB_DEBUG_HOST`;
+                      Env::setAppDir(the extension's folder) for its duration
+resources/            what ships in Extensions/pscbios/ next to bin/{key}/pscbios.so: extension.ini (Provides=network,
+                      Network=none, no Background), readme.txt, icon.png, DS3.png (the wizard's picture),
+                      gamecontrollerdb.txt (the seed), lang/. `bt` (the bluetoothctl wrapper) is deleted - no
+                      backend runs it any more
 ```
 
 It runs **inside the launcher**: the launcher's `App` is the `AppBase` every screen has (config, theme,

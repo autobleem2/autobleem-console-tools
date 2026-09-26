@@ -1,7 +1,8 @@
 # AutoBleem Deutsch Translation - abflashkit
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 0 / Total: 44
+# Untranslated: 3 / Total: 49
 
+About=
 All done - when the screen goes black replace power cord=Fertig - wenn der Bildschirm schwarz wird, das Netzkabel neu einstecken
 All four partitions to LBOOT.EPB on the stick, for a restore later=Alle vier Partitionen in LBOOT.EPB auf dem Stick, für eine spätere Wiederherstellung
 Back the console up to the stick, install the AutoBleem kernel and reboot=Konsole auf den Stick sichern, den AutoBleem-Kernel installieren und neu starten
@@ -9,6 +10,7 @@ Back up games=Spiele sichern
 Backup complete=Sicherung abgeschlossen
 Backup failed=Sicherung fehlgeschlagen
 Checking LBOOT for vanilla kernel. Decompressing...=LBOOT wird auf den Original-Kernel geprüft. Entpacken...
+Code C++ and shell scripts=
 Copy the console's built-in games to the Games Backup folder on the stick=Die eingebauten Spiele der Konsole in den Ordner Games Backup auf dem Stick kopieren
 Copying:=Kopiere:
 Creating backup....=Sicherung wird erstellt....
@@ -20,6 +22,7 @@ Games backed up to the Games Backup folder=Spiele im Ordner Games Backup gesiche
 Games backup failed=Sichern der Spiele fehlgeschlagen
 I understand=Verstanden
 Invalid backup or invalid kernel image=Ungültige Sicherung oder ungültiges Kernel-Image
+Linux Kernel Patching=Linux-Kernel-Patches
 needed=benötigt
 No backup found - Recovery locked=Keine Sicherung gefunden - Wiederherstellung gesperrt
 No built-in games found on this console=Keine eingebauten Spiele auf dieser Konsole gefunden
@@ -36,6 +39,7 @@ Set recovery mode and reboot now?=Wiederherstellungsmodus setzen und jetzt neu s
 Setting recovery mode: off=Wiederherstellungsmodus wird gesetzt: aus
 Setting recovery mode: on=Wiederherstellungsmodus wird gesetzt: ein
 Start flashing ?=Flashen starten?
+Testing=
 The games are already backed up=Die Spiele sind bereits gesichert
 The kernel image could not be written. Nothing was changed.=Das Kernel-Image konnte nicht geschrieben werden. Es wurde nichts verändert.
 The LBOOT does not contain CLEAN PSC firmware. You may SOFTBRICK your console. Are you sure?=Die LBOOT enthält keine SAUBERE PSC-Firmware. Die Konsole könnte einen SOFTBRICK erleiden. Wirklich fortfahren?
@@ -44,5 +48,6 @@ This PSC has not been restored to original condition. Unable to flash.=Diese PSC
 This tool writes to the console's flash memory. A flash that is interrupted - the power cut, the stick pulled - can leave the console unable to start, and installing a custom kernel voids its warranty. Keep the console powered and the stick in until it reboots by itself. Continue at your own risk.=Dieses Werkzeug schreibt in den Flash-Speicher der Konsole. Ein unterbrochenes Flashen - Strom weg, Stick gezogen - kann die Konsole startunfähig machen, und ein eigener Kernel lässt die Garantie erlöschen. Konsole am Strom und Stick eingesteckt lassen, bis sie von selbst neu startet. Fortfahren auf eigene Gefahr.
 Updating payload=Payload wird aktualisiert
 Validating backup...   Please wait...=Sicherung wird geprüft...   Bitte warten...
+Version, credits and licence=Version, Mitwirkende und Lizenz
 Writing the kernel failed. The console will restore itself from LBOOT.EPB when it restarts.=Das Schreiben des Kernels ist fehlgeschlagen. Die Konsole stellt sich beim Neustart aus LBOOT.EPB wieder her.
 Zipping:=Wird gepackt:

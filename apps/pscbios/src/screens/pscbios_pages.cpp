@@ -25,14 +25,6 @@ vector<string> pscbiosCredits() {
 }
 
 //*******************************
-// pscbiosFoot
-//*******************************
-vector<string> pscbiosFoot() {
-    return {_("Support via Discord:") + " https://discord.gg/AHUS3RM",
-            _("This is free software. It works AS IS and We take no responsibility for any issues or damage.")};
-}
-
-//*******************************
 // dualshock3PairingLines
 //*******************************
 vector<string> dualshock3PairingLines() {

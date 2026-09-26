@@ -114,6 +114,11 @@ public:
     virtual void setTimezone(const std::string &zone) = 0;
     virtual std::vector<std::string> listTimezones() = 0; // sorted, unique
 
+    // what differs between the console (its own settings file) and NetworkManager (NmBackend, a Pi and the PC
+    // stick, which keeps the credentials itself)
+    virtual bool keepsWifiSettings() { return false; } // it stores the credentials itself: no ssid.cfg
+    virtual std::string currentSsid() { return ""; }   // the network it is connected to, "" when unknown
+
 protected:
     // the hook once; true when there is none. Every wait the backend does goes through here
     bool keepWaiting() const { return !waitHook_ || waitHook_(); }

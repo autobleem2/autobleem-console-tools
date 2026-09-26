@@ -93,9 +93,13 @@ void GuiPadConfig::startMapping() {
     gui->input().flushEvents();
     stage = Stage::Mapping;
     current = 0;
+    pending.clear();
+    holdSince = 0;
 }
 
 void GuiPadConfig::cancelMapping() {
+    pending.clear();
+    holdSince = 0;
     for (PadMapping::Element &element : elements)
         element.value.clear();
     if (!originalMapping.empty())
@@ -105,20 +109,49 @@ void GuiPadConfig::cancelMapping() {
 }
 
 //*******************************
-// GuiPadConfig::waitUntilReleased / takeInput
+// GuiPadConfig::takeInput
 //*******************************
-// the input just taken is still held; the next element must not see it
-void GuiPadConfig::waitUntilReleased() {
-    do {
-        joystick.update();
-    } while (PadMapping::anythingHeld(initialState, joystick.state()));
+// the input moved (pending) has been let go: it is the element's, and the next one is asked for - taken on
+// release, so that Circle held for the hold-to-exit is never mapped, and the next element never sees it
+void GuiPadConfig::takeInput(const string &value) {
+    elements[current].value = value;
+    advance();
 }
 
-void GuiPadConfig::takeInput(const string &value) {
-    app.audio().cursor.play();
-    elements[current].value = value;
-    waitUntilReleased();
-    advance();
+//*******************************
+// GuiPadConfig::circleNow / checkHoldToExit / holdHint
+//*******************************
+string GuiPadConfig::circleNow() {
+    if (!joystick.isOpen())
+        return "";
+    const string line =
+        stage == Stage::Mapping ? originalMapping : gui->input().mappingForDeviceIndex(joystick.index());
+    return PadMapping::circleInput(elements, line);
+}
+
+bool GuiPadConfig::checkHoldToExit() {
+    bool held = false;
+    const string circle = circleNow();
+    if (!circle.empty())
+        held = PadMapping::inputHeld(circle, initialState, joystick.state());
+    else if (stage == Stage::Mapping)
+        held = !pending.empty(); // no mapping to name Circle: whatever is being held
+    const unsigned int now = gui->platform().ticks();
+    if (!held) {
+        holdSince = 0;
+        return false;
+    }
+    if (holdSince == 0)
+        holdSince = now == 0 ? 1 : now;
+    return now - holdSince >= PadMapping::HoldToExitMs;
+}
+
+string GuiPadConfig::holdHint() {
+    if (!joystick.isOpen())
+        return "";
+    if (!circleNow().empty())
+        return "   |@O| " + _("Hold 2 s: Exit");
+    return stage == Stage::Mapping ? "   " + _("Hold any button 2 s: Exit") : "";
 }
 
 void GuiPadConfig::advance() {
@@ -297,9 +330,23 @@ void GuiPadConfig::render() {
     };
 
     if (stage == Stage::Mapping) {
-        string moved = PadMapping::detectChange(initialState, joystick.state(), elements);
-        if (!moved.empty())
-            takeInput(moved);
+        if (pending.empty()) {
+            pending = PadMapping::detectChange(initialState, joystick.state(), elements);
+            if (!pending.empty())
+                app.audio().cursor.play();
+        } else if (!PadMapping::anythingHeld(initialState, joystick.state())) {
+            const string taken = pending;
+            pending.clear();
+            takeInput(taken);
+        }
+    }
+    if (checkHoldToExit()) {
+        PLOG_INFO << "Circle held: leaving the mapping wizard";
+        app.audio().cancel.play();
+        if (stage != Stage::Test)
+            cancelMapping();
+        menuVisible = false;
+        return;
     }
 
     // the facts: the pad, its inputs, the raw buttons and hats, the axes eight to a row
@@ -364,14 +411,27 @@ void GuiPadConfig::render() {
 
     renderPadPicture(joystick.controllerState());
 
+    // while Circle is held, how far the hold-to-exit has come: a bar across the foot of the content
+    if (holdSince != 0) {
+        const unsigned int held = min(+PadMapping::HoldToExitMs, gui->platform().ticks() - holdSince);
+        const Rect track(content.x + PanelStyle::RowInset, content.y + content.h - 6,
+                         content.w - 2 * PanelStyle::RowInset, 4);
+        renderer.setBlendMode(ableem::BlendMode::Blend);
+        renderer.setDrawColor(Color(style.text.r, style.text.g, style.text.b, 60));
+        renderer.fillRect(track);
+        renderer.setDrawColor(Color(style.text.r, style.text.g, style.text.b, 220));
+        renderer.fillRect(Rect(track.x, track.y, static_cast<int>(track.w * held / PadMapping::HoldToExitMs), track.h));
+    }
+
     // the console's front buttons, as chips
     if (stage == Stage::Test)
         gui->renderStatus("|@Reset| " + _("Next pad") + "   |@Open| " + _("Update mapping") + "   |@Power| " +
-                          _("Exit"));
+                          _("Exit") + holdHint());
     else if (stage == Stage::Mapping)
-        gui->renderStatus("|@Open| " + _("No button on controller") + "   |@Power| " + _("Cancel mapping"));
+        gui->renderStatus("|@Open| " + _("No button on controller") + "   |@Power| " + _("Cancel mapping") +
+                          holdHint());
     else
-        gui->renderStatus("|@Open| " + _("Save") + "   |@Power| " + _("Cancel mapping"));
+        gui->renderStatus("|@Open| " + _("Save") + "   |@Power| " + _("Cancel mapping") + holdHint());
     renderer.present();
 }
 
@@ -381,16 +441,32 @@ void GuiPadConfig::render() {
 // the console's front buttons drive this screen (the pad under test is not to be trusted): Power, Reset
 // and Open; on a keyboard Escape, Start (Space) and Return do the same. Input hands the power button over
 // as a key for the duration instead of powering off.
+//
+// keyboardAsPad is off here, the way GuiKeyboard turns it off: the screen's own job is reading a *pad*
+// raw, so a keyboard's Esc/Backspace must read as keys, never remapped into the very Button::Circle event
+// a real pad also sends (Test stage: the wizard opens it as a GameController too, for the picture, and SDL
+// keeps delivering its events even though Input let its own pads go - see PadMapping::isExitKey). Without
+// this, a short press of a real pad's Circle looked exactly like a keyboard's Esc and closed the wizard at
+// once, instead of only the 2 s hold doing that (checkHoldToExit, below).
 void GuiPadConfig::loop() {
     menuVisible = true;
-    gui->input().setPowerKeyAsKey(true);
+    ableem::Input &input = gui->input();
+    const bool keyboardAsPad = input.keyboardAsPad();
+    const bool rawKeyboard = input.rawKeyboard();
+    input.setKeyboardAsPad(false);
+    input.setRawKeyboard(true);
+    input.setPowerKeyAsKey(true);
     while (menuVisible) {
         render();
+        if (!menuVisible)
+            break; // Circle held: render() closed the screen
         Event e;
         while (gui->input().poll(e)) {
             if (e.type == Event::Type::Quit)
                 menuVisible = false;
-            bool power = e.type == Event::Type::KeyDown && (e.key == Key::Sleep || e.key == Key::Escape);
+            // Power, or a keyboard's Esc/Backspace (isExitKey) - never a pad's own Circle: that only
+            // leaves by the 2 s hold, above
+            bool power = e.type == Event::Type::KeyDown && PadMapping::isExitKey(e.key);
             bool reset = e.type == Event::Type::KeyDown && e.key == Key::Reset;
 #ifdef AB_DEBUG_HOST
             // a dev host's keyboard stands in for Reset through keyboard-as-pad (Space = Start). Never on a
@@ -438,6 +514,8 @@ void GuiPadConfig::loop() {
             }
         }
     }
-    gui->input().setPowerKeyAsKey(false);
+    input.setPowerKeyAsKey(false);
+    input.setKeyboardAsPad(keyboardAsPad);
+    input.setRawKeyboard(rawKeyboard);
     joystick.close();
 }

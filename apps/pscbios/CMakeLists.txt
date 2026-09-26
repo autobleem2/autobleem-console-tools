@@ -18,6 +18,8 @@ set(PSCBIOS_CORE_SOURCES
         src/core/game_controller_db.h
         src/core/network_status.cpp
         src/core/network_status.h
+        src/core/nm_backend.cpp
+        src/core/nm_backend.h
         src/core/pad_mapping.cpp
         src/core/pad_mapping.h
         src/core/ssid_config.cpp
@@ -106,6 +108,8 @@ ab_add_extension(pscbios ${pscbios_host}
         src/screens/gui_bt_pairing.h
         src/screens/gui_gamepad_menu.cpp
         src/screens/gui_gamepad_menu.h
+        src/screens/gui_network_hub.cpp
+        src/screens/gui_network_hub.h
         src/screens/gui_network_menu.cpp
         src/screens/gui_network_menu.h
         src/screens/gui_pad_config.cpp

@@ -1,7 +1,8 @@
 # AutoBleem Chinese_Simplified Translation - abflashkit
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 0 / Total: 44
+# Untranslated: 3 / Total: 49
 
+About=
 All done - when the screen goes black replace power cord=全部完成 - 屏幕变黑后请重新插拔电源线
 All four partitions to LBOOT.EPB on the stick, for a restore later=将全部四个分区备份到U盘的 LBOOT.EPB，以备日后恢复
 Back the console up to the stick, install the AutoBleem kernel and reboot=先将主机备份到U盘，然后安装 AutoBleem 内核并重启
@@ -9,6 +10,7 @@ Back up games=备份游戏
 Backup complete=备份完成
 Backup failed=备份失败
 Checking LBOOT for vanilla kernel. Decompressing...=正在检查 LBOOT 中的原版内核。正在解压...
+Code C++ and shell scripts=
 Copy the console's built-in games to the Games Backup folder on the stick=将主机内置游戏复制到U盘的 Games Backup 文件夹
 Copying:=正在复制：
 Creating backup....=正在创建备份....
@@ -20,6 +22,7 @@ Games backed up to the Games Backup folder=游戏已备份到 Games Backup 文�
 Games backup failed=游戏备份失败
 I understand=我明白
 Invalid backup or invalid kernel image=备份或内核镜像无效
+Linux Kernel Patching=Linux 内核补丁
 needed=需要
 No backup found - Recovery locked=未找到备份 - 恢复已锁定
 No built-in games found on this console=此主机上未找到内置游戏
@@ -36,6 +39,7 @@ Set recovery mode and reboot now?=设置恢复模式并立即重启吗？
 Setting recovery mode: off=正在设置恢复模式：关
 Setting recovery mode: on=正在设置恢复模式：开
 Start flashing ?=开始刷写吗？
+Testing=
 The games are already backed up=游戏已经备份过了
 The kernel image could not be written. Nothing was changed.=无法写入内核镜像。未做任何更改。
 The LBOOT does not contain CLEAN PSC firmware. You may SOFTBRICK your console. Are you sure?=LBOOT 中不是纯净的 PSC 固件。主机可能会软砖。确定继续吗？
@@ -44,5 +48,6 @@ This PSC has not been restored to original condition. Unable to flash.=此 PSC �
 This tool writes to the console's flash memory. A flash that is interrupted - the power cut, the stick pulled - can leave the console unable to start, and installing a custom kernel voids its warranty. Keep the console powered and the stick in until it reboots by itself. Continue at your own risk.=本工具会写入主机的闪存。刷写被中断（断电、拔出U盘）可能导致主机无法启动，安装自定义内核也会使保修失效。在主机自行重启之前，请保持供电并不要拔出U盘。风险自负。
 Updating payload=正在更新 payload
 Validating backup...   Please wait...=正在验证备份...   请稍候...
+Version, credits and licence=版本、制作人员与许可证
 Writing the kernel failed. The console will restore itself from LBOOT.EPB when it restarts.=写入内核失败。主机重启时将从 LBOOT.EPB 自动恢复。
 Zipping:=正在压缩：
