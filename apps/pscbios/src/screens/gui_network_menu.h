@@ -31,8 +31,6 @@ public:
     void doCross_Pressed() override;
     void doTriangle_Pressed() override;
 
-    bool displayAsterisksInsteadOfPassword = false;
-
     static const unsigned int RefreshInterval = 2000; // ms between re-reads of the address and timezone
 
 private:

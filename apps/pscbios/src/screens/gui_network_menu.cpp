@@ -10,6 +10,17 @@
 
 using namespace std;
 
+namespace {
+// a password as the settings list shows it: an asterisk per character (UTF-8 continuation bytes not counted)
+string masked(const string &password) {
+    size_t characters = 0;
+    for (unsigned char c : password)
+        if ((c & 0xC0) != 0x80)
+            characters++;
+    return string(characters, '*');
+}
+} // namespace
+
 //*******************************
 // GuiNetworkMenu::init
 //*******************************
@@ -40,7 +51,7 @@ void GuiNetworkMenu::fill() {
         values.push_back(value);
     };
     row(_("SSID:"), config.ssid);
-    row(_("Password:"), displayAsterisksInsteadOfPassword ? string(config.password.size(), '*') : config.password);
+    row(_("Password:"), masked(config.password)); // on the screen only while it is typed
     row(_("Driver mode:"), config.driverMode);
     row(_("Timezone:"), timezone);
     row(_("IP Address:"), ipAddress);
@@ -157,7 +168,7 @@ void GuiNetworkMenu::editPassword() {
     GuiKeyboard keyboard(*gui);
     keyboard.label = _("Enter Password");
     keyboard.result = config.password;
-    keyboard.displayAsterisksInstead = displayAsterisksInsteadOfPassword;
+    keyboard.displayAsterisksInstead = false; // typed in the clear: a virtual keyboard is hard to use blind
     keyboard.show();
     if (!keyboard.cancelled)
         config.password = keyboard.result;
