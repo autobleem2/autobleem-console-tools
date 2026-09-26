@@ -1,6 +1,6 @@
 # AutoBleem Danish Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 207
+# Untranslated: 10 / Total: 210
 
 - Mapping (Available):=- Mapping (tilgængelig):
 - Mapping (Not found)=- Mapping (ikke fundet)
@@ -209,3 +209,7 @@ Write Config/Restart Network=Skriv konfiguration/genstart netværk
 Write Configuration/Restart Network=Skriv konfiguration/genstart netværk
 wrong password=forkert adgangskode
 You can test your controller=Du kan teste din controller
+
+Player 1=Spiller 1
+Player 2=Spiller 2
+not used by the PS1 emulator=bruges ikke af PS1-emulatoren

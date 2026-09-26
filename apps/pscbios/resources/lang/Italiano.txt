@@ -1,6 +1,6 @@
 # AutoBleem Italiano Translation
 # Format: English Text=Translated Text
-# Untranslated: 8 / Total: 207
+# Untranslated: 8 / Total: 210
 
 - Mapping (Available):=- Mappatura (disponibile):
 - Mapping (Not found)=- Mappatura (non trovata)
@@ -209,3 +209,7 @@ Write Config/Restart Network=Scrivi Configurazione/Riavvia Rete
 Write Configuration/Restart Network=Scrivi Configurazione/Riavvia Rete
 wrong password=password errata
 You can test your controller=Puoi provare il tuo controller
+
+Player 1=Giocatore 1
+Player 2=Giocatore 2
+not used by the PS1 emulator=non utilizzato dall'emulatore PS1

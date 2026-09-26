@@ -1,6 +1,6 @@
 # AutoBleem Czech Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 207
+# Untranslated: 10 / Total: 210
 
 - Mapping (Available):=- Mapování (k dispozici):
 - Mapping (Not found)=- Mapování (nenalezeno)
@@ -209,3 +209,7 @@ Write Config/Restart Network=Zapsat konfiguraci/restartovat síť
 Write Configuration/Restart Network=Zapsat konfiguraci/restartovat síť
 wrong password=nesprávné heslo
 You can test your controller=Můžete vyzkoušet svůj ovladač
+
+Player 1=Hráč 1
+Player 2=Hráč 2
+not used by the PS1 emulator=nepoužívá jej PS1 emulátor

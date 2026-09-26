@@ -1,6 +1,6 @@
 # AutoBleem Turkish Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 207
+# Untranslated: 10 / Total: 210
 
 - Mapping (Available):=- Eşleme (mevcut):
 - Mapping (Not found)=- Eşleme (bulunamadı)
@@ -209,3 +209,7 @@ Write Config/Restart Network=Yapılandırmayı yaz/ağı yeniden başlat
 Write Configuration/Restart Network=Yapılandırmayı yaz/ağı yeniden başlat
 wrong password=yanlış parola
 You can test your controller=Kumandanızı test edebilirsiniz
+
+Player 1=Oyuncu 1
+Player 2=Oyuncu 2
+not used by the PS1 emulator=PS1 emülatörü tarafından kullanılmıyor

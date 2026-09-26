@@ -1,6 +1,6 @@
 # AutoBleem Swedish Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 207
+# Untranslated: 10 / Total: 210
 
 - Mapping (Available):=- Mappning (tillgänglig):
 - Mapping (Not found)=- Mappning (hittades inte)
@@ -209,3 +209,7 @@ Write Config/Restart Network=Skriv konfiguration/starta om nätverk
 Write Configuration/Restart Network=Skriv konfiguration/starta om nätverk
 wrong password=fel lösenord
 You can test your controller=Du kan testa din handkontroll
+
+Player 1=Spelare 1
+Player 2=Spelare 2
+not used by the PS1 emulator=används inte av PS1-emulatorn

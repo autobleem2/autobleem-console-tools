@@ -1,6 +1,6 @@
 # AutoBleem Chinese_Simplified Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 207
+# Untranslated: 10 / Total: 210
 
 - Mapping (Available):=- 映射（可用）：
 - Mapping (Not found)=- 映射（未找到）
@@ -209,3 +209,7 @@ Write Config/Restart Network=写入配置/重启网络
 Write Configuration/Restart Network=写入配置/重启网络
 wrong password=密码错误
 You can test your controller=可以测试手柄了
+
+Player 1=玩家 1
+Player 2=玩家 2
+not used by the PS1 emulator=PS1 模拟器未使用
