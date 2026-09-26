@@ -2,8 +2,8 @@
 # Format: English Text=Translated Text
 # Untranslated: 10 / Total: 207
 
- - Mapping (Available):= - Eşleme (mevcut):
- - Mapping (Not found)= - Eşleme (bulunamadı)
+- Mapping (Available):=- Eşleme (mevcut):
+- Mapping (Not found)=- Eşleme (bulunamadı)
 1. Using a micro USB charging cable connect the controller to one of available USB FRONT port of the console=1. Bir micro USB şarj kablosuyla kumandayı konsolun ÖN USB bağlantı noktalarından birine takın
 2. When the leds on the controller will start to blink press the PlayStation Home button=2. Kumandanın LED'leri yanıp sönmeye başlayınca PlayStation Home düğmesine basın
 3. The controller should be recognized as normal wired PS3 compatible controller=3. Kumanda normal kablolu PS3 uyumlu kumanda olarak tanınmalıdır
@@ -46,7 +46,7 @@ connecting...=bağlanıyor...
 Connection:=Bağlantı:
 Controller=
 Controller mapping=Kumanda eşleme
-Could not connect to=Şu ağa bağlanılamadı
+Could not connect=Bağlanılamadı
 Current Time:=Şu anki saat:
 discovering...=aranıyor...
 Dongle status:=Adaptör durumu:

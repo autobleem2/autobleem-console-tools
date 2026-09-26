@@ -336,8 +336,11 @@ void GuiNetworkMenu::followConnection() {
     }
     busy_ = false;
     busyFooter_.clear();
+    // the row shows the short reason only - the SSID is already the row above, and the technical detail (in
+    // result.text()'s brackets) is long enough to run past the row at 1280x720; WifiConnectWatch::fail() already
+    // logged the full detail through PLOG_WARNING when the failure happened
     if (result.stage() == WifiConnectStage::Failed && result.failure() != WifiFailure::Cancelled)
-        message_ = _("Could not connect to") + " " + config.ssid + ": " + result.text();
+        message_ = _("Could not connect") + ": " + wifiFailureText(result.failure());
     refresh();
 }
 

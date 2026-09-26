@@ -2,8 +2,8 @@
 # Format: English Text=Translated Text
 # Untranslated: 10 / Total: 207
 
- - Mapping (Available):= - Mappning (tillgänglig):
- - Mapping (Not found)= - Mappning (hittades inte)
+- Mapping (Available):=- Mappning (tillgänglig):
+- Mapping (Not found)=- Mappning (hittades inte)
 1. Using a micro USB charging cable connect the controller to one of available USB FRONT port of the console=1. Anslut handkontrollen med en micro-USB-laddkabel till en av konsolens USB-portar på FRAMSIDAN
 2. When the leds on the controller will start to blink press the PlayStation Home button=2. När handkontrollens lysdioder börjar blinka, tryck på PlayStation Home-knappen
 3. The controller should be recognized as normal wired PS3 compatible controller=3. Handkontrollen bör kännas igen som en vanlig trådbunden PS3-kompatibel handkontroll
@@ -46,7 +46,7 @@ connecting...=ansluter...
 Connection:=Anslutning:
 Controller=
 Controller mapping=Mappning av handkontroll
-Could not connect to=Kunde inte ansluta till
+Could not connect=Kunde inte ansluta
 Current Time:=Aktuell tid:
 discovering...=söker...
 Dongle status:=Dongelstatus:

@@ -2,8 +2,8 @@
 # Format: English Text=Translated Text
 # Untranslated: 10 / Total: 207
 
- - Mapping (Available):= - Mapatge (disponible) :
- - Mapping (Not found)= - Mapatge (pas trobat)
+- Mapping (Available):=- Mapatge (disponible) :
+- Mapping (Not found)=- Mapatge (pas trobat)
 1. Using a micro USB charging cable connect the controller to one of available USB FRONT port of the console=1. Amb un cable de carga micro USB, brancatz la maneta sus un dels pòrts USB de DAVANT de la consòla
 2. When the leds on the controller will start to blink press the PlayStation Home button=2. Quand las LED de la maneta començan de cluquejar, quichatz lo boton PlayStation Home
 3. The controller should be recognized as normal wired PS3 compatible controller=3. La maneta deu èsser reconeguda coma una maneta filara compatibla PS3 normala
@@ -46,7 +46,7 @@ connecting...=connexion...
 Connection:=Connexion :
 Controller=
 Controller mapping=Associacion de la maneta
-Could not connect to=Impossible de se connectar a
+Could not connect=Impossible de se connectar
 Current Time:=Ora actuala :
 discovering...=recèrca...
 Dongle status:=Estat del dongle :

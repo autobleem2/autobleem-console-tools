@@ -2,8 +2,8 @@
 # Format: English Text=Translated Text
 # Untranslated: 8 / Total: 207
 
- - Mapping (Available):= - Mapeo (disponible):
- - Mapping (Not found)= - Mapeo (no encontrado)
+- Mapping (Available):=- Mapeo (disponible):
+- Mapping (Not found)=- Mapeo (no encontrado)
 1. Using a micro USB charging cable connect the controller to one of available USB FRONT port of the console=1. Con un cable de carga micro USB, conecta el mando a uno de los puertos USB FRONTALES de la consola
 2. When the leds on the controller will start to blink press the PlayStation Home button=2. Cuando los LED del mando empiecen a parpadear, pulsa el botón PlayStation Home
 3. The controller should be recognized as normal wired PS3 compatible controller=3. El mando debería reconocerse como un mando con cable compatible con PS3 normal
@@ -46,7 +46,7 @@ connecting...=conectando...
 Connection:=Conexión:
 Controller=
 Controller mapping=Asignación del mando
-Could not connect to=No se pudo conectar a
+Could not connect=No se pudo conectar
 Current Time:=Hora Actual:
 discovering...=buscando...
 Dongle status:=Estado dongle:
