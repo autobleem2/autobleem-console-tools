@@ -8,13 +8,15 @@ project(autobleem-console-tools)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# AB_TARGET: psc (cross-compiled for the console) or dev (a host build, the default) - these tools build
-# for nothing else (CLAUDE.md: "the console tools build for psc/dev"). Read as a CACHE variable so it is
+# AB_TARGET: psc (cross-compiled for the console), rpi / pcusb (a Raspberry Pi, 32- or 64-bit by the
+# toolchain, and the PC stick: PSC-Bios alone, since 2026-09-26 - its Network & Controllers screens run
+# there over NetworkManager and BlueZ; ABFlashKit flashes the console and is not built) or dev (a host
+# build, the default). Read as a CACHE variable so it is
 # genuinely shared with the autobleem-core submodule below: CMake directory scope does not flow sideways
 # (a sibling add_subdirectory does not inherit a plain set() from another sibling), so autobleem-core's own
 # CMakeLists.txt independently reads this SAME cache variable for its own AB_PLATFORM_<X> macro - see the
 # comment there. Passed as -DAB_TARGET=psc alongside -DCMAKE_TOOLCHAIN_FILE=toolchains/psc/PSCtoolchainV8.cmake.
-set(AB_TARGET "" CACHE STRING "psc | dev (empty: psc on ARM, dev elsewhere)")
+set(AB_TARGET "" CACHE STRING "psc | rpi | pcusb | dev (empty: psc on ARM, dev elsewhere)")
 if (AB_TARGET STREQUAL "")
     if (CMAKE_SYSTEM_PROCESSOR MATCHES "^arm" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
         set(AB_TARGET "psc")
@@ -22,8 +24,8 @@ if (AB_TARGET STREQUAL "")
         set(AB_TARGET "dev")
     endif()
 endif()
-if (NOT AB_TARGET STREQUAL "psc" AND NOT AB_TARGET STREQUAL "dev")
-    message(FATAL_ERROR "AB_TARGET must be psc or dev for the console tools (got '${AB_TARGET}')")
+if (NOT AB_TARGET MATCHES "^(psc|rpi|pcusb|dev)$")
+    message(FATAL_ERROR "AB_TARGET must be psc, rpi, pcusb or dev for the console tools (got '${AB_TARGET}')")
 endif()
 string(TOUPPER "${AB_TARGET}" _ab_target_upper)
 message(STATUS "autobleem-console-tools: building for target ${AB_TARGET} (AB_PLATFORM_${_ab_target_upper})")
@@ -65,7 +67,10 @@ set(AB_TARGET "${AB_TARGET}" CACHE STRING "" FORCE)
 add_subdirectory(autobleem-core)
 
 add_subdirectory(apps/pscbios)
-add_subdirectory(apps/abflashkit)
+# the console's kernel flasher: nothing to flash on a Pi or a PC
+if (AB_TARGET STREQUAL "psc" OR AB_TARGET STREQUAL "dev")
+    add_subdirectory(apps/abflashkit)
+endif()
 
 # the tools' own suites (tests/), on the core's harness - host builds only
 if (AB_TARGET STREQUAL "dev")
