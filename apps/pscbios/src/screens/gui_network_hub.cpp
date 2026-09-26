@@ -35,6 +35,9 @@ void showNetworkHub(ableem::GuiBase &gui) {
                   {_("Bluetooth controllers"), _("Pair a DualShock 4 or another Bluetooth gamepad")},
                   {_("DualShock 3 pairing"), _("How a DualShock 3 pairs over its USB cable")},
                   {_("Controller mapping"), _("Test a controller and map its buttons")}};
+    // draw over whatever called us (the launcher's dimmed frame, from runExtensionEntry's capture) instead of
+    // the theme's own background, like GuiSystemMenu
+    menu.background = gui.renderer().lastCapture();
     for (;;) {
         menu.show();
         switch (menu.result) {
