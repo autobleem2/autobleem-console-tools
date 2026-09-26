@@ -2,8 +2,8 @@
 # Format: English Text=Translated Text
 # Untranslated: 10 / Total: 207
 
- - Mapping (Available):= - 映射（可用）：
- - Mapping (Not found)= - 映射（未找到）
+- Mapping (Available):=- 映射（可用）：
+- Mapping (Not found)=- 映射（未找到）
 1. Using a micro USB charging cable connect the controller to one of available USB FRONT port of the console=1. 用 micro USB 充电线把手柄接到主机前面板的任一 USB 接口
 2. When the leds on the controller will start to blink press the PlayStation Home button=2. 手柄指示灯开始闪烁时，按下 PlayStation Home 键
 3. The controller should be recognized as normal wired PS3 compatible controller=3. 手柄应被识别为普通的 PS3 兼容有线手柄
@@ -46,7 +46,7 @@ connecting...=正在连接...
 Connection:=连接:
 Controller=
 Controller mapping=手柄映射
-Could not connect to=无法连接到
+Could not connect=无法连接
 Current Time:=当前时间：
 discovering...=正在搜索...
 Dongle status:=适配器状态：

@@ -2,8 +2,8 @@
 # Format: English Text=Translated Text
 # Untranslated: 8 / Total: 207
 
- - Mapping (Available):= - Mapovanie (k dispozícii):
- - Mapping (Not found)= - Mapovanie (nenájdené)
+- Mapping (Available):=- Mapovanie (k dispozícii):
+- Mapping (Not found)=- Mapovanie (nenájdené)
 1. Using a micro USB charging cable connect the controller to one of available USB FRONT port of the console=1. Nabíjacím káblom micro USB pripojte ovládač k jednému z PREDNÝCH USB portov konzoly
 2. When the leds on the controller will start to blink press the PlayStation Home button=2. Keď začnú diódy ovládača blikať, stlačte tlačidlo PlayStation Home
 3. The controller should be recognized as normal wired PS3 compatible controller=3. Ovládač by mal byť rozpoznaný ako bežný káblový ovládač kompatibilný s PS3
@@ -46,7 +46,7 @@ connecting...=pripája sa...
 Connection:=Pripojenie:
 Controller=
 Controller mapping=Mapovanie ovládača
-Could not connect to=Nepodarilo sa pripojiť k
+Could not connect=Nepodarilo sa pripojiť
 Current Time:=Aktuálny čas:
 discovering...=hľadanie...
 Dongle status:=Stav Dongle:

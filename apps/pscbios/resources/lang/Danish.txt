@@ -2,8 +2,8 @@
 # Format: English Text=Translated Text
 # Untranslated: 10 / Total: 207
 
- - Mapping (Available):= - Mapping (tilgængelig):
- - Mapping (Not found)= - Mapping (ikke fundet)
+- Mapping (Available):=- Mapping (tilgængelig):
+- Mapping (Not found)=- Mapping (ikke fundet)
 1. Using a micro USB charging cable connect the controller to one of available USB FRONT port of the console=1. Tilslut controlleren med et micro-USB-ladekabel til en af konsollens USB-porte på FORSIDEN
 2. When the leds on the controller will start to blink press the PlayStation Home button=2. Når controllerens lysdioder begynder at blinke, tryk på PlayStation Home-knappen
 3. The controller should be recognized as normal wired PS3 compatible controller=3. Controlleren bør nu genkendes som en almindelig PS3-kompatibel controller med kabel
@@ -46,7 +46,7 @@ connecting...=forbinder...
 Connection:=Forbindelse:
 Controller=
 Controller mapping=Controller-tilknytning
-Could not connect to=Kunne ikke forbinde til
+Could not connect=Kunne ikke oprette forbindelse
 Current Time:=Aktuel tid:
 discovering...=søger...
 Dongle status:=Dongle-status:

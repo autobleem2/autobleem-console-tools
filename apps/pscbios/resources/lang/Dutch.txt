@@ -2,8 +2,8 @@
 # Format: English Text=Translated Text
 # Untranslated: 10 / Total: 207
 
- - Mapping (Available):= - Toewijzing (beschikbaar):
- - Mapping (Not found)= - Toewijzing (niet gevonden)
+- Mapping (Available):=- Toewijzing (beschikbaar):
+- Mapping (Not found)=- Toewijzing (niet gevonden)
 1. Using a micro USB charging cable connect the controller to one of available USB FRONT port of the console=1. Sluit de controller met een micro-USB-laadkabel aan op een van de USB-poorten aan de VOORKANT van de console
 2. When the leds on the controller will start to blink press the PlayStation Home button=2. Druk op de PlayStation Home-knop zodra de leds van de controller gaan knipperen
 3. The controller should be recognized as normal wired PS3 compatible controller=3. De controller wordt nu herkend als een gewone bekabelde PS3-compatibele controller
@@ -46,7 +46,7 @@ connecting...=verbinden...
 Connection:=Verbinding:
 Controller=
 Controller mapping=Controllertoewijzing
-Could not connect to=Kon geen verbinding maken met
+Could not connect=Kon geen verbinding maken
 Current Time:=Huidige tijd:
 discovering...=zoeken...
 Dongle status:=Dongle-status:
