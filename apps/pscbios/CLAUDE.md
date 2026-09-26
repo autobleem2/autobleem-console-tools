@@ -1,27 +1,31 @@
 # PSC-Bios - developer context
 
-The console's hardware configuration tool, **an extension of the launcher** since 2026-09-24 (the owner's
-call: a plugin the launcher loads, `Extensions/pscbios/bin/psc/pscbios.so`, shipped with the console package;
-it was an App - a program of its own in `Apps/pscbios/` - until then; ABFlashKit stays an App). The launcher's
-*Hardware Information* item runs it (`SystemMenuAction::HardwareInfo` -> `app.extensions().run("pscbios")`),
-and so does the Extensions list; where it cannot run - a Pi or a PC (it is built for the console only), a
-console without it, one built against another `AB_SDK_ABI`, or disabled by the crash guard - the item shows
-the built-in `GuiHardwareInfo` instead. One screen of facts - the time and timezone, the WiFi/ethernet/Bluetooth
-dongles with their addresses, the pads and whether SDL has a mapping for each - and three things it can
-do: **WiFi settings** (SSID typed or picked from a scan, password, driver mode, written for the kernel and
-the network restarted; the timezone), the **gamepad mapping wizard** (a pad tested raw, every standard
-input asked for in turn, the result written to the `gamecontrollerdb.txt` the launcher loads), a DualShock 3
-USB-pairing page, and an interactive **Bluetooth pairing screen** (`GuiBtPairing`, 2026-09-22) - scan, pick,
-pair/remove a DualShock 4 or other standard Bluetooth gamepad via a shipped `bt` bluetoothctl wrapper, so it
-works on the original flashed kernel too (not just a freshly built one).
+A hardware configuration extension (since 2026-09-24) and network/controller manager (2026-09-26): a plugin
+the launcher loads, `Extensions/pscbios/bin/{key}/pscbios.so` (console, Pi 32/64-bit, PC stick; not Windows),
+shipped with every package. The launcher's System menu's *Network & Controllers* item opens it at the
+`network` entry through `Extension::runEntry("network")` (SDK ABI 4, `Provides=network` in `extension.ini`);
+the Extensions list runs the whole tool from `run()`. Where PSC-Bios cannot run - Windows, a console without the
+kernel or custom libraries, one built against another `AB_SDK_ABI`, or disabled by the crash guard - the
+*Network & Controllers* item does not appear, and *Hardware Information* shows the built-in `GuiHardwareInfo`
+instead. The opening screen is a **Network & Controllers hub** with facts - time, timezone, WiFi/Ethernet/
+Bluetooth adapters, the pads and their mappings - and four interactive items: **Wi-Fi network** (SSID typed or
+scanned, password, driver mode, applied and restarted; timezone), **Bluetooth controllers** (scan, pair, remove
+a DualShock 4 or other standard pad via a shipped `bt` bluetoothctl wrapper), **DualShock 3 pairing** (USB via
+sixaxis), and the **controller mapping wizard**. The network and Bluetooth items need the AutoBleem kernel on
+the console (section 6.2), or system tools (NetworkManager + BlueZ) on a Pi or PC stick; the wizard works
+everywhere.
 Ported on 2026-09-18 from the 2020 standalone tool (a fork of the
 old AutoBleem GUI, kept in git history under `psctools/pscbios`) onto `lib_ableem` + `ab_core` +
 `ab_classic`; the root CLAUDE.md covers those and the build.
 
-## What the console provides
+## Platform-specific backends
 
-Everything console-specific goes through two scripts the **AutoBleem kernel** ships in `/bin` - they are
-not in this repository:
+The tool provides a **backend abstraction** (`ConsoleBackend` interface) for platform differences. The
+console uses `AbnetBackend` (the AutoBleem kernel's scripts); Raspberry Pi and the PC stick use `NmBackend`
+(NetworkManager and BlueZ); Windows has no backend and the network item is off. `FakeBackend` substitutes
+on a dev host.
+
+**Console** (`AbnetBackend`): everything goes through scripts the **AutoBleem kernel** ships in `/bin` - not in this repository:
 
 - `/bin/abnet list_ifaces | wlan_on | is_up <iface> | show_ip <iface> | scan | configure "<ssid>" "<pw>"
   | driver_mode <wext|nl80211> | restart | bt_up | bt_name`
@@ -38,38 +42,47 @@ Plus two files: `/etc/autobleem/ssid.cfg` (three lines: SSID, password, driver m
 configure` is fed from) and `/etc/wpa_supplicant.conf` (read only, for the SSID an earlier setup left
 there; its `"1"` means none). `/etc/autobleem` is `Env::getPathToKernelConfigDir()`, set by
 `EnvironmentSetup::fromRoot()` on the console only; off the console `SsidConfig` keeps `ssid.cfg` next to
-the tool. Without the kernel (`/bin/abnet` missing) the network rows and WiFi settings are off and the
-pad wizard still works - the 2020 tool exited after "Custom Firmware Kernel Not Found".
+the tool. Without the kernel (`/bin/abnet` missing), AbnetBackend still reports what adapters are up.
+
+**Raspberry Pi and PC stick** (`NmBackend`): `nmcli connection show`, `nmcli device wifi list`, `nmcli
+device connect <ssid>`, plus `timedatectl list-timezones` and `timedatectl set-timezone`, and `bluetoothctl`
+for pairing. The Wi-Fi screen shows the network it is on, writes no config file (the network remembers itself),
+and shows driver mode as Automatic. `nmcli device wifi connect` pauses for a second per character typed; the
+UI waits with a spinner (it is normally instant). Backend errors (no nmcli, bluetoothctl not running) are
+logged; the item stays available because they can be started.
 
 ## Layout
 
 ```
 src/core/       pscbios_core (SDL-free, links ab_core; the tests link it)
-  console_backend.*   ConsoleBackend interface; AbnetBackend (the popens above, through System::execUnixCommand[Lines])
-                      and FakeBackend (a dev host: wlan0 on 192.168.1.23, three SSIDs, Europe/Warsaw, 16 zones)
+  console_backend.*   ConsoleBackend interface; AbnetBackend (console: `abnet` and `bluetoothctl` scripts,
+                      through System::execUnixCommand[Lines]), NmBackend (Pi/PC stick: `nmcli` / `timedatectl` /
+                      `bluetoothctl`), FakeBackend (dev host: wlan0 on 192.168.1.23, three SSIDs, Europe/Warsaw)
   ssid_config.*       SsidConfig - ssid.cfg load/save, the wpa_supplicant.conf fallback, the paths
   game_controller_db.* GameControllerDb - gamecontrollerdb.txt with one mapping replaced under "#AutoBleem"
   pad_mapping.*       PadMapping - the wizard's logic: the 25 standard elements, detectChange(), the stick-half
                       merge (finalElements), the mapping line; the 2020 right-stick bug is fixed here
-  network_status.*    NetworkStatus - the main screen's facts, one refresh() per RefreshInterval
-src/screens/    the screens, on ab_classic (GuiFactsPage, GuiStringMenu, GuiConfirm, GuiKeyboard, GuiTextPage, GuiAbout)
-  gui_pscbios_main.*  the opening screen, a GuiFactsPage (sections: time, WiFi, ethernet, Bluetooth, the controllers
-                      with their mapping and the mapping file); Select = WiFi (kernel only), Square = gamepads,
-                      Triangle = About, Circle = quit
-  gui_network_menu.*  the WiFi settings: seven option rows (label left, value right - a compact panel), the two
-                      actions among them; the restart's two messages are the busy spinner over the panel.
-                      gui_ssid_scan_menu.* holds both pickers (SSID scan, timezone)
-  gui_gamepad_menu.*  the gamepad section, a compact three-row list; gui_pad_config.* the wizard: the facts, the
-                      stage's message and (while mapping) the entries in two columns down the left of the panel,
-                      the DualShock picture at the right, the front buttons as RESET/OPEN/POWER chips in the footer;
-                      pscbios_pages.* the static texts (the About credits with GuiAbout::HeadingMark headings)
+  network_status.*    NetworkStatus - the opening screen's facts, one refresh() per RefreshInterval
+src/screens/    the screens, on ab_classic (GuiFactsPage, GuiActionMenu, GuiStringMenu, GuiConfirm, GuiKeyboard,
+                 GuiTextPage, GuiAbout)
+  gui_pscbios_main.*  the Network & Controllers hub (2026-09-26): a GuiFactsPage showing time, timezone, adapters,
+                      the controllers and their mappings, plus four interactive items in a GuiActionMenu for the
+                      back side (Select/Square/L1/R1 pick the items from the facts page)
+  gui_network_menu.*  the Wi-Fi settings: four option rows (SSID, password, driver mode - console only, timezone),
+                      *Write / Restart* action, and the restart's spinner; gui_ssid_scan_menu.* holds the SSID and
+                      timezone pickers
+  gui_gamepad_menu.*  Bluetooth and DualShock 3 pairing screens: static text and a device list (scan, pick, pair/remove);
+                      gui_pad_config.* the wizard: the stage's message, the entries as the user maps them in two
+                      columns left, the DualShock picture at the right, the front buttons as RESET/OPEN/POWER chips
+                      in the footer; pscbios_pages.* the static texts (the About credits with GuiAbout::HeadingMark)
 src/pscbios.*         PscBios - the running tool's shared part: the ConsoleBackend the screens reach as
                       PscBios::get().console(), valid while its screens show
-src/pscbios_extension.cpp  PscBiosExtension (AB_EXTENSION): run() = the backend choice (FakeBackend under
-                      AB_DEBUG_HOST), Env::setAppDir(the extension's folder) for its duration, the main screen
-resources/            what ships in Extensions/pscbios/ next to bin/psc/pscbios.so: extension.ini (Network=none,
-                      no Background), readme.txt, icon.png, DS3.png (the wizard's picture), bt (the bluetoothctl
-                      wrapper), gamecontrollerdb.txt (the seed), lang/
+src/pscbios_extension.cpp  PscBiosExtension (AB_EXTENSION, ABI 4): run() / runEntry(entry) - entry "network"
+                      opens the hub; the backend choice (FakeBackend under AB_DEBUG_HOST), Env::setAppDir() for
+                      its duration, the main screen
+resources/            what ships in Extensions/pscbios/ next to bin/{key}/pscbios.so: extension.ini (Provides=network,
+                      Network=none, no Background), readme.txt, icon.png, DS3.png (the wizard's picture), bt (the
+                      bluetoothctl wrapper), gamecontrollerdb.txt (the seed), lang/
 ```
 
 It runs **inside the launcher**: the launcher's `App` is the `AppBase` every screen has (config, theme,
