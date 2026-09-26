@@ -5,6 +5,7 @@
 #include "../abflashkit_app.h"
 #include "core/version.h"
 #include "gui/gui.h"
+#include "gui/screens/gui_about.h"
 #include "gui/screens/gui_confirm.h"
 
 #include <ableem/engine/log.h>
@@ -15,7 +16,7 @@
 using namespace std;
 
 namespace {
-enum Action { Flash = 0, FullBackup, Restore, BackupGames };
+enum Action { Flash = 0, FullBackup, Restore, BackupGames, About };
 }
 
 //*******************************
@@ -30,6 +31,7 @@ void GuiFlashKitMain::init() {
         {_("Full backup"), _("All four partitions to LBOOT.EPB on the stick, for a restore later")},
         {_("Restore Mode"), _("Reboot into Sony's recovery, which restores the console from LBOOT.EPB")},
         {_("Back up games"), _("Copy the console's built-in games to the Games Backup folder on the stick")},
+        {_("About"), _("Version, credits and licence")},
     };
 }
 
@@ -132,6 +134,25 @@ void GuiFlashKitMain::run(FlashKitActions::Outcome (FlashKitActions::*action)())
 }
 
 //*******************************
+// GuiFlashKitMain::showAbout
+//*******************************
+// the shared About screen (the version, the credits, the surprise) with the 2020 tool's authors; the foot is
+// AutoBleem's - support, copyright and the GPL notice cover this tool too
+void GuiFlashKitMain::showAbout() {
+    app.audio().cursor.play();
+    auto heading = [](const string &text) { return GuiAbout::HeadingMark + text; };
+    GuiAbout about(*gui);
+    about.credits = {heading(_("Code C++ and shell scripts")),
+                     "screemer (AutoBleem), madmonkey (Hakchi)",
+                     heading(_("Linux Kernel Patching")),
+                     "screemer, madmonkey",
+                     heading(_("Testing")),
+                     "MagnusRC, xboxiso, Azazel, Solidius, SupaSAIAN, Kingherb, saptis"};
+    about.foot = GuiAbout::autobleemFoot();
+    about.show();
+}
+
+//*******************************
 // GuiFlashKitMain::loop
 //*******************************
 void GuiFlashKitMain::loop() {
@@ -151,6 +172,9 @@ void GuiFlashKitMain::loop() {
             break;
         case BackupGames:
             run(&FlashKitActions::backupGames);
+            break;
+        case About:
+            showAbout();
             break;
         default:
             menuVisible = false; // Circle, or the window closed

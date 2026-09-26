@@ -1,5 +1,5 @@
 //
-// GuiFlashKitMain: ABFlashKit's one screen - a GuiActionMenu of the four actions (Flash kernel, Full
+// GuiFlashKitMain: ABFlashKit's one screen - a GuiActionMenu of the four actions and About (Flash kernel, Full
 // backup, Restore mode, Back up games; Circle quits) over the theme's background, and the FlashUi the
 // actions report through while they run: every status line is the spinner's message over the dimmed menu,
 // with the progress bar under it while a step can measure itself, a question is a confirm dialog, a pause
@@ -38,5 +38,6 @@ private:
     int progressDone = 0, progressTotal = 0; // the bar under the spinner, kept across the status lines
     unsigned int lastProgressFrame = 0;      // when a progress step was last drawn
     void run(FlashKitActions::Outcome (FlashKitActions::*action)());
+    void showAbout(); // GuiAbout with ABFlashKit's credits
     std::string lastStatus;
 };
