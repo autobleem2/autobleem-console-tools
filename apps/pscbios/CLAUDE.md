@@ -66,8 +66,10 @@ src/core/       pscbios_core (SDL-free, links ab_core; the tests link it)
 src/screens/    the screens, on ab_classic (GuiFactsPage, GuiActionMenu, GuiStringMenu, GuiConfirm, GuiKeyboard,
                  GuiTextPage, GuiAbout)
   gui_pscbios_main.*  the Network & Controllers hub (2026-09-26): a GuiFactsPage showing time, timezone, adapters,
-                      the controllers and their mappings, plus four interactive items in a GuiActionMenu for the
-                      back side (Select/Square/L1/R1 pick the items from the facts page)
+                      the controllers and their mappings, plus four interactive items in a GuiActionMenu over
+                      the launcher's dimmed captured frame (Select/Square/L1/R1 pick the items from the facts page);
+                      `GuiActionMenu::background` is set from `renderer().lastCapture()` taken by
+                      `GuiLauncher::runExtensionEntry()` right before running the extension
   gui_network_menu.*  the Wi-Fi settings: four option rows (SSID, password, driver mode - console only, timezone),
                       *Write / Restart* action, and the restart's spinner; gui_ssid_scan_menu.* holds the SSID and
                       timezone pickers
@@ -119,21 +121,31 @@ pads; `probePads()` takes them back after) and shows its axes/buttons/hats as nu
 lit by the mapped view. It is driven by the console's **front buttons** - they arrive as keyboard scancodes:
 Power (`Key::Sleep`, Escape on a keyboard) cancels/exits, Reset (`Key::Reset`, or Start = Space with the
 keyboard as pad) picks the next pad, Open (`Key::Open`, or Return) starts mapping / skips an input / saves.
-`Input::setPowerKeyAsKey(true)` for the screen's duration is what turns the power button into a key. The
-mapping: `initialState` is the pad at rest; every frame `PadMapping::detectChange()` names the raw input
-that moved; the screen waits for it to be released (`anythingHeld`) and moves on. At the end
-`finalElements()` merges the stick halves, the line is given to SDL (`Input::addMapping`) for a test, and
-Open once more asks for a name and writes it with `GameControllerDb` to `Input::currentMappingPath()` -
-the file `probePads()` loaded, i.e. the kernel's `/etc/autobleem/gamecontrollerdb.txt` when it exists,
-else the main GUI's `gamecontrollerdb.txt` - which the launcher loads at its next start (`Env::padMappingFiles()`).
+**Holding Circle 2 s leaves the wizard** (2026-09-26, `PadMapping::HoldToExitMs`), with a progress bar at
+the footer and a hint; a short Circle press is still mapped. Circle is the session's `b` mapping (whatever
+the pad's own mapping line says, tested on the fly), or "any button 2 s: Exit" while mapping an unknown pad.
+A keyboard's Esc or Backspace also leaves (the KeyboardMap makes them Circle, treated as Power here).
+`Input::setPowerKeyAsKey(true)` for the screen's duration is what turns the power button into a key.
+The mapping: `initialState` is the pad at rest; every frame `PadMapping::detectChange()` names the raw input
+that moved; an input held to exit is never mapped - the screen keeps drawing. The input is taken when it is
+let go (pending), not on the press, so the Circle held is released clean. At the end `finalElements()` merges
+the stick halves, the line is given to SDL (`Input::addMapping`) for a test, and Open once more asks for a
+name and writes it with `GameControllerDb` to `Input::currentMappingPath()` - the file `probePads()`
+loaded, i.e. the kernel's `/etc/autobleem/gamecontrollerdb.txt` when it exists, else the main GUI's
+`gamecontrollerdb.txt` - which the launcher loads at its next start (`Env::padMappingFiles()`).
 
 ## Build, run, test
 
-- **This repository** (Linux: the host build and the console): `ab_add_extension` without a HOST builds
-  `<build>/extensions/pscbios/`; the host build also runs `tests/apps/test_pscbios_core.cpp`. The CI's psc
-  job checks the plugin (`check_psc_binary.sh`, `check_extension.sh`) and packs the folder into
-  `console-tools-psc-<v>.tar.gz` as `Extensions/pscbios/`, next to `Apps/abflashkit/`; autobleem-appliance
-  extracts that tarball onto the stick. Not built for the Pi. Not UPX-packed (a shared library).
+- **This repository** (Linux: the host build, the console, and Raspberry Pi / PC stick):
+  `ab_add_extension` without a HOST builds `<build>/extensions/pscbios/`; the host build also runs
+  `tests/apps/test_pscbios_core.cpp`. The CI's **psc job** checks the plugin (`check_psc_binary.sh`,
+  `check_extension.sh`) and packs the folder into `console-tools-psc-<v>.tar.gz` as `Extensions/pscbios/`,
+  next to `Apps/abflashkit/`; autobleem-appliance extracts that tarball onto the console stick. Not
+  UPX-packed (a shared library). The CI's **linux job** (2026-09-26, matrix over rpi / rpi64 / pcusb)
+  builds PSC-Bios for a Raspberry Pi (32- and 64-bit) and the PC stick over the image's multiarch cross
+  compilers, checks the plugin SDK stamp (names the target), and packs `Extensions/pscbios/` into
+  `console-tools-<target>-<v>.tar.gz` - what autobleem-appliance's assemble.sh stages into the Pi and
+  PC-stick packages. The release and rolling nightly wait for it and collect every console-tools-* artifact.
 - **Windows** needs the launcher's import library, so there it is built **with the launcher**:
   `cmake ... -DAB_EXTENSION_DIRS=<this repo>/apps/pscbios` in the launcher's build, then its
   `tools/make_usb.py usb` puts `build_win/extensions/pscbios/` on the dev stick.
