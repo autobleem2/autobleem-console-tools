@@ -13,6 +13,8 @@ set(PSCBIOS_CORE_SOURCES
         src/core/game_controller_db.h
         src/core/network_status.cpp
         src/core/network_status.h
+        src/core/nm_backend.cpp
+        src/core/nm_backend.h
         src/core/pad_mapping.cpp
         src/core/pad_mapping.h
         src/core/ssid_config.cpp

@@ -36,8 +36,10 @@ string quoted(const string &value) {
     }
     return out + "\"";
 }
-// abnet bt_scan / bt_paired print one device per line as "<mac> <name>" (name may contain spaces).
-vector<BtDevice> parseBtDevices(const vector<string> &lines, bool paired) {
+} // namespace
+
+// the bt helper's scan / paired print one device per line as "<mac> <name>" (name may contain spaces).
+vector<BtDevice> parseBtHelperLines(const vector<string> &lines, bool paired) {
     vector<BtDevice> out;
     for (const string &raw : lines) {
         string line = raw;
@@ -57,7 +59,6 @@ vector<BtDevice> parseBtDevices(const vector<string> &lines, bool paired) {
     }
     return out;
 }
-} // namespace
 
 AbnetBackend::AbnetBackend()
     : run_(runViaSystem), runLines_(runLinesViaSystem), kernel_(DirEntry::exists(Abnet)),
@@ -119,13 +120,13 @@ string AbnetBackend::btName() {
 vector<BtDevice> AbnetBackend::btScan() {
     if (!btUp())
         return {};
-    return parseBtDevices(runLines_("sh " + btHelper_ + " scan"), false);
+    return parseBtHelperLines(runLines_("sh " + btHelper_ + " scan"), false);
 }
 
 vector<BtDevice> AbnetBackend::btPairedDevices() {
     if (!btUp())
         return {};
-    return parseBtDevices(runLines_("sh " + btHelper_ + " paired"), true);
+    return parseBtHelperLines(runLines_("sh " + btHelper_ + " paired"), true);
 }
 
 bool AbnetBackend::btPair(const string &mac) {

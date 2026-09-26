@@ -10,6 +10,7 @@
 #include "core/console_backend.h"
 #include "core/game_controller_db.h"
 #include "core/network_status.h"
+#include "core/nm_backend.h"
 #include "core/pad_mapping.h"
 #include "core/ssid_config.h"
 
@@ -364,4 +365,156 @@ TEST_CASE("PadMapping::finalElements merges stick halves, drops the unmapped and
 
 TEST_CASE("PadMapping::cleanName keeps what SDL accepts in a mapping line") {
     CHECK(PadMapping::cleanName("Sony PLAYSTATION(R)3 Controller, v2") == "Sony PLAYSTATIONR3 Controller v2");
+}
+
+//*******************************
+// NmBackend - the answers are what a Raspberry Pi 400 (Raspberry Pi OS trixie, NetworkManager 1.52.1,
+// BlueZ 5.82) printed on 2026-09-26
+//*******************************
+namespace {
+const char *const DeviceStatus = "nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null";
+const vector<string> PiDevices = {"wlan0:wifi:connected", "lo:loopback:connected (externally)",
+                                  "p2p-dev-wlan0:wifi-p2p:disconnected", "eth0:ethernet:unavailable"};
+} // namespace
+
+TEST_CASE("NmBackend::splitTerse undoes nmcli's escapes") {
+    CHECK(NmBackend::splitTerse("wlan0:wifi:connected") == vector<string>{"wlan0", "wifi", "connected"});
+    CHECK(NmBackend::splitTerse("yes:My\\:Net\\\\5G:63") == vector<string>{"yes", "My:Net\\5G", "63"});
+    CHECK(NmBackend::splitTerse("no::92:WPA2") == vector<string>{"no", "", "92", "WPA2"});
+    CHECK(NmBackend::splitTerse("") == vector<string>{""});
+}
+
+TEST_CASE("NmBackend reads the devices, addresses and time zone the way a Pi 400 answers") {
+    ScriptedShell shell;
+    listings[DeviceStatus] = PiDevices;
+    answers["nmcli -g IP4.ADDRESS device show 'wlan0' 2>/dev/null"] = "192.168.68.144/24";
+    answers["nmcli -g IP4.ADDRESS device show 'eth0' 2>/dev/null"] = "";
+    answers["timedatectl show -p Timezone --value 2>/dev/null"] = "Europe/Dublin";
+    listings["timedatectl list-timezones 2>/dev/null"] = {"Africa/Abidjan", "Africa/Accra", "Europe/Dublin",
+                                                          "Africa/Accra"};
+    listings["nmcli -t -f SSID device wifi list --rescan yes 2>/dev/null"] = {"DecoMeshArt",
+                                                                              "DecoMeshArt_Guest",
+                                                                              "",
+                                                                              "",
+                                                                              "DecoMeshArt",
+                                                                              "FRITZ!Box 4040 BN",
+                                                                              "Mark's Office 2.4ghz (Private)"};
+    listings["nmcli -t -f ACTIVE,SSID device wifi list --rescan no 2>/dev/null"] = {
+        "no:DecoMeshArt", "no:DecoMeshArt_Guest", "no:", "yes:DecoMeshArt", "no:SKY45280"};
+    NmBackend backend(scriptedRun, scriptedRunLines, true, "bt");
+
+    CHECK(backend.kernelInstalled());
+    CHECK_FALSE(backend.hasDriverMode());
+    CHECK(backend.keepsWifiSettings());
+    CHECK(backend.interfaceFound("wlan0"));
+    CHECK(backend.interfaceFound("eth0"));
+    CHECK(backend.wlanOn());
+    CHECK(backend.isUp("wlan0"));
+    CHECK_FALSE(backend.isUp("eth0")); // unplugged: "unavailable"
+    CHECK(backend.ipOf("wlan0") == "192.168.68.144");
+    CHECK(backend.ipOf("eth0") == "");
+    CHECK(backend.timezone() == "Europe/Dublin");
+    CHECK(backend.listTimezones() == vector<string>{"Africa/Abidjan", "Africa/Accra", "Europe/Dublin"});
+    // hidden networks (no name) dropped, sorted, unique
+    CHECK(backend.scanSsids() ==
+          vector<string>{"DecoMeshArt", "DecoMeshArt_Guest", "FRITZ!Box 4040 BN", "Mark's Office 2.4ghz (Private)"});
+    CHECK(backend.currentSsid() == "DecoMeshArt");
+
+    ran.clear();
+    backend.setTimezone("America/New_York");
+    CHECK(ran == vector<string>{"timedatectl set-timezone 'America/New_York' 2>&1"});
+}
+
+TEST_CASE("NmBackend maps the screens' wlan0/eth0 to a PC's slot-named devices") {
+    ScriptedShell shell;
+    listings[DeviceStatus] = {"enp3s0:ethernet:connected", "wlp2s0:wifi:disconnected", "lo:loopback:unmanaged"};
+    answers["nmcli -g IP4.ADDRESS device show 'enp3s0' 2>/dev/null"] = "10.0.2.15/24 | 10.0.3.1/16";
+    NmBackend backend(scriptedRun, scriptedRunLines, true, "bt");
+    CHECK(backend.interfaceFound("wlan0"));
+    CHECK(backend.wlanOn()); // disconnected, but the radio is on
+    CHECK_FALSE(backend.isUp("wlan0"));
+    CHECK(backend.isUp("eth0"));
+    CHECK(backend.ipOf("eth0") == "10.0.2.15");
+    CHECK_FALSE(backend.interfaceFound("usb0"));
+
+    // a radio that is off (or rfkill-blocked) reads "unavailable"
+    listings[DeviceStatus] = {"wlp2s0:wifi:unavailable"};
+    CHECK(backend.interfaceFound("wlan0"));
+    CHECK_FALSE(backend.wlanOn());
+    // no Wi-Fi device at all: nothing is scanned
+    listings[DeviceStatus] = {"enp3s0:ethernet:connected"};
+    ran.clear();
+    CHECK(backend.scanSsids().empty());
+    CHECK(ran == vector<string>{DeviceStatus});
+}
+
+TEST_CASE("NmBackend connects on restartNetwork, the password through the environment, never the command") {
+    ScriptedShell shell;
+    listings[DeviceStatus] = PiDevices;
+    NmBackend backend(scriptedRun, scriptedRunLines, true, "bt");
+
+    backend.configureWifi("Mark's Office", "s3cr3t pass", "nl80211");
+    for (const string &cmd : ran)
+        CHECK(cmd.find("connect") == string::npos); // remembered only
+    ran.clear();
+    backend.restartNetwork();
+    REQUIRE_FALSE(ran.empty());
+    CHECK(ran.back() ==
+          "nmcli --wait 30 device wifi connect 'Mark'\\''s Office' password \"$AB_WIFI_PSK\" ifname 'wlan0' 2>&1");
+    for (const string &cmd : ran)
+        CHECK(cmd.find("s3cr3t") == string::npos);
+
+    // an open network: no password argument; a restart with nothing new reconnects the device
+    backend.configureWifi("Cafe", "", "");
+    backend.restartNetwork();
+    CHECK(ran.back() == "nmcli --wait 30 device wifi connect 'Cafe' ifname 'wlan0' 2>&1");
+    backend.restartNetwork();
+    CHECK(ran.back() == "nmcli --wait 30 device connect 'wlan0' 2>&1");
+}
+
+TEST_CASE("NmBackend without nmcli asks nothing of the network") {
+    ScriptedShell shell;
+    listings[DeviceStatus] = PiDevices;
+    NmBackend backend(scriptedRun, scriptedRunLines, false, "bt");
+    CHECK_FALSE(backend.kernelInstalled());
+    CHECK_FALSE(backend.interfaceFound("wlan0"));
+    CHECK(backend.currentSsid().empty());
+    CHECK(ran.empty());
+}
+
+TEST_CASE("NmBackend reads the Bluetooth controller from bluetoothctl show, pairs through the bt helper") {
+    ScriptedShell shell;
+    const char *const show = "timeout 5 bluetoothctl show 2>/dev/null";
+    listings[show] = {"Controller DC:A6:32:E3:04:97 (public)",
+                      "Manufacturer: 0x000f (15)",
+                      "Name: autobleem",
+                      "Alias: autobleem",
+                      "Powered: no",
+                      "PowerState: off-blocked",
+                      "Discoverable: no",
+                      "Discovering: no",
+                      "Advertising Features:",
+                      "ActiveInstances: 0x00 (0)"};
+    listings["sh 'bt' scan"] = {"00:1B:DC:0F:11:22 Wireless Controller"};
+    listings["sh 'bt' paired"] = {};
+    answers["sh 'bt' pair '00:1B:DC:0F:11:22'"] = "ok";
+    NmBackend backend(scriptedRun, scriptedRunLines, true, "bt");
+
+    CHECK(backend.btUp()); // there, though blocked and off: the helper switches it on for a scan
+    CHECK(backend.btName() == "autobleem DC:A6:32:E3:04:97 (off)");
+    auto scanned = backend.btScan();
+    REQUIRE(scanned.size() == 1);
+    CHECK(scanned[0].name == "Wireless Controller");
+    CHECK(backend.btPairedDevices().empty());
+    CHECK(backend.btPair("00:1B:DC:0F:11:22"));
+
+    listings[show] = {"\x1b[1;39mController DC:A6:32:E3:04:97 (public)\x1b[0m", "Name: pi", "Powered: yes"};
+    CHECK(backend.btName() == "pi DC:A6:32:E3:04:97");
+    // no controller (or no bluetoothd - the timeout ends the wait): nothing is scanned
+    listings[show] = {"Waiting to connect to bluetoothd..."};
+    ran.clear();
+    CHECK_FALSE(backend.btUp());
+    CHECK(backend.btScan().empty());
+    for (const string &cmd : ran)
+        CHECK(cmd != "sh 'bt' scan");
 }

@@ -79,8 +79,20 @@ known() {
     "$BT" info "$1" 2>/dev/null | grep -q "Device $1"
 }
 
+# A Raspberry Pi OS image keeps Bluetooth soft-blocked by rfkill until something asks for it, and then
+# bluetoothctl's "power on" fails (PowerState: off-blocked). Lifted through sysfs - Pi OS has no rfkill
+# binary - for Bluetooth only, never the WiFi. Nothing to do on the console, whose dongle is not blocked.
+unblock() {
+    for r in /sys/class/rfkill/rfkill*; do
+        [ -f "$r/type" ] && [ "$(cat "$r/type")" = bluetooth ] || continue
+        [ "$(cat "$r/soft" 2>/dev/null)" = 1 ] && echo 0 >"$r/soft" 2>/dev/null
+    done
+    return 0
+}
+
 case "$1" in
     scan)
+        unblock
         "$BT" power on >/dev/null 2>&1
         # discover for a few seconds, then list what is known/discovered
         "$BT" --timeout "$SCAN_SECONDS" scan on >/dev/null 2>&1
@@ -88,12 +100,18 @@ case "$1" in
         diag scan
         ;;
     paired)
-        # bluez 5.50 and 5.63 both accept paired-devices (5.63 also has "devices Paired")
-        "$BT" paired-devices 2>/dev/null | sed -n 's/^Device //p'
+        # bluez 5.50 (the console) knows only paired-devices, 5.63 both, 5.65+ (a Pi, the PC stick) only
+        # "devices Paired" - and 5.50 would take that for a plain "devices" and list everything
+        if "$BT" paired-devices >/dev/null 2>&1; then
+            "$BT" paired-devices 2>/dev/null | sed -n 's/^Device //p'
+        else
+            "$BT" devices Paired 2>/dev/null | sed -n 's/^Device //p'
+        fi
         ;;
     pair)
         mac="$2"
         [ -n "$mac" ] || exit 1
+        unblock
         # One interactive bluetoothctl kept open for the whole pairing: its "pair" only starts the pairing, so
         # a "quit" written right behind it (the old printf) ended the session before the pad ever answered.
         # - scan again until the device is known: bluetoothd drops an unpaired device soon after a scan ends

@@ -55,7 +55,15 @@ public:
     virtual std::string timezone() = 0;
     virtual void setTimezone(const std::string &zone) = 0;
     virtual std::vector<std::string> listTimezones() = 0; // sorted, unique
+
+    // what differs between the console's scripts and NetworkManager (NmBackend, a Pi and the PC stick)
+    virtual bool hasDriverMode() { return true; }      // the WiFi settings' wext/nl80211 row means something
+    virtual bool keepsWifiSettings() { return false; } // it stores the credentials itself: no ssid.cfg
+    virtual std::string currentSsid() { return ""; }   // the network it is connected to, "" when unknown
 };
+
+// the `bt` helper's `scan`/`paired` lines, "<mac> <name>" (the name may have spaces, or be missing)
+std::vector<BtDevice> parseBtHelperLines(const std::vector<std::string> &lines, bool paired);
 
 //******************
 // AbnetBackend
