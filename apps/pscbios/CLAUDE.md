@@ -138,8 +138,9 @@ src/core/       pscbios_core (SDL-free, links ab_core; the tests link it)
   bluez_client.*      BluezClient (every host, shared by NativeBackend and NmBackend): the first adapter from
                       GetManagedObjects and its devices (name, paired, trusted, connected, modalias, icon, class,
                       RSSI, Battery1), discovery (BR/EDR filter; someone
-                      else's InProgress joined, not stopped), RemoveDevice/Disconnect, the battery (power_supply's
-                      sony_controller_battery_<mac> / ps-controller-battery-<mac>, else Battery1), and the pairing as a
+                      else's InProgress joined, not stopped), RemoveDevice/Disconnect, the battery (core's
+                      PadBatteryService over power_supply's sony_controller_battery_<mac> / ps-controller-battery-<mac>,
+                      else Battery1 - C13, no duplicate parsing here any more), and the pairing as a
                       state machine - beginPair() then pump() (a screen's frame loop) or pair() (blocking): discover
                       until known, Trusted=true, Pair (AlreadyExists fine), wait for Paired, Connect (a failed Connect
                       still counts as paired, lastError() says why). Its own agent for the pairing's duration

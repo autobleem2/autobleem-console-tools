@@ -3,13 +3,12 @@
 //
 #include "bluez_client.h"
 #include "core/main.h"
+#include "core/services/pad_battery.h"
 
 #include <ableem/engine/log.h>
 
 #include <algorithm>
 #include <cctype>
-#include <cstdlib>
-#include <fstream>
 #include <utility>
 
 using namespace std;
@@ -60,15 +59,6 @@ bool intOf(const DbusProperties &props, const string &name, int64_t &out) {
     return true;
 }
 
-string readLine(const string &path) {
-    ifstream in(path);
-    string line;
-    if (!getline(in, line))
-        return "";
-    while (!line.empty() && isspace(static_cast<unsigned char>(line.back())))
-        line.pop_back();
-    return line;
-}
 } // namespace
 
 //*******************************
@@ -221,19 +211,13 @@ vector<BluezDevice> BluezClient::parseDevices(const DbusManagedObjects &objects,
 BtBattery BluezClient::readSysfsBattery(const string &powerSupplyDir, const string &mac) {
     BtBattery battery;
     string address = lower(mac);
-    // hid-sony (DualShock 3/4) and hid-playstation (DualSense, and the DualShock 4 on newer kernels)
-    for (const string &prefix : {string("sony_controller_battery_"), string("ps-controller-battery-")}) {
-        string dir = powerSupplyDir + "/" + prefix + address;
-        string capacity = readLine(dir + "/capacity");
-        if (capacity.empty())
-            continue;
-        char *end = nullptr;
-        long percent = strtol(capacity.c_str(), &end, 10);
-        if (end == capacity.c_str())
-            continue;
-        battery.percent = static_cast<int>(max(0L, min(100L, percent)));
-        battery.status = readLine(dir + "/status");
-        return battery;
+    PadBatteryService service(powerSupplyDir);
+    for (const PadBatteryInfo &info : service.list()) {
+        if (info.address == address) {
+            battery.percent = info.percent;
+            battery.status = info.status;
+            return battery;
+        }
     }
     return battery;
 }

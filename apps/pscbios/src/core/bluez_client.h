@@ -20,8 +20,8 @@
 // Failed ("cancelled"), as before; not undone (CancelPairing came too late and RemoveDevice failed too) -> Done,
 // so the caller shows the pad as paired instead of "new" - never a half-paired device the screen calls "new".
 //
-// The battery: /sys/class/power_supply/{sony_controller_battery_,ps-controller-battery-}<mac> (hid-sony,
-// hid-playstation), else BlueZ's Battery1.Percentage.
+// The battery: core's PadBatteryService (/sys/class/power_supply/{sony_controller_battery_,ps-controller-
+// battery-}<mac>, hid-sony/hid-playstation), else BlueZ's Battery1.Percentage.
 //
 #pragma once
 
@@ -139,7 +139,7 @@ public:
     // GetManagedObjects' reply taken apart - static, tested without a bus
     static bool parseAdapter(const DbusManagedObjects &objects, BluezAdapter &out); // the first Adapter1
     static std::vector<BluezDevice> parseDevices(const DbusManagedObjects &objects, const std::string &adapterPath);
-    // the power_supply entry of a pad's battery; percent -1 when there is none
+    // the power_supply entry of a pad's battery (core's PadBatteryService); percent -1 when there is none
     static BtBattery readSysfsBattery(const std::string &powerSupplyDir, const std::string &mac);
     // "AA:BB:..." -> "/dev_AA_BB_..." (the end of the device's object path)
     static std::string devicePathSuffix(const std::string &mac);
