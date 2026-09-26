@@ -205,14 +205,81 @@ jobs:
           path: out/*.tar.gz
           retention-days: 30
 
+  linux:
+    # PSC-Bios for a Raspberry Pi (32- and 64-bit) and the PC stick (2026-09-26): its Network & Controllers
+    # screens run there over NetworkManager and BlueZ. AB_TARGET comes from the toolchain file (the
+    # launcher's, copied into toolchains/ - Debian's multiarch cross compilers in the image), which builds
+    # PSC-Bios alone; console-tools-<target>-<version>.tar.gz holds Extensions/pscbios/ with bin/<target>/,
+    # what autobleem-appliance's assemble.sh puts into the Pi and PC-stick packages (extensions/pscbios/).
+    if: vars.AB_CI_ENABLED == 'true'
+    needs: [plan, sdk-abi]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: rpi, toolchain: toolchains/rpi/RPitoolchain.cmake }
+          - { target: rpi64, toolchain: toolchains/rpi64/RPi64toolchain.cmake }
+          - { target: pcusb, toolchain: toolchains/pcusb/PcUsbToolchain.cmake }
+    container:
+      image: ghcr.io/autobleem2/autobleem-build:${{ startsWith(github.ref, 'refs/tags/v') && 'latest' || 'develop' }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      SCCACHE_DIR: /sccache
+      SCCACHE_CACHE_SIZE: 2G
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Restore sccache cache
+        uses: actions/cache@v6
+        with:
+          path: /sccache
+          key: sccache-console-${{ matrix.target }}-${{ github.sha }}
+          restore-keys: sccache-console-${{ matrix.target }}-
+      - name: Configure (${{ matrix.target }})
+        run: |
+          cmake -S . -B build_${{ matrix.target }} -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=${{ matrix.toolchain }} \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+      - name: Build
+        run: ninja -C build_${{ matrix.target }} pscbios
+      - name: Check the plugin
+        run: |
+          set -e
+          so=build_${{ matrix.target }}/extensions/pscbios/bin/${{ matrix.target }}/pscbios.so
+          file "$so"
+          # a plugin carries none of the SDK (the launcher's copy is the one) and exports its two entry points
+          bash tools/check_extension.sh "$so"
+          # the stamp the launcher compares before loading it names this target
+          grep -aq "target=${{ matrix.target }}" "$so" || { echo "::error::$so's SDK stamp is not for ${{ matrix.target }}"; exit 1; }
+      - name: Package
+        run: |
+          set -e
+          V="${{ needs.plan.outputs.version }}"
+          rm -rf stage out && mkdir -p stage/Extensions out
+          # the folder ab_add_extension staged: extension.ini, the icon, lang/, bt, DS3.png and bin/<target>/
+          cp -a build_${{ matrix.target }}/extensions/pscbios stage/Extensions/pscbios
+          chmod +x stage/Extensions/pscbios/bt
+          tar -czf "out/console-tools-${{ matrix.target }}-$V.tar.gz" -C stage .
+          tar -tzf out/*.tar.gz | head -20
+      - uses: actions/upload-artifact@v7
+        with:
+          name: console-tools-${{ matrix.target }}
+          path: out/*.tar.gz
+          retention-days: 30
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [plan, psc]
+    needs: [plan, psc, linux]
     runs-on: ubuntu-24.04
     permissions: { contents: write }
     steps:
       - uses: actions/download-artifact@v8
-        with: { pattern: console-tools-psc, path: out, merge-multiple: true }
+        with: { pattern: console-tools-*, path: out, merge-multiple: true }
       - name: Attach to the release
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
@@ -226,12 +293,12 @@ jobs:
   # assembly fetches the way it fetches a v* release. Never for a pull request or a tag.
   nightly:
     if: github.ref == 'refs/heads/develop' && github.event_name != 'pull_request'
-    needs: [plan, psc]
+    needs: [plan, psc, linux]
     runs-on: ubuntu-24.04
     permissions: { contents: write }
     steps:
       - uses: actions/download-artifact@v8
-        with: { pattern: console-tools-psc, path: out, merge-multiple: true }
+        with: { pattern: console-tools-*, path: out, merge-multiple: true }
       - uses: autobleem2/autobleem-build/.github/actions/nightly-release@develop
         with:
           files: out/*.tar.gz
