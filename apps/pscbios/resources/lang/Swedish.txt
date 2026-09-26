@@ -105,7 +105,6 @@ SSID:=SSID:
 Support via Discord:=
 System=
 Testing=
-This is free software. It works AS IS and We take no responsibility for any issues or damage.=
 Timezone:=Tidszon:
 To pair a controller of this kind please follow the procedure=Följ den här proceduren för att parkoppla en sådan handkontroll
 Update mapping=Uppdatera mappning

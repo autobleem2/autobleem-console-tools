@@ -105,7 +105,6 @@ SSID:=SSID:
 Support via Discord:=
 System=
 Testing=
-This is free software. It works AS IS and We take no responsibility for any issues or damage.=
 Timezone:=Aikavyöhyke:
 To pair a controller of this kind please follow the procedure=Pariliitä tällainen ohjain seuraavasti
 Update mapping=Päivitä määritys

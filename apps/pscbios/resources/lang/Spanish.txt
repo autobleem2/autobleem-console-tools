@@ -105,7 +105,6 @@ SSID:=SSID:
 Support via Discord:=Soporte via Discord:
 System=
 Testing=
-This is free software. It works AS IS and We take no responsibility for any issues or damage.=
 Timezone:=Zona Horaria:
 To pair a controller of this kind please follow the procedure=Para emparejar un mando de este tipo sigue el procedimiento
 Update mapping=Actualizar mapeo

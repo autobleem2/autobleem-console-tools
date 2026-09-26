@@ -105,7 +105,6 @@ SSID:=SSID:
 Support via Discord:=Support via Discord:
 System=System
 Testing=Testing
-This is free software. It works AS IS and We take no responsibility for any issues or damage.=This is free software. It works AS IS and We take no responsibility for any issues or damage.
 Timezone:=Timezone:
 To pair a controller of this kind please follow the procedure=To pair a controller of this kind please follow the procedure
 Update mapping=Update mapping

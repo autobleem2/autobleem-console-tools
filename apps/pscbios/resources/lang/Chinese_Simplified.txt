@@ -105,7 +105,6 @@ SSID:=SSID：
 Support via Discord:=
 System=
 Testing=
-This is free software. It works AS IS and We take no responsibility for any issues or damage.=
 Timezone:=时区：
 To pair a controller of this kind please follow the procedure=配对此类手柄请按以下步骤操作
 Update mapping=更新映射

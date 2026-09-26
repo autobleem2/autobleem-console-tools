@@ -105,7 +105,6 @@ SSID:=SSID:
 Support via Discord:=Podpora na Discorde:
 System=
 Testing=
-This is free software. It works AS IS and We take no responsibility for any issues or damage.=
 Timezone:=Časové pásmo:
 To pair a controller of this kind please follow the procedure=Na spárovanie takéhoto ovládača postupujte takto
 Update mapping=Aktualizujte mapovanie
