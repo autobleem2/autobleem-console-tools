@@ -85,7 +85,7 @@ known() {
 unblock() {
     for r in /sys/class/rfkill/rfkill*; do
         [ -f "$r/type" ] && [ "$(cat "$r/type")" = bluetooth ] || continue
-        [ "$(cat "$r/soft" 2>/dev/null)" = 1 ] && echo 0 >"$r/soft" 2>/dev/null
+        [ "$(cat "$r/soft" 2>/dev/null)" = 1 ] && { echo 0 >"$r/soft"; } 2>/dev/null
     done
     return 0
 }
