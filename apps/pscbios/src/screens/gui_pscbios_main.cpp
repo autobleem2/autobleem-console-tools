@@ -18,6 +18,23 @@
 using namespace std;
 
 //*******************************
+// psPlayerSlotLabel (local)
+//*******************************
+// the enum's UI text, literal _() calls at each branch so tools/lang_tools.py's extract (which only
+// recognises a literal string inside _(...), not a runtime value) picks up the three keys.
+static string psPlayerSlotLabel(PsPlayerSlot slot) {
+    switch (slot) {
+    case PsPlayerSlot::Player1:
+        return _("Player 1");
+    case PsPlayerSlot::Player2:
+        return _("Player 2");
+    case PsPlayerSlot::Unused:
+    default:
+        return _("not used by the PS1 emulator");
+    }
+}
+
+//*******************************
 // GuiPscBiosMain::init
 //*******************************
 void GuiPscBiosMain::init() {
@@ -90,11 +107,12 @@ vector<InfoSection> GuiPscBiosMain::collect() {
             name += _(" - Mapping (Not found)");
         // joysticks are enumerated in the same ascending SDL device-index order pcsx-ab/pcsx-abnxt
         // assign PS1 ports 1/2 by (see core/model/pad_assignment.h), so this position is that port
-        string playerLabel = psPlayerLabel(i, joysticks);
+        PsPlayerSlot slot = psPlayerSlot(i, joysticks);
+        string playerLabel = psPlayerSlotLabel(slot);
         if (i < 2)
-            pads.rows.push_back({_(playerLabel), name});
+            pads.rows.push_back({playerLabel, name});
         else
-            pads.rows.push_back({_("Controller") + " " + to_string(i + 1), name + " (" + _(playerLabel) + ")"});
+            pads.rows.push_back({_("Controller") + " " + to_string(i + 1), name + " (" + playerLabel + ")"});
     }
     sections.push_back(pads);
     return sections;
