@@ -39,8 +39,9 @@ unique_ptr<ConsoleBackend> makeBackend() {
     return console;
 #else
     unique_ptr<ConsoleBackend> console = make_unique<NmBackend>();
-    if (!console->kernelInstalled())
+    if (!console->kernelInstalled()) {
         PLOG_WARNING << "No NetworkManager (nmcli missing): the network rows are off";
+    }
     return console;
 #endif
 }
