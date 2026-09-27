@@ -10,10 +10,40 @@ on:
   pull_request:
     branches: [develop, master]
   workflow_dispatch:
+    inputs:
+      force_fallback:
+        type: boolean
+        required: false
+        default: false
+        description: test-only - force the routed jobs onto ubuntu-24.04 (see autobleem-build's route.yml)
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  # Which runner build/psc/linux use below: the laptop, else ubuntu-24.04 - see autobleem-build's
+  # route.yml for the order and every fallback (always hosted for a PR). One route + route_runner pair
+  # serves all three compiling jobs.
+  route:
+    if: vars.AB_CI_ENABLED == 'true'
+    uses: autobleem2/autobleem-build/.github/workflows/route.yml@develop
+    with:
+      force_fallback: ${{ inputs.force_fallback == true }}
+    secrets: inherit
+
+  # A job whose type is `uses: <reusable workflow>` cannot have its outputs read by a downstream
+  # job's `runs-on:` directly (GitHub rejects needs.route.outputs.* there at parse time: "Unrecognized
+  # named-value: 'needs'") - this plain job re-exports route's output so the compiling jobs' runs-on
+  # can see it.
+  route_runner:
+    needs: route
+    if: vars.AB_CI_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      runs_on: ${{ needs.route.outputs.runs_on }}
+    steps:
+      - run: echo "routed to ${{ needs.route.outputs.runner }}"
+
   sdk-abi:
     # PSC-Bios is an extension the launcher checks the AB_SDK_ABI of before loading it: one built against
     # another ABI than the launcher it ships with is refused on the console. Our autobleem-core must be at
@@ -39,8 +69,10 @@ jobs:
           [ -n "$theirs" ] && [ "$ours" = "$theirs" ] || { echo "::error::bump autobleem-core to the launcher's (AB_SDK_ABI $theirs)"; exit 1; }
 
   build:
+    needs: route_runner
     if: vars.AB_CI_ENABLED == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(needs.route_runner.outputs.runs_on) }}
+    timeout-minutes: 30
     container:
       image: ghcr.io/autobleem2/autobleem-build:${{ startsWith(github.ref, 'refs/tags/v') && 'latest' || 'develop' }}
       credentials:
@@ -122,8 +154,9 @@ jobs:
     # assembler extracts straight into the payload. Uses the image's proven gcc-6 toolchain (/opt/psc), the same
     # one the launcher's own psc target builds with and that has run on real console hardware.
     if: vars.AB_CI_ENABLED == 'true'
-    needs: [plan, kernel-payload, sdk-abi]
-    runs-on: ubuntu-24.04
+    needs: [plan, kernel-payload, sdk-abi, route_runner]
+    runs-on: ${{ fromJSON(needs.route_runner.outputs.runs_on) }}
+    timeout-minutes: 30
     container:
       image: ghcr.io/autobleem2/autobleem-build:${{ startsWith(github.ref, 'refs/tags/v') && 'latest' || 'develop' }}
       credentials:
@@ -202,8 +235,9 @@ jobs:
     # PSC-Bios alone; console-tools-<target>-<version>.tar.gz holds Extensions/pscbios/ with bin/<target>/,
     # what autobleem-appliance's assemble.sh puts into the Pi and PC-stick packages (extensions/pscbios/).
     if: vars.AB_CI_ENABLED == 'true'
-    needs: [plan, sdk-abi]
-    runs-on: ubuntu-24.04
+    needs: [plan, sdk-abi, route_runner]
+    runs-on: ${{ fromJSON(needs.route_runner.outputs.runs_on) }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
