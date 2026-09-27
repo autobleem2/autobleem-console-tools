@@ -99,6 +99,10 @@ vector<InfoSection> GuiPscBiosMain::collect() {
         {plain(_("Game Controllers number:")), to_string(gui->input().activePadCount()) + "/" + to_string(joysticks)});
     string mappingFile = gui->input().currentMappingPath();
     pads.rows.push_back({plain(_("Game controller DB:")), mappingFile.empty() ? _("SDL's built-in") : mappingFile});
+    // taking Options -> "Swap Player 1 / Player 2" (C11, config.ini "padswap") into account, exactly as
+    // gui_hardware_info.cpp's own Controllers section does - core/model/pad_assignment.h's 3-arg
+    // psPlayerSlot is the one source of the swap rule; a lone pad stays Player 1 regardless.
+    bool padSwap = app.config().inifile.values["padswap"] == "true";
     for (int i = 0; i < joysticks; i++) {
         string name = ableem::Joystick::nameForIndex(i);
         if (ableem::Joystick::isGameControllerAtIndex(i))
@@ -107,7 +111,7 @@ vector<InfoSection> GuiPscBiosMain::collect() {
             name += _(" - Mapping (Not found)");
         // joysticks are enumerated in the same ascending SDL device-index order pcsx-ab/pcsx-abnxt
         // assign PS1 ports 1/2 by (see core/model/pad_assignment.h), so this position is that port
-        PsPlayerSlot slot = psPlayerSlot(i, joysticks);
+        PsPlayerSlot slot = psPlayerSlot(i, joysticks, padSwap);
         string playerLabel = psPlayerSlotLabel(slot);
         if (i < 2)
             pads.rows.push_back({playerLabel, name});
