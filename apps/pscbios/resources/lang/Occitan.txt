@@ -1,6 +1,6 @@
 # AutoBleem Occitan Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 210
+# Untranslated: 10 / Total: 213
 
 - Mapping (Available):=- Mapatge (disponible) :
 - Mapping (Not found)=- Mapatge (pas trobat)
@@ -10,6 +10,10 @@
 4. Disconnect charging cable from the console and press PlayStation Home button again=4. Desbrancatz lo cable de carga de la consòla e quichatz tornarmai lo boton PlayStation Home
 5. After 1-5 seconds controller will auto pair to AutoBleem and show player number LED (similar as paired to PS3)=5. Aprèp 1 a 5 segondas, la maneta s'apària automaticament amb AutoBleem e mòstra la LED del jogaire (coma sus PS3)
 6. If the controller does not react for buttons or analog sticks are setup wrong - use mapping section to reconfigure=6. Se la maneta respond pas als botons o se los sticks son mal reglats, utilizatz la seccion mapatge per la reconfigurar
+Gamepad configuration=Configuracion de la maneta
+Nothing was mapped. Nothing was saved.=Res es estat mapat. Res es estat enregistrat.
+Skip / No button on controller=Passar / Boton absent sus la maneta
+Skip in=Passar dins
 a WiFi password is 8 to 63 letters, digits or signs=un senhal WiFi fa de 8 a 63 letras, chifras o signes
 About=
 Active=Actiu
@@ -99,7 +103,6 @@ no address from the network (DHCP)=cap d'adreça de la ret (DHCP)
 no Bluetooth adapter=cap d'adaptador Bluetooth
 No Bluetooth adapter found.=Cap d'adaptador Bluetooth pas trobat.
 no Bluetooth support=pas de supòrt Bluetooth
-No button on controller=Boton absent sus la maneta
 No controllers found - is yours in pairing mode?=Cap de maneta pas trobada - la vòstra es en mòde apariament?
 NO GAME CONTROLLERS OPENED=CAP DE MANETA DOBÈRTA
 NO GAMEPADS CONNECTED=CAP DE MANETA CONNECTADA

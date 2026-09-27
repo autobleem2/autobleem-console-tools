@@ -1,6 +1,6 @@
 # AutoBleem English Translation
 # Format: English Text=Translated Text
-# Untranslated: 0 / Total: 210
+# Untranslated: 0 / Total: 213
 
  - Mapping (Available):= - Mapping (Available):
  - Mapping (Not found)= - Mapping (Not found)
@@ -70,6 +70,7 @@ Found=Found
 Game controller DB:=Game controller DB:
 Game Controller information:=Game Controller information:
 Game Controllers number:=Game Controllers number:
+Gamepad configuration=Gamepad configuration
 Gamepad configuration changed.=Gamepad configuration changed.
 Gamepad configuration changed. Mapping interrupted.=Gamepad configuration changed. Mapping interrupted.
 Gamepad configuration details=Gamepad configuration details
@@ -99,7 +100,6 @@ no address from the network (DHCP)=no address from the network (DHCP)
 no Bluetooth adapter=no Bluetooth adapter
 No Bluetooth adapter found.=No Bluetooth adapter found.
 no Bluetooth support=no Bluetooth support
-No button on controller=No button on controller
 No controllers found - is yours in pairing mode?=No controllers found - is yours in pairing mode?
 NO GAME CONTROLLERS OPENED=NO GAME CONTROLLERS OPENED
 NO GAMEPADS CONNECTED=NO GAMEPADS CONNECTED
@@ -108,11 +108,13 @@ no WiFi interface=no WiFi interface
 Not active=Not active
 Not connected=Not connected
 Not found=Not found
+not used by the PS1 emulator=not used by the PS1 emulator
 NOTE 1:Genuine SONY DualShock3 and Sixaxis are supported. Also SHANWAN produced clones should work.=NOTE 1:Genuine SONY DualShock3 and Sixaxis are supported. Also SHANWAN produced clones should work.
 NOTE 2: In case you pair the controller back to PS3 or other console you have to follow this procedure again.=NOTE 2: In case you pair the controller back to PS3 or other console you have to follow this procedure again.
 NOTE 3: You do not need to do this procedure in this screen. USB pairing works on any screen as soon console is powered on.=NOTE 3: You do not need to do this procedure in this screen. USB pairing works on any screen as soon console is powered on.
 NOTE 4: Pairing information is saved in console, so next time just press PlayStation Home on the controller and it will work in AutoBleem=NOTE 4: Pairing information is saved in console, so next time just press PlayStation Home on the controller and it will work in AutoBleem
 NOTE: Make sure none of the buttons are pressed before mapping and all analog sticks are in default position.=NOTE: Make sure none of the buttons are pressed before mapping and all analog sticks are in default position.
+Nothing was mapped. Nothing was saved.=Nothing was mapped. Nothing was saved.
 On the console they come with the AutoBleem kernel; elsewhere with NetworkManager.=On the console they come with the AutoBleem kernel; elsewhere with NetworkManager.
 open=open
 Pair=Pair
@@ -125,6 +127,8 @@ Pairing cancelled=Pairing cancelled
 Pairing failed=Pairing failed
 pairing...=pairing...
 Password:=Password:
+Player 1=Player 1
+Player 2=Player 2
 Playstation Classic Hardware Information=Playstation Classic Hardware Information
 Please test a new mapping=Please test a new mapping
 Plug a USB Bluetooth dongle into the console, then open this screen again.=Plug a USB Bluetooth dongle into the console, then open this screen again.
@@ -150,6 +154,8 @@ Select Time Zone for Your Location=Select Time Zone for Your Location
 Select WiFi Network to connect=Select WiFi Network to connect
 Setup Gamepads=Setup Gamepads
 Setup/Test Game Controller or update mapping=Setup/Test Game Controller or update mapping
+Skip / No button on controller=Skip / No button on controller
+Skip in=Skip in
 SSID:=SSID:
 Starting WiFi=Starting WiFi
 Stop=Stop
@@ -209,7 +215,3 @@ Write Config/Restart Network=Write Config/Restart Network
 Write Configuration/Restart Network=Write Configuration/Restart Network
 wrong password=wrong password
 You can test your controller=You can test your controller
-
-Player 1=Player 1
-Player 2=Player 2
-not used by the PS1 emulator=not used by the PS1 emulator

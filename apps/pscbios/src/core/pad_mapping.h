@@ -69,17 +69,38 @@ public:
     // press is mapped/tested as usual
     static bool isExitKey(ableem::Key key);
 
-    static const unsigned HoldToExitMs = 2000; // Circle held this long leaves the wizard
+    static const unsigned HoldToExitMs = 2000;   // Circle held this long leaves the wizard
+    static const unsigned StepTimeoutMs = 10000; // a mapping step this long unresolved is skipped/taken as-is
+
+    // advances a hold-to-exit timer in place: `holdSince` (0 = not currently counting) is driven from
+    // whether the watched input is held right now and the current tick count; returns true once it has been
+    // held continuously for HoldToExitMs. Pure and pad-agnostic, so the wizard can run one of these per
+    // connected pad (TOOLS-9: the 2 s exit used to work only from the pad being mapped)
+    static bool advanceHold(unsigned &holdSince, bool heldNow, unsigned nowTicks);
 
     // "<guid>,<name>,<apiName>:<value>,...," as SDL reads it
     static std::string mappingLine(const std::string &guid, const std::string &name,
                                    const std::vector<Element> &finals);
     // a pad name SDL will take inside the line: letters, digits and spaces only
     static std::string cleanName(const std::string &name);
+    // true when `finals` has nothing but the trailing "platform" entry - every element was skipped/timed
+    // out, so there is nothing worth writing to the database
+    static bool isEmptyMapping(const std::vector<Element> &finals);
 
-    static const int AxisThreshold = 32000; // how far an axis must travel to count as "moved"
-    static const int RestTolerance = 600;   // an axis within this of 0 rested in the middle (a stick)
-    static const int HeldThreshold = 20000; // an axis still this far from its rest is still held
+    // TOOLS-9: AxisThreshold used to be 32000 out of the ~32767 range - a ~97.5% deflection that many real
+    // sticks never reach (calibration, deadzone, a worn or cheap pad's reduced travel), so a deliberate move
+    // often registered as nothing. It is now measured against a rest sampled fresh for each step (see
+    // GuiPadConfig::advance()), so ~50% of the range is already a clear, deliberate move.
+    static const int AxisThreshold = 16384; // how far an axis must travel from its step's rest to count as "moved"
+    // TOOLS-9: 600 (under 2% of range) misread an ordinary stick's centre drift (common on worn/cheap pads)
+    // as a trigger resting at an extreme, which then mapped the whole axis instead of a half - "maps
+    // something at random". A trigger's true rest is tens of thousands of units out, so this can grow a lot
+    // and still tell the two apart cleanly.
+    static const int RestTolerance = 3000; // an axis within this of 0 rested in the middle (a stick)
+    // TOOLS-9: 20000 (61% of range) let "let go" fire while a stick was still far from centre; the very next
+    // step's freshly-sampled rest could then be taken mid-drift. Lowered so "let go" means actually close to
+    // rest again before the next step starts measuring from it.
+    static const int HeldThreshold = 8000; // an axis still this far from its rest is still held
 
 private:
     static void mergeAxis(std::vector<Element> &elements, const std::string &apiName, size_t minus, size_t plus);

@@ -1,6 +1,6 @@
 # AutoBleem Dutch Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 210
+# Untranslated: 10 / Total: 213
 
 - Mapping (Available):=- Toewijzing (beschikbaar):
 - Mapping (Not found)=- Toewijzing (niet gevonden)
@@ -10,6 +10,10 @@
 4. Disconnect charging cable from the console and press PlayStation Home button again=4. Koppel de laadkabel los van de console en druk opnieuw op de PlayStation Home-knop
 5. After 1-5 seconds controller will auto pair to AutoBleem and show player number LED (similar as paired to PS3)=5. Na 1-5 seconden koppelt de controller automatisch met AutoBleem en toont de speler-led (zoals bij een PS3)
 6. If the controller does not react for buttons or analog sticks are setup wrong - use mapping section to reconfigure=6. Reageert de controller niet op knoppen of staan de sticks verkeerd ingesteld, gebruik dan het toewijzingsonderdeel om hem opnieuw in te stellen
+Gamepad configuration=Controllerconfiguratie
+Nothing was mapped. Nothing was saved.=Er is niets toegewezen. Er is niets opgeslagen.
+Skip / No button on controller=Overslaan / Deze knop zit niet op de controller
+Skip in=Overslaan over
 a WiFi password is 8 to 63 letters, digits or signs=een WiFi-wachtwoord is 8 tot 63 letters, cijfers of tekens
 About=
 Active=Actief
@@ -99,7 +103,6 @@ no address from the network (DHCP)=geen adres van het netwerk (DHCP)
 no Bluetooth adapter=geen Bluetooth-adapter
 No Bluetooth adapter found.=Geen Bluetooth-adapter gevonden.
 no Bluetooth support=geen Bluetooth-ondersteuning
-No button on controller=Deze knop zit niet op de controller
 No controllers found - is yours in pairing mode?=Geen controllers gevonden - staat de jouwe in koppelmodus?
 NO GAME CONTROLLERS OPENED=GEEN CONTROLLER GEOPEND
 NO GAMEPADS CONNECTED=GEEN GAMEPADS AANGESLOTEN

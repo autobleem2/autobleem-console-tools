@@ -1,6 +1,6 @@
 # AutoBleem Finnish Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 210
+# Untranslated: 10 / Total: 213
 
 - Mapping (Available):=- Määritys (saatavilla):
 - Mapping (Not found)=- Määritys (ei löydy)
@@ -10,6 +10,10 @@
 4. Disconnect charging cable from the console and press PlayStation Home button again=4. Irrota latauskaapeli konsolista ja paina PlayStation Home -painiketta uudelleen
 5. After 1-5 seconds controller will auto pair to AutoBleem and show player number LED (similar as paired to PS3)=5. 1-5 sekunnin kuluttua ohjain muodostaa automaattisesti laiteparin AutoBleemin kanssa ja näyttää pelaajan ledin (kuten PS3:lla)
 6. If the controller does not react for buttons or analog sticks are setup wrong - use mapping section to reconfigure=6. Jos ohjain ei reagoi painikkeisiin tai tatit on asetettu väärin, määritä se uudelleen määritysosiossa
+Gamepad configuration=Ohjaimen määritys
+Nothing was mapped. Nothing was saved.=Mitään ei määritetty. Mitään ei tallennettu.
+Skip / No button on controller=Ohita / Ohjaimessa ei ole tätä painiketta
+Skip in=Ohitetaan
 a WiFi password is 8 to 63 letters, digits or signs=WiFi-salasana on 8-63 kirjainta, numeroa tai merkkiä
 About=
 Active=Aktiivinen
@@ -99,7 +103,6 @@ no address from the network (DHCP)=verkosta ei saatu osoitetta (DHCP)
 no Bluetooth adapter=ei Bluetooth-sovitinta
 No Bluetooth adapter found.=Bluetooth-sovitinta ei löytynyt.
 no Bluetooth support=ei Bluetooth-tukea
-No button on controller=Ohjaimessa ei ole tätä painiketta
 No controllers found - is yours in pairing mode?=Ohjaimia ei löytynyt - onko omasi pariliitostilassa?
 NO GAME CONTROLLERS OPENED=YHTÄÄN OHJAINTA EI OLE AVATTU
 NO GAMEPADS CONNECTED=YHTÄÄN OHJAINTA EI OLE KYTKETTY

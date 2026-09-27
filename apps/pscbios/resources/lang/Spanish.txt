@@ -1,6 +1,6 @@
 # AutoBleem Spanish Translation
 # Format: English Text=Translated Text
-# Untranslated: 8 / Total: 210
+# Untranslated: 8 / Total: 213
 
 - Mapping (Available):=- Mapeo (disponible):
 - Mapping (Not found)=- Mapeo (no encontrado)
@@ -10,6 +10,10 @@
 4. Disconnect charging cable from the console and press PlayStation Home button again=4. Desconecta el cable de carga de la consola y vuelve a pulsar el botón PlayStation Home
 5. After 1-5 seconds controller will auto pair to AutoBleem and show player number LED (similar as paired to PS3)=5. Tras 1-5 segundos el mando se empareja automáticamente con AutoBleem y muestra el LED del jugador (como en PS3)
 6. If the controller does not react for buttons or analog sticks are setup wrong - use mapping section to reconfigure=6. Si el mando no responde a los botones o los sticks están mal configurados, usa la sección de mapeo para reconfigurarlo
+Gamepad configuration=Configuración del mando
+Nothing was mapped. Nothing was saved.=No se asignó nada. No se guardó nada.
+Skip / No button on controller=Omitir / El mando no tiene ese botón
+Skip in=Omitir en
 a WiFi password is 8 to 63 letters, digits or signs=una contraseña WiFi tiene de 8 a 63 letras, dígitos o signos
 About=Sobre
 Active=Activo
@@ -99,7 +103,6 @@ no address from the network (DHCP)=ninguna dirección de la red (DHCP)
 no Bluetooth adapter=no hay adaptador Bluetooth
 No Bluetooth adapter found.=No se encontró ningún adaptador Bluetooth.
 no Bluetooth support=sin soporte de Bluetooth
-No button on controller=El mando no tiene ese botón
 No controllers found - is yours in pairing mode?=No se encontraron mandos - ¿está el tuyo en modo de emparejamiento?
 NO GAME CONTROLLERS OPENED=NO HAY MANDOS ABIERTOS
 NO GAMEPADS CONNECTED=NINGÚN MANDO CONECTADO

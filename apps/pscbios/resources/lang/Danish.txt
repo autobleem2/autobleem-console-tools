@@ -1,6 +1,6 @@
 # AutoBleem Danish Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 210
+# Untranslated: 10 / Total: 213
 
 - Mapping (Available):=- Mapping (tilgængelig):
 - Mapping (Not found)=- Mapping (ikke fundet)
@@ -10,6 +10,10 @@
 4. Disconnect charging cable from the console and press PlayStation Home button again=4. Tag ladekablet ud af konsollen og tryk på PlayStation Home-knappen igen
 5. After 1-5 seconds controller will auto pair to AutoBleem and show player number LED (similar as paired to PS3)=5. Efter 1-5 sekunder parrer controlleren sig automatisk med AutoBleem og viser spiller-lysdioden (som på en PS3)
 6. If the controller does not react for buttons or analog sticks are setup wrong - use mapping section to reconfigure=6. Hvis controlleren ikke reagerer på knapper, eller styrepindene er sat forkert op, brug mapping-afsnittet til at konfigurere den igen
+Gamepad configuration=Controllerkonfiguration
+Nothing was mapped. Nothing was saved.=Intet blev tilknyttet. Intet blev gemt.
+Skip / No button on controller=Spring over / Knappen findes ikke på controlleren
+Skip in=Spring over om
 a WiFi password is 8 to 63 letters, digits or signs=en WiFi-adgangskode er 8 til 63 bogstaver, cifre eller tegn
 About=
 Active=Aktiv
@@ -99,7 +103,6 @@ no address from the network (DHCP)=ingen adresse fra netværket (DHCP)
 no Bluetooth adapter=ingen Bluetooth-adapter
 No Bluetooth adapter found.=Ingen Bluetooth-adapter fundet.
 no Bluetooth support=ingen Bluetooth-understøttelse
-No button on controller=Knappen findes ikke på controlleren
 No controllers found - is yours in pairing mode?=Ingen controllere fundet - er din i parringstilstand?
 NO GAME CONTROLLERS OPENED=INGEN CONTROLLER ÅBNET
 NO GAMEPADS CONNECTED=INGEN GAMEPADS TILSLUTTET

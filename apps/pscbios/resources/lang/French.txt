@@ -1,6 +1,6 @@
 # AutoBleem French Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 210
+# Untranslated: 10 / Total: 213
 
 - Mapping (Available):=- Mappage (disponible) :
 - Mapping (Not found)=- Mappage (introuvable)
@@ -10,6 +10,10 @@
 4. Disconnect charging cable from the console and press PlayStation Home button again=4. Débranchez le câble de charge de la console et appuyez de nouveau sur le bouton PlayStation Home
 5. After 1-5 seconds controller will auto pair to AutoBleem and show player number LED (similar as paired to PS3)=5. Après 1 à 5 secondes, la manette s'appaire automatiquement à AutoBleem et affiche la LED du joueur (comme sur PS3)
 6. If the controller does not react for buttons or analog sticks are setup wrong - use mapping section to reconfigure=6. Si la manette ne réagit pas aux boutons ou si les sticks sont mal réglés, utilisez la section mappage pour la reconfigurer
+Gamepad configuration=Configuration de la manette
+Nothing was mapped. Nothing was saved.=Rien n'a été mappé. Rien n'a été enregistré.
+Skip / No button on controller=Passer / Bouton absent sur la manette
+Skip in=Passer dans
 a WiFi password is 8 to 63 letters, digits or signs=un mot de passe WiFi fait de 8 à 63 lettres, chiffres ou signes
 About=
 Active=Actif
@@ -99,7 +103,6 @@ no address from the network (DHCP)=aucune adresse obtenue du réseau (DHCP)
 no Bluetooth adapter=aucun adaptateur Bluetooth
 No Bluetooth adapter found.=Aucun adaptateur Bluetooth détecté.
 no Bluetooth support=pas de prise en charge du Bluetooth
-No button on controller=Bouton absent sur la manette
 No controllers found - is yours in pairing mode?=Aucune manette trouvée - la vôtre est-elle en mode appairage ?
 NO GAME CONTROLLERS OPENED=AUCUNE MANETTE OUVERTE
 NO GAMEPADS CONNECTED=AUCUNE MANETTE CONNECTÉE
