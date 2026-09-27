@@ -351,12 +351,14 @@ void GuiPadConfig::render() {
 
     // the facts: the pad, its inputs, the raw buttons and hats, the axes eight to a row
     const ableem::JoystickState &state = joystick.state();
+    // style.text, not style.secondary, for every row below that carries a translated label: the label can
+    // carry a diacritic (Finnish "syötteet", "Painikkeet", "Ristiohjaimet", German umlauts, ...) and its
+    // mark is only 1-2px at this panel's font sizes - legible in the bright colour, but the dim grey
+    // (PanelStyle::secondary, ~100,100,100) was too low-contrast to show it at all next to the panel
+    // background (TOOLS-7: "Ohjaimen syötteet:" read as "Ohjaimen syotteet:"). Only a row that is purely
+    // untranslated data - the axes dump below ("#1: 000 ..."), and renderElements()'s apiName column (raw
+    // SDL tokens like "a"/"dpup"/"lefttrigger", never translated) - stays dim.
     row(joystickTitle(), style.text);
-    // style.text, not style.secondary: a translated label here can carry a diacritic (Finnish "syötteet",
-    // German umlauts, ...), and its mark is only 1-2px at this panel's font sizes - legible in the bright
-    // colour, but the dim grey (PanelStyle::secondary, ~100,100,100) was too low-contrast to show it at
-    // all next to the panel background (TOOLS-7: "Ohjaimen syötteet:" read as "Ohjaimen syotteet:"). The
-    // raw digit dumps below (Buttons/Hats/axes - digits and ':' only, never translated) stay dim.
     row(_("Gamepad input configuration:") + " A:" + to_string(state.axes.size()) +
             "  B:" + to_string(state.buttons.size()) + " D:" + to_string(state.hats.size()),
         style.text);
@@ -366,7 +368,7 @@ void GuiPadConfig::render() {
     buttons += " " + _("Hats:") + " ";
     for (unsigned hat : state.hats)
         buttons += to_string(hat) + " ";
-    row(buttons, style.secondary);
+    row(buttons, style.text);
     string axes;
     for (size_t i = 0; i < state.axes.size(); i++) {
         int percent = state.axes[i] * 100 / 32767;
@@ -407,8 +409,10 @@ void GuiPadConfig::render() {
         second = _("Please test a new mapping");
         break;
     }
+    // both lines are translated labels (never raw data), so both use style.text - the same reasoning as
+    // the rows above.
     y += max(lineHeight, text.renderWrappedText(pageFont, first, x, y, width, style.text));
-    y += max(lineHeight, text.renderWrappedText(pageFont, second, x, y, width, style.secondary));
+    y += max(lineHeight, text.renderWrappedText(pageFont, second, x, y, width, style.text));
     y += lineHeight / 2;
 
     if (stage != Stage::Test)
