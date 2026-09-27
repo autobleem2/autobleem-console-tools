@@ -352,9 +352,14 @@ void GuiPadConfig::render() {
     // the facts: the pad, its inputs, the raw buttons and hats, the axes eight to a row
     const ableem::JoystickState &state = joystick.state();
     row(joystickTitle(), style.text);
+    // style.text, not style.secondary: a translated label here can carry a diacritic (Finnish "syötteet",
+    // German umlauts, ...), and its mark is only 1-2px at this panel's font sizes - legible in the bright
+    // colour, but the dim grey (PanelStyle::secondary, ~100,100,100) was too low-contrast to show it at
+    // all next to the panel background (TOOLS-7: "Ohjaimen syötteet:" read as "Ohjaimen syotteet:"). The
+    // raw digit dumps below (Buttons/Hats/axes - digits and ':' only, never translated) stay dim.
     row(_("Gamepad input configuration:") + " A:" + to_string(state.axes.size()) +
             "  B:" + to_string(state.buttons.size()) + " D:" + to_string(state.hats.size()),
-        style.secondary);
+        style.text);
     string buttons = _("Buttons:") + " ";
     for (bool pressed : state.buttons)
         buttons += string(pressed ? "1" : "0") + " ";
