@@ -40,7 +40,9 @@ public:
     // the backup unpacked for LbootBackup::inspect(); false when it could not be
     virtual bool extractBackup(const std::string &path, const std::string &dir, const ableem::ByteProgress &bytes) = 0;
 
-    // <kernelDir>/boot.img is there and its md5 is the one in <kernelDir>/boot.md5
+    // <kernelDir>/boot.img is there and its md5 is the one in <kernelDir>/boot.md5, and likewise
+    // <kernelDir>/abrootfs.tgz against <kernelDir>/abrootfs.md5 (installPayload() unpacks it, unchecked
+    // until now)
     virtual bool validateKernel(const std::string &kernelDir) = 0;
     // the bootloader's recovery flag, <kernelDir>/recovery-{on,off}.img into the MISC partition
     virtual void setRecoveryMode(bool on, const std::string &kernelDir) = 0;

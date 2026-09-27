@@ -70,7 +70,8 @@ struct ScriptedUi : FlashUi {
     }
 };
 
-// a tree with fake partitions, a kernel folder whose boot.md5 matches its boot.img, and the paths
+// a tree with fake partitions, a kernel folder whose boot.md5 matches its boot.img and abrootfs.md5 matches
+// its abrootfs.tgz, and the paths
 struct Bench {
     Bench() : tmp("abflashkit") {
         tmp.writeFile("parts/boot", "BOOT IMAGE BYTES");
@@ -79,6 +80,8 @@ struct Bench {
         tmp.writeFile("parts/tee", "TEE BYTES");
         tmp.writeFile("kernel/boot.img", "the new kernel");
         tmp.writeFile("kernel/boot.md5", ableem::Md5::ofString("the new kernel") + "  boot.img\n");
+        tmp.writeFile("kernel/abrootfs.tgz", "the new rootfs overlay");
+        tmp.writeFile("kernel/abrootfs.md5", ableem::Md5::ofString("the new rootfs overlay") + "  abrootfs.tgz\n");
         backup = tmp.at("LBOOT.EPB");
         kernelDir = tmp.at("kernel");
         scratch = tmp.at("scratch");
@@ -157,6 +160,23 @@ TEST_CASE("the kernel check wants boot.img and a matching boot.md5 in either for
     b.tmp.writeFile("kernel/boot.md5", "");
     CHECK_FALSE(flasher.validateKernel(b.kernelDir));
     CHECK_FALSE(flasher.validateKernel(b.tmp.at("no-kernel")));
+}
+
+TEST_CASE("the kernel check also wants abrootfs.tgz and a matching abrootfs.md5 in either format") {
+    Bench b;
+    FakeFlasher flasher(0);
+    CHECK(flasher.validateKernel(b.kernelDir)); // both boot.img and abrootfs.tgz match to start with
+    b.tmp.writeFile("kernel/abrootfs.md5", ableem::Md5::ofString("the new rootfs overlay")); // bare hash
+    CHECK(flasher.validateKernel(b.kernelDir));
+    b.tmp.writeFile("kernel/abrootfs.md5", "00000000000000000000000000000000"); // mismatching
+    CHECK_FALSE(flasher.validateKernel(b.kernelDir));
+    b.tmp.writeFile("kernel/abrootfs.md5", ""); // missing .md5 (empty file, same as absent)
+    CHECK_FALSE(flasher.validateKernel(b.kernelDir));
+    ableem::DirEntry::removeFile(b.tmp.at("kernel/abrootfs.md5"));
+    CHECK_FALSE(flasher.validateKernel(b.kernelDir));
+    b.tmp.writeFile("kernel/abrootfs.md5", ableem::Md5::ofString("the new rootfs overlay") + "  abrootfs.tgz\n");
+    ableem::DirEntry::removeFile(b.tmp.at("kernel/abrootfs.tgz")); // the .tgz itself missing
+    CHECK_FALSE(flasher.validateKernel(b.kernelDir));
 }
 
 TEST_CASE("flash: backup, validate, recovery on, kernel, payload, recovery off, reboot") {

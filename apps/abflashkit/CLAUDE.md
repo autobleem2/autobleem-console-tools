@@ -115,8 +115,18 @@ a v* tag build takes the payload released under the same tag; any other build ta
 payload files.
 `.github/workflows/build.yml`'s Package step then lays `payload/Apps/<tool>/` down (the fetched kernel/ over
 what was checked in), then `resources/`, then the fresh binary, and refuses a package whose `kernel/` is
-incomplete or whose `boot.img` does not match `boot.md5`. `kernel/boot.md5` may be a bare hash or `md5sum`'s
-`<hash>  boot.img`; `abrootfs.md5` is not checked (it never was).
+incomplete or whose `boot.img` does not match `boot.md5`, or whose `abrootfs.tgz` does not match
+`abrootfs.md5` (TOOLS-3, 2026-09-27 - checked from the start until then it was not). `boot.md5`/`abrootfs.md5`
+may each be a bare hash or `md5sum`'s `<hash>  <name>`. `Flasher::validateKernel()` (the tool's own readiness
+check, run before a flash) checks both pairs the same way, in-process (`fileMatchesMd5` in `flasher.cpp`) -
+`install_payload.sh` untars `abrootfs.tgz` onto the data partition, so a corrupt download used to be unpacked
+with nothing to say so. `payload/Apps/abflashkit/` no longer carries a checked-in `abflashkit` binary or
+`readme.txt` (TOOLS-3): both were dead weight - `resources/` has its own `readme.txt` and CI always lays a
+freshly built binary over whatever `payload/` has, so neither checked-in file was ever what shipped. What is
+still checked in there (`app.ini`, `icon.png`, `run.sh`, `lang/`, the 2020 `kernel/` files) is the same kind
+of stand-in `make_psc.sh` overwrites locally and CI's Package step replaces wholesale (`resources/` over
+`app.ini`/`icon.png`/`run.sh`/`lang/`, the fetched release tarball over the whole of `kernel/`) - left as is
+pending a decision on whether to remove it too.
 
 ## Theme and language
 

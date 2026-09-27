@@ -64,26 +64,33 @@ bool writeBackup(const vector<LbootBackup::Partition> &partitions, const string 
     return ok;
 }
 
-// the first 32 characters of <kernelDir>/boot.md5 - a bare hash, or md5sum's "<hash>  boot.img"
-string expectedKernelMd5(const string &kernelDir) {
-    ifstream in(kernelDir + sep + "boot.md5");
+// the first 32 characters of <kernelDir>/<md5File> - a bare hash, or md5sum's "<hash>  <name>"
+string expectedMd5(const string &kernelDir, const string &md5File) {
+    ifstream in(kernelDir + sep + md5File);
     string line;
     getline(in, line);
     return line.size() >= 32 ? line.substr(0, 32) : "";
 }
 
-bool kernelIsValid(const string &kernelDir) {
-    string image = kernelDir + sep + "boot.img";
-    if (!DirEntry::exists(image))
+// <kernelDir>/<file> is there and its md5 is the one in <kernelDir>/<md5File> - what boot.img/boot.md5 and
+// abrootfs.tgz/abrootfs.md5 are both checked with before either is used
+bool fileMatchesMd5(const string &kernelDir, const string &file, const string &md5File) {
+    string path = kernelDir + sep + file;
+    if (!DirEntry::exists(path))
         return false;
-    string expected = expectedKernelMd5(kernelDir);
+    string expected = expectedMd5(kernelDir, md5File);
     if (expected.empty())
         return false;
-    string actual = ableem::Md5::ofFile(image);
+    string actual = ableem::Md5::ofFile(path);
     if (actual != expected) {
-        PLOG_WARNING << "Kernel image md5 " << actual << " is not the expected " << expected;
+        PLOG_WARNING << file << " md5 " << actual << " is not the expected " << expected;
     }
     return actual == expected;
+}
+
+bool kernelIsValid(const string &kernelDir) {
+    return fileMatchesMd5(kernelDir, "boot.img", "boot.md5") &&
+           fileMatchesMd5(kernelDir, "abrootfs.tgz", "abrootfs.md5");
 }
 
 bool extractInto(const string &path, const string &dir, const ableem::ByteProgress &bytes) {
