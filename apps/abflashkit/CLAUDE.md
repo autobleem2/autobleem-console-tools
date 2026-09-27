@@ -108,25 +108,28 @@ src/main.cpp          EnvironmentSetup::forTool, the flasher/led choice, logs
 resources/            app.ini, run.sh, readme.txt, icon.png, lang/ (Polski from the 2020 tool)
 ```
 The `kernel/` payload (`boot.img` 6.8 MB, `abrootfs.tgz` 22 MB, the recovery images, `install_payload.sh`,
-the md5 files) is fetched from `autobleem2/psc-kernel-payload`'s releases and unpacked over the staged package's
-`Apps/abflashkit/kernel/` (the 2020 files checked in under `payload/` are only replaced) at package time by `.github/workflows/build.yml`'s `kernel-payload` job:
-a v* tag build takes the payload released under the same tag; any other build takes the payload's rolling
-`nightly` pre-release. A missing release or asset fails the job — there is no fallback to the old 2020
-payload files.
-`.github/workflows/build.yml`'s Package step then lays `payload/Apps/<tool>/` down (the fetched kernel/ over
-what was checked in), then `resources/`, then the fresh binary, and refuses a package whose `kernel/` is
-incomplete or whose `boot.img` does not match `boot.md5`, or whose `abrootfs.tgz` does not match
-`abrootfs.md5` (TOOLS-3, 2026-09-27 - checked from the start until then it was not). `boot.md5`/`abrootfs.md5`
-may each be a bare hash or `md5sum`'s `<hash>  <name>`. `Flasher::validateKernel()` (the tool's own readiness
-check, run before a flash) checks both pairs the same way, in-process (`fileMatchesMd5` in `flasher.cpp`) -
-`install_payload.sh` untars `abrootfs.tgz` onto the data partition, so a corrupt download used to be unpacked
-with nothing to say so. `payload/Apps/abflashkit/` no longer carries a checked-in `abflashkit` binary or
-`readme.txt` (TOOLS-3): both were dead weight - `resources/` has its own `readme.txt` and CI always lays a
-freshly built binary over whatever `payload/` has, so neither checked-in file was ever what shipped. What is
-still checked in there (`app.ini`, `icon.png`, `run.sh`, `lang/`, the 2020 `kernel/` files) is the same kind
-of stand-in `make_psc.sh` overwrites locally and CI's Package step replaces wholesale (`resources/` over
-`app.ini`/`icon.png`/`run.sh`/`lang/`, the fetched release tarball over the whole of `kernel/`) - left as is
-pending a decision on whether to remove it too.
+the md5 files) is fetched from `autobleem2/psc-kernel-payload`'s releases and unpacked straight into the
+staged package's `Apps/abflashkit/kernel/` at package time by `.github/workflows/build.yml`'s `kernel-payload`
+job: a v* tag build takes the payload released under the same tag; any other build takes the payload's
+rolling `nightly` pre-release. A missing release or asset fails the job — there is no fallback to the old
+2020 payload files.
+`.github/workflows/build.yml`'s Package step lays `resources/`, then the fresh binary, then the fetched
+kernel/ into `stage/Apps/abflashkit/`, and refuses a package whose `kernel/` is incomplete or whose
+`boot.img` does not match `boot.md5`, or whose `abrootfs.tgz` does not match `abrootfs.md5` (TOOLS-3,
+2026-09-27 - checked from the start until then it was not). `boot.md5`/`abrootfs.md5` may each be a bare
+hash or `md5sum`'s `<hash>  <name>`. `Flasher::validateKernel()` (the tool's own readiness check, run before
+a flash) checks both pairs the same way, in-process (`fileMatchesMd5` in `flasher.cpp`) - `install_payload.sh`
+untars `abrootfs.tgz` onto the data partition, so a corrupt download used to be unpacked with nothing to say
+so. **There is no `payload/Apps/abflashkit/` any more** (TOOLS-3, 2026-09-27, in two steps): first the
+checked-in `abflashkit` binary and `readme.txt` went (dead weight - `resources/` has its own `readme.txt`
+and CI always lays a freshly built binary over whatever `payload/` had), then the rest of it - `app.ini`,
+`icon.png`, `run.sh`, `lang/` (all duplicated by `resources/`) and the 2020 `kernel/` files (`boot.img`,
+`boot.md5`, `abrootfs.tgz`, `abrootfs.md5`, `install_payload.sh`, `recovery-{on,off}.img`, replaced wholesale
+by the fetched release tarball, never read by CI - its own comment on the `kernel-payload` job said so
+already). Proven with a byte-for-byte diff of the Package step's staged tree built both ways (the old
+`payload/Apps/abflashkit/` copied in first, and without it) against a real `nightly` kernel-payload tarball:
+identical file list, identical md5 of every file. `payload/` itself is gone with it - `abflashkit` was the
+only thing under it.
 
 ## Theme and language
 
