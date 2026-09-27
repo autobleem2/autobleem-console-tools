@@ -1,6 +1,6 @@
 # AutoBleem Portuguese_BR Translation
 # Format: English Text=Translated Text
-# Untranslated: 8 / Total: 213
+# Untranslated: 8 / Total: 215
 
 - Mapping (Available):=- Mapeamento (disponível):
 - Mapping (Not found)=- Mapeamento (não encontrado)
@@ -10,6 +10,8 @@
 4. Disconnect charging cable from the console and press PlayStation Home button again=4. Desconecte o cabo de carga do console e pressione o botão PlayStation Home de novo
 5. After 1-5 seconds controller will auto pair to AutoBleem and show player number LED (similar as paired to PS3)=5. Após 1-5 segundos o controle pareia automaticamente com o AutoBleem e mostra o LED do jogador (como no PS3)
 6. If the controller does not react for buttons or analog sticks are setup wrong - use mapping section to reconfigure=6. Se o controle não responder aos botões ou os analógicos estiverem errados, use a seção de mapeamento para reconfigurar
+Bluetooth is switched off by a hardware switch=O Bluetooth está desligado por uma chave física
+Bluetooth's software block could not be cleared=Não foi possível remover o bloqueio por software do Bluetooth
 Gamepad configuration=Configuração do controle
 Nothing was mapped. Nothing was saved.=Nada foi mapeado. Nada foi salvo.
 Skip / No button on controller=Pular / O controle não tem esse botão

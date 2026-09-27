@@ -360,7 +360,13 @@ bool NmBackend::btUp() {
     }
     if (!client->adapter().powered && !triedPowerOn_) {
         triedPowerOn_ = true;
-        if (!client->setPowered(true))
+        // TOOLS-10 (BUG-10): a soft-blocked adapter (rfkill) never powers on no matter how often
+        // setPowered(true) is asked - clear that first, unless it is a hard (switch) block, which is left
+        // alone and reported instead
+        const RfkillUnblock::Result rf = rfkill_.run();
+        if (rf == RfkillUnblock::Result::HardBlocked || rf == RfkillUnblock::Result::ClearFailed)
+            btError_ = rfkill_.message();
+        else if (!client->setPowered(true))
             takeBtError();
     }
     if (!client->adapter().powered && btError_.empty())

@@ -1,6 +1,6 @@
 # AutoBleem Czech Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 213
+# Untranslated: 10 / Total: 215
 
 - Mapping (Available):=- Mapování (k dispozici):
 - Mapping (Not found)=- Mapování (nenalezeno)
@@ -10,6 +10,8 @@
 4. Disconnect charging cable from the console and press PlayStation Home button again=4. Odpojte nabíjecí kabel od konzole a znovu stiskněte tlačítko PlayStation Home
 5. After 1-5 seconds controller will auto pair to AutoBleem and show player number LED (similar as paired to PS3)=5. Po 1-5 sekundách se ovladač automaticky spáruje s AutoBleem a rozsvítí diodu hráče (jako po spárování s PS3)
 6. If the controller does not react for buttons or analog sticks are setup wrong - use mapping section to reconfigure=6. Pokud ovladač nereaguje na tlačítka nebo jsou páčky nastaveny špatně, přenastavte ho v sekci mapování
+Bluetooth is switched off by a hardware switch=Bluetooth je vypnut hardwarovým přepínačem
+Bluetooth's software block could not be cleared=Softwarovou blokaci Bluetooth se nepodařilo zrušit
 Gamepad configuration=Konfigurace ovladače
 Nothing was mapped. Nothing was saved.=Nic nebylo namapováno. Nic nebylo uloženo.
 Skip / No button on controller=Přeskočit / Ovladač toto tlačítko nemá

@@ -22,6 +22,8 @@ set(PSCBIOS_CORE_SOURCES
         src/core/nm_backend.h
         src/core/pad_mapping.cpp
         src/core/pad_mapping.h
+        src/core/rfkill.cpp
+        src/core/rfkill.h
         src/core/ssid_config.cpp
         src/core/ssid_config.h
         src/core/wifi_connect.cpp

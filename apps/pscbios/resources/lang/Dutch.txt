@@ -1,6 +1,6 @@
 # AutoBleem Dutch Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 213
+# Untranslated: 10 / Total: 215
 
 - Mapping (Available):=- Toewijzing (beschikbaar):
 - Mapping (Not found)=- Toewijzing (niet gevonden)
@@ -10,6 +10,8 @@
 4. Disconnect charging cable from the console and press PlayStation Home button again=4. Koppel de laadkabel los van de console en druk opnieuw op de PlayStation Home-knop
 5. After 1-5 seconds controller will auto pair to AutoBleem and show player number LED (similar as paired to PS3)=5. Na 1-5 seconden koppelt de controller automatisch met AutoBleem en toont de speler-led (zoals bij een PS3)
 6. If the controller does not react for buttons or analog sticks are setup wrong - use mapping section to reconfigure=6. Reageert de controller niet op knoppen of staan de sticks verkeerd ingesteld, gebruik dan het toewijzingsonderdeel om hem opnieuw in te stellen
+Bluetooth is switched off by a hardware switch=Bluetooth is uitgeschakeld met een hardwareschakelaar
+Bluetooth's software block could not be cleared=De softwareblokkering van Bluetooth kon niet worden opgeheven
 Gamepad configuration=Controllerconfiguratie
 Nothing was mapped. Nothing was saved.=Er is niets toegewezen. Er is niets opgeslagen.
 Skip / No button on controller=Overslaan / Deze knop zit niet op de controller

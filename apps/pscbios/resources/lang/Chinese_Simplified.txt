@@ -1,6 +1,6 @@
 # AutoBleem Chinese_Simplified Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 213
+# Untranslated: 10 / Total: 215
 
 - Mapping (Available):=- 映射（可用）：
 - Mapping (Not found)=- 映射（未找到）
@@ -10,6 +10,8 @@
 4. Disconnect charging cable from the console and press PlayStation Home button again=4. 从主机上拔下充电线，再次按下 PlayStation Home 键
 5. After 1-5 seconds controller will auto pair to AutoBleem and show player number LED (similar as paired to PS3)=5. 1-5 秒后手柄会自动与 AutoBleem 配对并点亮玩家指示灯（与 PS3 配对时相同）
 6. If the controller does not react for buttons or analog sticks are setup wrong - use mapping section to reconfigure=6. 如果手柄按键无反应或摇杆设置错误，请在映射部分重新配置
+Bluetooth is switched off by a hardware switch=蓝牙已被硬件开关关闭
+Bluetooth's software block could not be cleared=无法解除蓝牙的软件屏蔽
 Gamepad configuration=手柄配置
 Nothing was mapped. Nothing was saved.=未映射任何内容。未保存任何内容。
 Skip / No button on controller=跳过 / 手柄上没有此按键
