@@ -176,17 +176,20 @@ jobs:
           path: /sccache
           key: sccache-console-psc-${{ github.sha }}
           restore-keys: sccache-console-psc-
+      # the toolchain file and check_psc_binary.sh (APPS-6) come from the autobleem-build image
+      # now, at /opt/ab/ - this job already runs in that image, which sets AB_PSC_TOOLCHAIN=/opt/psc
+      # itself; no repo-local copy is vendored any more.
       - name: Configure (psc, /opt/psc toolchain)
         run: |
           cmake -S . -B build_psc -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=toolchains/psc/PSCtoolchainV8.cmake -DAB_PSC_TOOLCHAIN=/opt/psc \
+            -DCMAKE_TOOLCHAIN_FILE=/opt/ab/toolchains/psc/PSCtoolchainV8.cmake -DAB_PSC_TOOLCHAIN=/opt/psc \
             -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
       - name: Build
         run: ninja -C build_psc
       - name: Check the binaries against the console's glibc 2.24 / GLIBCXX 3.4.22, no RPATH
         run: |
-          bash tools/check_psc_binary.sh build_psc/extensions/pscbios/bin/psc/pscbios.so /opt/psc
-          bash tools/check_psc_binary.sh build_psc/apps/abflashkit/abflashkit /opt/psc
+          bash /opt/ab/tools/check_psc_binary.sh build_psc/extensions/pscbios/bin/psc/pscbios.so /opt/psc
+          bash /opt/ab/tools/check_psc_binary.sh build_psc/apps/abflashkit/abflashkit /opt/psc
           # a plugin carries none of the SDK (the launcher's copy is the one) and exports its two entry points
           bash tools/check_extension.sh build_psc/extensions/pscbios/bin/psc/pscbios.so /opt/psc
       - uses: actions/download-artifact@v8
