@@ -18,6 +18,8 @@
 #include <ableem/ui/texture.h>
 #include <ableem/ui/types.h>
 
+#include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -37,7 +39,7 @@ private:
     Stage stage = Stage::Test;
 
     ableem::Joystick joystick;
-    ableem::JoystickState initialState; // the pad at rest, when the mapping started
+    ableem::JoystickState initialState; // the pad at rest, resampled fresh for every step (see advance())
     std::vector<PadMapping::Element> elements;
     std::vector<PadMapping::Element> finals;
     size_t current = 0;                         // the element being asked for
@@ -45,9 +47,26 @@ private:
     int joysticksAtStart = 0;                   // a pad plugged or pulled mid-mapping cancels it
     std::string pending;                        // the input just moved while mapping, taken when it is let go
     unsigned int holdSince = 0;                 // when Circle (see the top) went down and stayed down, 0: it is not
+    unsigned int stepDeadline = 0;              // ticks() when the current step is skipped/taken even if unresolved
     ableem::Texture padImage;                   // DS3.png, from the tool's own folder
     ableem::Font pageFont;                      // the classic font at a size every row of this page fits at (see init)
     static constexpr int PageRows = 4 + 3 + 13; // the facts, the message, the 26 mapping entries in two columns
+
+    // TOOLS-9: a small popup drawn over the wizard's own already-rendered frame (PanelStyle, the same look
+    // GuiConfirm uses) instead of Gui::drawText()'s full-screen splash - see showPopup()/renderPopup()
+    std::string popupMessage;
+    unsigned int popupUntil = 0; // ticks() when the popup clears itself
+
+    // TOOLS-9: the 2 s hold-to-exit must work from ANY connected pad, not only the one being mapped - one
+    // raw handle + rest sample + timer per other connected joystick index, rebuilt only when the set of
+    // connected pads changes (never every frame: that would keep resetting the rest sample and a hold could
+    // never be measured)
+    struct OtherPad {
+        std::unique_ptr<ableem::Joystick> handle;
+        ableem::JoystickState rest;
+        unsigned int holdSince = 0;
+    };
+    std::map<int, OtherPad> others;
 
     void openJoystick(int index);
     void nextJoystick();
@@ -55,11 +74,14 @@ private:
     void cancelMapping();
     void takeInput(const std::string &value);
     std::string circleNow(); // the raw input that is Circle on this pad now, "" when not known
-    bool checkHoldToExit();  // true when Circle has been held long enough: the screen is to close
+    bool checkHoldToExit();  // true when Circle has been held long enough on ANY connected pad
     std::string holdHint();  // the footer's hold-to-exit hint, "" when there is no Circle to hold
+    void refreshOtherPads(); // keeps `others` in step with Joystick::count() and the pad being watched
     void advance();
     void finishMapping();
     void saveMapping();
+    void showPopup(const std::string &message, unsigned int durationMs = 2000);
+    void renderPopup();
 
     ableem::Rect pictureRect() const;
     void renderPadPicture(const ableem::ControllerState &state);

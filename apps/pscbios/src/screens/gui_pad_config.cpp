@@ -26,8 +26,7 @@ void GuiPadConfig::init() {
     elements = PadMapping::standardElements();
     chooseFont();
     if (Joystick::count() == 0) {
-        gui->drawText(_("NO GAMEPADS CONNECTED"));
-        gui->platform().delay(1000);
+        showPopup(_("NO GAMEPADS CONNECTED"));
     } else {
         openJoystick(0);
     }
@@ -95,6 +94,7 @@ void GuiPadConfig::startMapping() {
     current = 0;
     pending.clear();
     holdSince = 0;
+    stepDeadline = gui->platform().ticks() + PadMapping::StepTimeoutMs;
 }
 
 void GuiPadConfig::cancelMapping() {
@@ -119,7 +119,7 @@ void GuiPadConfig::takeInput(const string &value) {
 }
 
 //*******************************
-// GuiPadConfig::circleNow / checkHoldToExit / holdHint
+// GuiPadConfig::circleNow / checkHoldToExit / holdHint / refreshOtherPads
 //*******************************
 string GuiPadConfig::circleNow() {
     if (!joystick.isOpen())
@@ -129,21 +129,64 @@ string GuiPadConfig::circleNow() {
     return PadMapping::circleInput(elements, line);
 }
 
-bool GuiPadConfig::checkHoldToExit() {
-    bool held = false;
-    const string circle = circleNow();
-    if (!circle.empty())
-        held = PadMapping::inputHeld(circle, initialState, joystick.state());
-    else if (stage == Stage::Mapping)
-        held = !pending.empty(); // no mapping to name Circle: whatever is being held
-    const unsigned int now = gui->platform().ticks();
-    if (!held) {
-        holdSince = 0;
-        return false;
+// TOOLS-9: keeps `others` (one raw handle + rest sample + hold timer per connected pad OTHER than the one
+// being watched) in step with the actual device list - called once a frame, but it only opens/closes
+// handles when the set of indices actually changed, so an already-watched pad's rest sample (and its hold
+// timer) is never reset just because render() ran again
+void GuiPadConfig::refreshOtherPads() {
+    const int count = Joystick::count();
+    const int mine = joystick.isOpen() ? joystick.index() : -1;
+    // drop anything no longer connected, or that is now the pad being watched
+    for (auto it = others.begin(); it != others.end();) {
+        if (it->first >= count || it->first == mine)
+            it = others.erase(it);
+        else
+            ++it;
     }
-    if (holdSince == 0)
-        holdSince = now == 0 ? 1 : now;
-    return now - holdSince >= PadMapping::HoldToExitMs;
+    // add anything new
+    for (int i = 0; i < count; i++) {
+        if (i == mine || others.count(i))
+            continue;
+        OtherPad pad;
+        pad.handle.reset(new ableem::Joystick());
+        if (!pad.handle->open(i))
+            continue;
+        pad.handle->update();
+        pad.rest = pad.handle->state();
+        others.emplace(i, std::move(pad));
+    }
+}
+
+bool GuiPadConfig::checkHoldToExit() {
+    refreshOtherPads();
+    const unsigned int now = gui->platform().ticks();
+    bool exit = false;
+
+    // the pad being watched: Circle if this session (or the pad's own line) knows it, else anything held
+    bool heldMine = false;
+    if (joystick.isOpen()) {
+        const string circle = circleNow();
+        if (!circle.empty())
+            heldMine = PadMapping::inputHeld(circle, initialState, joystick.state());
+        else if (stage == Stage::Mapping)
+            heldMine = !pending.empty(); // no mapping to name Circle: whatever is being held
+    }
+    if (PadMapping::advanceHold(holdSince, heldMine, now))
+        exit = true;
+
+    // TOOLS-9: every OTHER connected pad gets the same check, each with its own independent timer - a
+    // second controller's Circle (or, unmapped, anything held) held 2 s also leaves the wizard
+    for (auto &entry : others) {
+        OtherPad &pad = entry.second;
+        pad.handle->update();
+        const string line = gui->input().mappingForDeviceIndex(entry.first);
+        const string circle = PadMapping::rawInput(line, "b");
+        bool held = !circle.empty() ? PadMapping::inputHeld(circle, pad.rest, pad.handle->state())
+                                    : PadMapping::anythingHeld(pad.rest, pad.handle->state());
+        if (PadMapping::advanceHold(pad.holdSince, held, now))
+            exit = true;
+    }
+    return exit;
 }
 
 string GuiPadConfig::holdHint() {
@@ -155,6 +198,15 @@ string GuiPadConfig::holdHint() {
 }
 
 void GuiPadConfig::advance() {
+    stepDeadline = gui->platform().ticks() + PadMapping::StepTimeoutMs;
+    // the input just taken (or skipped) has settled: whatever the pad reads right now becomes the fresh
+    // rest for the NEXT step, instead of the rest sampled once at the very start of the whole session
+    // (TOOLS-9: a stale rest, drifted from the button-mapping steps before it, is what made analog mapping
+    // read as random - see PadMapping::AxisThreshold's comment)
+    if (joystick.isOpen()) {
+        joystick.update();
+        initialState = joystick.state();
+    }
     if (current + 1 < elements.size()) {
         current++;
     } else {
@@ -169,6 +221,14 @@ void GuiPadConfig::advance() {
 // that its controller view uses it
 void GuiPadConfig::finishMapping() {
     finals = PadMapping::finalElements(elements, ableem::Platform::osName());
+    // TOOLS-9: every element skipped or timed out - nothing to test or save, and no empty/broken mapping is
+    // written; back to Test with a message instead
+    if (PadMapping::isEmptyMapping(finals)) {
+        PLOG_INFO << "Mapping wizard: nothing was mapped, nothing saved";
+        cancelMapping();
+        showPopup(_("Nothing was mapped. Nothing was saved."));
+        return;
+    }
     string line = PadMapping::mappingLine(joystick.guid(), PadMapping::cleanName(joystick.name()), finals);
     PLOG_INFO << "New mapping: " << line;
     if (gui->input().addMapping(line))
@@ -201,15 +261,46 @@ void GuiPadConfig::saveMapping() {
         db.replaceMapping(joystick.guid(), ableem::Platform::osName(), line);
         if (db.save(path)) {
             PLOG_INFO << "Mapping stored in " << path;
-            gui->drawText(_("Mapping stored to database"));
+            showPopup(_("Mapping stored to database"));
         } else {
-            gui->drawText(_("Error Storing mapping to database"));
+            showPopup(_("Error Storing mapping to database"));
         }
     } else {
-        gui->drawText(_("Error Storing mapping to database"));
+        showPopup(_("Error Storing mapping to database"));
     }
-    gui->platform().delay(2000);
     stage = Stage::Test;
+}
+
+//*******************************
+// GuiPadConfig::showPopup / renderPopup
+//*******************************
+// TOOLS-9: a small message box in the shared classic look (PanelStyle, as GuiConfirm draws its dialog),
+// over the wizard's own already-rendered frame - never Gui::drawText()'s full-screen splash, which replaced
+// the whole window and is what the owner meant by "it looks awful". No blocking delay() either: the wizard
+// keeps rendering (and handling Quit/other events) while the popup counts down on its own.
+void GuiPadConfig::showPopup(const string &message, unsigned int durationMs) {
+    popupMessage = message;
+    popupUntil = gui->platform().ticks() + durationMs;
+}
+
+void GuiPadConfig::renderPopup() {
+    if (popupMessage.empty())
+        return;
+    if (gui->platform().ticks() >= popupUntil) {
+        popupMessage.clear();
+        return;
+    }
+    const PanelStyle style = gui->panelStyle();
+    style.dim(renderer);
+    const int width = 800;
+    const ableem::Font &font = gui->assets().themeFonts[FONT_22_MED];
+    const int textWidth = width - 2 * (PanelStyle::RowInset + 8);
+    const int textHeight = gui->text().wrappedHeight(font, popupMessage, textWidth);
+    const int height = PanelStyle::HeaderHeight + 12 + textHeight + 24;
+    const ableem::Rect panel((SCREEN_WIDTH - width) / 2, (SCREEN_HEIGHT - height) / 2, width, height);
+    style.sheet(renderer, panel);
+    const int y = style.header(*gui, panel, _("Gamepad configuration"));
+    gui->text().renderWrappedText(font, popupMessage, panel.x + PanelStyle::RowInset + 8, y, textWidth, style.text);
 }
 
 //*******************************
@@ -307,8 +398,7 @@ int GuiPadConfig::renderElements(int x, int y, int width) {
 void GuiPadConfig::render() {
     if (stage != Stage::Test && Joystick::count() != joysticksAtStart) {
         cancelMapping();
-        gui->drawText(_("Gamepad configuration changed. Mapping interrupted."));
-        gui->platform().delay(2000);
+        showPopup(_("Gamepad configuration changed. Mapping interrupted."));
     }
     joystick.update();
 
@@ -338,6 +428,20 @@ void GuiPadConfig::render() {
             const string taken = pending;
             pending.clear();
             takeInput(taken);
+        }
+        // TOOLS-9: every step is skippable (the console's own Open button, always reachable regardless of
+        // what the pad under test has) OR times out - a pad missing a button/stick must still reach the
+        // end. A candidate already seen (pending) is taken as-is rather than discarded, so a reading that
+        // never fully "lets go" cannot hang the wizard either.
+        if (stage == Stage::Mapping && gui->platform().ticks() >= stepDeadline) {
+            if (!pending.empty()) {
+                const string taken = pending;
+                pending.clear();
+                takeInput(taken);
+            } else {
+                elements[current].value.clear();
+                advance();
+            }
         }
     }
     if (checkHoldToExit()) {
@@ -403,6 +507,13 @@ void GuiPadConfig::render() {
             break;
         }
         second = _("Updating mapping");
+        {
+            // TOOLS-9: a visible countdown for the step's timeout, next to the existing skip hint below
+            const unsigned int now = gui->platform().ticks();
+            const unsigned int left = stepDeadline > now ? stepDeadline - now : 0;
+            const int secondsLeft = static_cast<int>((left + 999) / 1000);
+            second += "   " + _("Skip in") + " " + to_string(secondsLeft) + "s";
+        }
         break;
     case Stage::Save:
         first = _("Mapping Complete - press (OPEN) to save. (POWER) to cancel.");
@@ -437,10 +548,11 @@ void GuiPadConfig::render() {
         gui->renderStatus("|@Reset| " + _("Next pad") + "   |@Open| " + _("Update mapping") + "   |@Power| " +
                           _("Exit") + holdHint());
     else if (stage == Stage::Mapping)
-        gui->renderStatus("|@Open| " + _("No button on controller") + "   |@Power| " + _("Cancel mapping") +
+        gui->renderStatus("|@Open| " + _("Skip / No button on controller") + "   |@Power| " + _("Cancel mapping") +
                           holdHint());
     else
         gui->renderStatus("|@Open| " + _("Save") + "   |@Power| " + _("Cancel mapping") + holdHint());
+    renderPopup();
     renderer.present();
 }
 
@@ -515,8 +627,7 @@ void GuiPadConfig::loop() {
                 }
             } else if (e.type == Event::Type::PadAdded || e.type == Event::Type::PadRemoved) {
                 if (stage == Stage::Test) {
-                    gui->drawText(_("Gamepad configuration changed."));
-                    gui->platform().delay(2000);
+                    showPopup(_("Gamepad configuration changed."));
                     if (!joystick.isOpen() || joystick.index() >= Joystick::count())
                         openJoystick(0);
                 }

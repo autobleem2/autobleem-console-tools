@@ -535,7 +535,7 @@ TEST_CASE("PadMapping::detectChange names the raw input that moved, a button bef
     CHECK(PadMapping::detectChange(initial, now, taken) == "-a1");
     now.axes[1] = 32700;
     CHECK(PadMapping::detectChange(initial, now, taken) == "+a1");
-    now.axes[1] = 20000; // not far enough
+    now.axes[1] = 10000; // not far enough
     CHECK(PadMapping::detectChange(initial, now, taken) == "");
 
     initial.axes[4] = -32768; // a trigger rests at one end
@@ -550,13 +550,37 @@ TEST_CASE("PadMapping::detectChange names the raw input that moved, a button bef
     CHECK(PadMapping::detectChange(initial, now, taken) == "");
 }
 
+// TOOLS-9: a real stick often never reaches raw +-32767 (calibration, deadzone, a cheap or worn pad's
+// reduced travel) - a deliberate ~65% push must still register. The old AxisThreshold (32000, ~97.5% of
+// the range) missed exactly this: this case failed ("" instead of "+a0") before the fix.
+TEST_CASE("PadMapping::detectChange registers a deliberate push well short of the axis' physical limit") {
+    ableem::JoystickState initial = rest(2, 1, 0);
+    ableem::JoystickState now = initial;
+    vector<PadMapping::Element> taken;
+    now.axes[0] = 21000; // ~64% of the range - a firm, deliberate push, not a full slam
+    CHECK(PadMapping::detectChange(initial, now, taken) == "+a0");
+}
+
+// TOOLS-9: an ordinary pad's centre rarely sits at exactly raw 0 - a few hundred to a couple of thousand
+// units of drift is common on worn or cheap hardware. The old RestTolerance (600) misread that drift as a
+// trigger resting at an extreme, which then mapped the *whole* axis instead of a half - "maps something at
+// random" from the owner's report. This must still be read as a stick.
+TEST_CASE("PadMapping::detectChange still reads a drifted-centre stick as a stick, not a trigger") {
+    ableem::JoystickState initial = rest(2, 1, 0);
+    initial.axes[0] = 1800; // drifted centre, well under RestTolerance (3000) but over the old 600
+    ableem::JoystickState now = initial;
+    now.axes[0] = 1800 + 20000;
+    vector<PadMapping::Element> taken;
+    CHECK(PadMapping::detectChange(initial, now, taken) == "+a0"); // a stick half, not "a0" (a whole trigger)
+}
+
 TEST_CASE("PadMapping::anythingHeld is what the wizard waits to clear") {
     ableem::JoystickState initial = rest(2, 2, 1);
     ableem::JoystickState now = initial;
     CHECK_FALSE(PadMapping::anythingHeld(initial, now));
     now.axes[0] = 25000;
     CHECK(PadMapping::anythingHeld(initial, now));
-    now.axes[0] = 10000;
+    now.axes[0] = 5000;
     CHECK_FALSE(PadMapping::anythingHeld(initial, now));
     now.buttons[1] = true;
     CHECK(PadMapping::anythingHeld(initial, now));
@@ -873,4 +897,45 @@ TEST_CASE("PadMapping::isExitKey is Power or a keyboard's Esc/Backspace, never a
     CHECK_FALSE(PadMapping::isExitKey(ableem::Key::Reset));
     CHECK_FALSE(PadMapping::isExitKey(ableem::Key::Open));
     CHECK_FALSE(PadMapping::isExitKey(ableem::Key::Other));
+}
+
+// TOOLS-9: the hold-to-exit timer as a pure state machine, so it can be driven for more than one pad at
+// once (the wizard used to keep only a single timer tied to the pad being mapped, so a second pad's Circle
+// held for 2 s never left the wizard - this is what a per-pad instance of the timer now is).
+TEST_CASE("PadMapping::advanceHold is a reusable 2 s hold timer, independent per caller") {
+    unsigned holdA = 0, holdB = 0;
+    CHECK_FALSE(PadMapping::advanceHold(holdA, false, 1000));
+    CHECK(holdA == 0);
+    // pad A starts holding at t=1000
+    CHECK_FALSE(PadMapping::advanceHold(holdA, true, 1000));
+    CHECK(holdA == 1000);
+    CHECK_FALSE(PadMapping::advanceHold(holdA, true, 1999)); // not quite 2 s yet
+    CHECK(PadMapping::advanceHold(holdA, true, 3000));       // 2 s reached
+    // letting go resets it
+    CHECK_FALSE(PadMapping::advanceHold(holdA, false, 3100));
+    CHECK(holdA == 0);
+    // pad B has its own independent timer, started later and reaching 2 s on its own schedule - not
+    // affected by pad A's history at all, which is exactly the "any connected pad" requirement
+    CHECK_FALSE(PadMapping::advanceHold(holdB, true, 5000));
+    CHECK_FALSE(PadMapping::advanceHold(holdB, true, 6500));
+    CHECK(PadMapping::advanceHold(holdB, true, 7000));
+}
+
+// TOOLS-9: every step skipped or timed out must not be written as a mapping - the wizard checks this
+// before offering to save.
+TEST_CASE("PadMapping::isEmptyMapping is true when nothing but \"platform\" survived") {
+    vector<PadMapping::Element> finals;
+    PadMapping::Element platform;
+    platform.apiName = "platform";
+    platform.value = "Linux";
+    finals.push_back(platform);
+    CHECK(PadMapping::isEmptyMapping(finals));
+
+    PadMapping::Element a;
+    a.apiName = "a";
+    a.value = "b0";
+    finals.push_back(a);
+    CHECK_FALSE(PadMapping::isEmptyMapping(finals));
+
+    CHECK(PadMapping::isEmptyMapping({}));
 }

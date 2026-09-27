@@ -172,6 +172,29 @@ bool PadMapping::isExitKey(ableem::Key key) {
 }
 
 //*******************************
+// PadMapping::advanceHold
+//*******************************
+bool PadMapping::advanceHold(unsigned &holdSince, bool heldNow, unsigned nowTicks) {
+    if (!heldNow) {
+        holdSince = 0;
+        return false;
+    }
+    if (holdSince == 0)
+        holdSince = nowTicks == 0 ? 1 : nowTicks;
+    return nowTicks - holdSince >= HoldToExitMs;
+}
+
+//*******************************
+// PadMapping::isEmptyMapping
+//*******************************
+bool PadMapping::isEmptyMapping(const vector<Element> &finals) {
+    for (const Element &element : finals)
+        if (element.apiName != "platform")
+            return false;
+    return true;
+}
+
+//*******************************
 // PadMapping::mergeAxis
 //*******************************
 // the "-x" and "+x" halves of a stick axis: both mapped to the two halves of the same raw axis become one
