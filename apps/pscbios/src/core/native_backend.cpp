@@ -471,7 +471,16 @@ bool NativeBackend::btUp() {
     if (!client->adapter().powered && !triedPowerOn_) {
         // once: an adapter that is off is switched on, but one that will not come on is not asked every refresh
         triedPowerOn_ = true;
-        if (!client->setPowered(true))
+        // TOOLS-10 (BUG-10): a soft-blocked adapter (rfkill) never powers on no matter how often
+        // setPowered(true) is asked - clear that first, unless it is a hard (switch) block, which is left
+        // alone and reported instead; a console kernel whose Bluetooth dongle has no rfkill entry at all is
+        // unaffected (RfkillUnblock::Result::NotNeeded)
+        RfkillUnblock rfkill;
+        rfkill.root = paths_.rfkillDir;
+        const RfkillUnblock::Result rf = rfkill.run();
+        if (rf == RfkillUnblock::Result::HardBlocked || rf == RfkillUnblock::Result::ClearFailed)
+            btError_ = rfkill.message();
+        else if (!client->setPowered(true))
             takeBtError();
     }
     if (!client->adapter().powered && btError_.empty())

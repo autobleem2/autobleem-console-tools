@@ -10,6 +10,7 @@
 
 #include "bluez_client.h"
 #include "console_backend.h"
+#include "rfkill.h"
 #include "wpa_ctrl_client.h"
 
 #include <functional>
@@ -36,6 +37,9 @@ struct NativePaths {
     std::string powerSupplyDir = "/sys/class/power_supply"; // the pads' batteries (hid-sony, hid-playstation)
     int btScanMs = 8000;                                    // btScan()'s discovery
     BluezTimeouts btTimeouts;
+    // TOOLS-10: where btUp() looks for a soft-blocked Bluetooth rfkill entry before it powers the adapter on;
+    // a kernel whose Bluetooth dongle has no rfkill entry (or this directory at all) is a silent no-op
+    std::string rfkillDir = "/sys/class/rfkill";
     // the status reads a screen repeats (btUp, btPairedDevices): GetManagedObjects waits no longer than
     // btStatusTimeoutMs, and after one that got no reply BlueZ is not asked again for btRetryMs - a bluetoothd that
     // holds its name but never answers costs a screen one short stall, not one per refresh

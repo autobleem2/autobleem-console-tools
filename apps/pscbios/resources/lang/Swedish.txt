@@ -1,6 +1,6 @@
 # AutoBleem Swedish Translation
 # Format: English Text=Translated Text
-# Untranslated: 10 / Total: 213
+# Untranslated: 10 / Total: 215
 
 - Mapping (Available):=- Mappning (tillgänglig):
 - Mapping (Not found)=- Mappning (hittades inte)
@@ -10,6 +10,8 @@
 4. Disconnect charging cable from the console and press PlayStation Home button again=4. Koppla bort laddkabeln från konsolen och tryck på PlayStation Home-knappen igen
 5. After 1-5 seconds controller will auto pair to AutoBleem and show player number LED (similar as paired to PS3)=5. Efter 1-5 sekunder parkopplas handkontrollen automatiskt med AutoBleem och visar spelarlysdioden (som på en PS3)
 6. If the controller does not react for buttons or analog sticks are setup wrong - use mapping section to reconfigure=6. Om handkontrollen inte reagerar på knappar eller spakarna är fel inställda, använd mappningsavsnittet för att konfigurera om den
+Bluetooth is switched off by a hardware switch=Bluetooth är avstängt med en fysisk brytare
+Bluetooth's software block could not be cleared=Bluetooths mjukvaruspärr kunde inte tas bort
 Gamepad configuration=Handkontrollskonfiguration
 Nothing was mapped. Nothing was saved.=Inget mappades. Inget sparades.
 Skip / No button on controller=Hoppa över / Knappen finns inte på handkontrollen

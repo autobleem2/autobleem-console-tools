@@ -582,6 +582,52 @@ TEST_CASE("NativeBackend's Bluetooth goes through BlueZ") {
     CHECK(backend.btPairedDevices().empty());
 }
 
+//*******************************
+// NativeBackend + RfkillUnblock (TOOLS-10, BUG-10): the console's own kernel usually has no rfkill entry
+// for its Bluetooth dongle at all (the common no-op case, covered above by every other Bluetooth test using
+// pathsIn()'s default paths.rfkillDir - a directory that never exists in these tests' temp trees), but a Pi
+// image can, and the same soft/hard rfkill handling applies there too.
+//*******************************
+TEST_CASE("NativeBackend clears a soft rfkill block before it asks BlueZ to power the adapter on") {
+    TempDir tmp("native_bt_rfkill_soft");
+    NativePaths paths = pathsIn(tmp);
+    paths.rfkillDir = tmp.at("rfkill");
+    tmp.writeFile("rfkill/rfkill0/type", "bluetooth\n");
+    tmp.writeFile("rfkill/rfkill0/soft", "1\n");
+    tmp.writeFile("rfkill/rfkill0/hard", "0\n");
+
+    auto state = std::make_shared<fakebluez::State>();
+    state->objects["/org/bluez"]["org.bluez.AgentManager1"];
+    state->objects[fakebluez::Adapter] = fakebluez::adapter("00:1A:7D:DA:71:13", false);
+    RecordedRuns runs;
+    NativeBackend backend(paths, runs.runner(), [&](BusError &) { return fakebluez::makeBus(state); });
+
+    CHECK(backend.btUp());
+    CHECK(backend.btLastError().empty());
+    CHECK(tmp.readFile("rfkill/rfkill0/soft") == "0"); // cleared
+    CHECK(state->calls == vector<string>{"Set Powered=true /org/bluez/hci0"});
+}
+
+TEST_CASE("NativeBackend reports a hard-blocked adapter and never asks BlueZ to power it on") {
+    TempDir tmp("native_bt_rfkill_hard");
+    NativePaths paths = pathsIn(tmp);
+    paths.rfkillDir = tmp.at("rfkill");
+    tmp.writeFile("rfkill/rfkill0/type", "bluetooth\n");
+    tmp.writeFile("rfkill/rfkill0/soft", "0\n");
+    tmp.writeFile("rfkill/rfkill0/hard", "1\n");
+
+    auto state = std::make_shared<fakebluez::State>();
+    state->objects["/org/bluez"]["org.bluez.AgentManager1"];
+    state->objects[fakebluez::Adapter] = fakebluez::adapter("00:1A:7D:DA:71:13", false);
+    RecordedRuns runs;
+    NativeBackend backend(paths, runs.runner(), [&](BusError &) { return fakebluez::makeBus(state); });
+
+    CHECK_FALSE(backend.btUp());
+    CHECK(backend.btLastError() == "Bluetooth is switched off by a hardware switch");
+    CHECK(tmp.readFile("rfkill/rfkill0/hard") == "1\n"); // untouched
+    CHECK(state->calls.empty());                         // setPowered was never even asked
+}
+
 TEST_CASE("NativeBackend without a system bus: no Bluetooth, and why") {
     TempDir tmp("native_nobus");
     NativePaths paths = pathsIn(tmp);

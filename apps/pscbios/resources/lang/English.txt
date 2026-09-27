@@ -1,6 +1,6 @@
 # AutoBleem English Translation
 # Format: English Text=Translated Text
-# Untranslated: 0 / Total: 213
+# Untranslated: 0 / Total: 215
 
  - Mapping (Available):= - Mapping (Available):
  - Mapping (Not found)= - Mapping (Not found)
@@ -22,7 +22,9 @@ Bluetooth controller pairing=Bluetooth controller pairing
 Bluetooth controllers=Bluetooth controllers
 Bluetooth information:=Bluetooth information:
 Bluetooth is busy with something else=Bluetooth is busy with something else
+Bluetooth is switched off by a hardware switch=Bluetooth is switched off by a hardware switch
 Bluetooth scan failed=Bluetooth scan failed
+Bluetooth's software block could not be cleared=Bluetooth's software block could not be cleared
 BlueZ (bluetoothd) is not running=BlueZ (bluetoothd) is not running
 BlueZ did not answer in time=BlueZ did not answer in time
 BlueZ does not answer=BlueZ does not answer

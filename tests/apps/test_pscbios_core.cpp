@@ -15,6 +15,7 @@
 #include "core/network_status.h"
 #include "core/nm_backend.h"
 #include "core/pad_mapping.h"
+#include "core/rfkill.h"
 #include "core/ssid_config.h"
 
 #include <chrono>
@@ -846,6 +847,133 @@ TEST_CASE("NmBackend without a BlueZ bus factory: no Bluetooth support") {
     NmBackend backend(scriptedRun, scriptedRunLines, true, nullptr); // a host with no libdbus-1
     CHECK_FALSE(backend.btUp());
     CHECK(backend.btLastError() == "no Bluetooth support");
+}
+
+//*******************************
+// RfkillUnblock (TOOLS-10, BUG-10): a soft-blocked Bluetooth rfkill entry never lets BlueZ power the
+// adapter on - see rfkill.h. Pure logic, a fake sysfs tree (TempDir), everywhere including Windows.
+//*******************************
+TEST_CASE("RfkillUnblock clears a soft-blocked bluetooth entry and leaves the others alone") {
+    TempDir tmp("rfkill_soft");
+    tmp.writeFile("rfkill0/type", "wlan\n");
+    tmp.writeFile("rfkill0/soft", "1\n"); // a soft-blocked WiFi entry - never this class' business
+    tmp.writeFile("rfkill0/hard", "0\n");
+    tmp.writeFile("rfkill1/type", "bluetooth\n");
+    tmp.writeFile("rfkill1/soft", "1\n");
+    tmp.writeFile("rfkill1/hard", "0\n");
+
+    RfkillUnblock rfkill;
+    rfkill.root = tmp.path();
+    CHECK(rfkill.run() == RfkillUnblock::Result::Cleared);
+    CHECK(rfkill.message().empty());
+    CHECK(tmp.readFile("rfkill1/soft") == "0");
+    CHECK(tmp.readFile("rfkill0/soft") == "1\n"); // the WiFi entry was never touched
+}
+
+TEST_CASE("RfkillUnblock never touches a hard-blocked bluetooth entry, and reports it") {
+    TempDir tmp("rfkill_hard");
+    tmp.writeFile("rfkill0/type", "bluetooth\n");
+    tmp.writeFile("rfkill0/soft", "0\n");
+    tmp.writeFile("rfkill0/hard", "1\n"); // a physical switch - read-only on a real system
+
+    RfkillUnblock rfkill;
+    rfkill.root = tmp.path();
+    CHECK(rfkill.run() == RfkillUnblock::Result::HardBlocked);
+    CHECK(rfkill.message() == "Bluetooth is switched off by a hardware switch");
+    CHECK(tmp.readFile("rfkill0/soft") == "0\n"); // unwritten
+    CHECK(tmp.readFile("rfkill0/hard") == "1\n"); // unwritten
+}
+
+TEST_CASE("RfkillUnblock leaves a non-bluetooth soft-blocked entry alone (wlan)") {
+    TempDir tmp("rfkill_wifi_only");
+    tmp.writeFile("rfkill0/type", "wlan\n");
+    tmp.writeFile("rfkill0/soft", "1\n");
+    tmp.writeFile("rfkill0/hard", "0\n");
+
+    RfkillUnblock rfkill;
+    rfkill.root = tmp.path();
+    CHECK(rfkill.run() == RfkillUnblock::Result::NotNeeded);
+    CHECK(rfkill.message().empty());
+    CHECK(tmp.readFile("rfkill0/soft") == "1\n"); // unwritten
+}
+
+TEST_CASE("RfkillUnblock is a silent no-op with no rfkill directory at all") {
+    TempDir tmp("rfkill_none");
+    RfkillUnblock rfkill;
+    rfkill.root = tmp.at("no-such-dir");
+    CHECK(rfkill.run() == RfkillUnblock::Result::NotNeeded);
+    CHECK(rfkill.message().empty());
+}
+
+TEST_CASE("RfkillUnblock: an already-unblocked bluetooth entry needs nothing done") {
+    TempDir tmp("rfkill_already_on");
+    tmp.writeFile("rfkill0/type", "bluetooth\n");
+    tmp.writeFile("rfkill0/soft", "0\n");
+    tmp.writeFile("rfkill0/hard", "0\n");
+
+    RfkillUnblock rfkill;
+    rfkill.root = tmp.path();
+    CHECK(rfkill.run() == RfkillUnblock::Result::NotNeeded);
+}
+
+//*******************************
+// NmBackend::btUp() + RfkillUnblock together (TOOLS-10, BUG-10): a Pi 400 whose hci0 came back soft-blocked
+// at boot (systemd restoring /var/lib/systemd/rfkill) never powered on before this fix, no matter how many
+// times setPowered(true) was asked.
+//*******************************
+TEST_CASE("NmBackend::btUp() clears a soft rfkill block before it asks BlueZ to power the adapter on") {
+    TempDir tmp("nm_bt_soft");
+    tmp.writeFile("rfkill0/type", "bluetooth\n");
+    tmp.writeFile("rfkill0/soft", "1\n");
+    tmp.writeFile("rfkill0/hard", "0\n");
+
+    ScriptedShell shell;
+    listings[DeviceStatus] = PiDevices;
+    auto state = std::make_shared<fakebluez::State>();
+    state->objects["/org/bluez"]["org.bluez.AgentManager1"];
+    state->objects[fakebluez::Adapter] = fakebluez::adapter("DC:A6:32:E3:04:97", false); // off at the bus, too
+
+    NmBackend backend(scriptedRun, scriptedRunLines, true, [&](BusError &) { return fakebluez::makeBus(state); });
+    backend.setRfkillRoot(tmp.path());
+
+    CHECK(backend.btUp()); // the fake bus' setPowered always succeeds once asked
+    CHECK(backend.btLastError().empty());
+    CHECK(tmp.readFile("rfkill0/soft") == "0"); // cleared
+}
+
+TEST_CASE("NmBackend::btUp() reports a hard-blocked adapter and never asks BlueZ to power it on") {
+    TempDir tmp("nm_bt_hard");
+    tmp.writeFile("rfkill0/type", "bluetooth\n");
+    tmp.writeFile("rfkill0/soft", "0\n");
+    tmp.writeFile("rfkill0/hard", "1\n");
+
+    ScriptedShell shell;
+    listings[DeviceStatus] = PiDevices;
+    auto state = std::make_shared<fakebluez::State>();
+    state->objects["/org/bluez"]["org.bluez.AgentManager1"];
+    state->objects[fakebluez::Adapter] = fakebluez::adapter("DC:A6:32:E3:04:97", false);
+
+    NmBackend backend(scriptedRun, scriptedRunLines, true, [&](BusError &) { return fakebluez::makeBus(state); });
+    backend.setRfkillRoot(tmp.path());
+
+    CHECK_FALSE(backend.btUp()); // never powered - setPowered was never even asked
+    CHECK(backend.btLastError() == "Bluetooth is switched off by a hardware switch");
+    CHECK(tmp.readFile("rfkill0/hard") == "1\n"); // still there, untouched
+}
+
+TEST_CASE("NmBackend::btUp() with no rfkill directory behaves exactly as before (no-op)") {
+    TempDir tmp("nm_bt_none");
+    ScriptedShell shell;
+    listings[DeviceStatus] = PiDevices;
+    auto state = std::make_shared<fakebluez::State>();
+    state->objects["/org/bluez"]["org.bluez.AgentManager1"];
+    state->objects[fakebluez::Adapter] = fakebluez::adapter("DC:A6:32:E3:04:97", false);
+
+    NmBackend backend(scriptedRun, scriptedRunLines, true, [&](BusError &) { return fakebluez::makeBus(state); });
+    backend.setRfkillRoot(tmp.at("no-such-dir")); // no rfkill for this dongle at all
+
+    CHECK(backend.btUp()); // unaffected: falls straight through to setPowered(true), as before this fix
+    CHECK(backend.btLastError().empty());
 }
 
 TEST_CASE("PadMapping: the raw input behind Circle, and whether it is held (the wizard's hold-to-exit)") {

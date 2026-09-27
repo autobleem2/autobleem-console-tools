@@ -9,6 +9,7 @@
 
 #include "bluez_client.h"
 #include "console_backend.h"
+#include "rfkill.h"
 
 #include <memory>
 #include <string>
@@ -61,6 +62,10 @@ public:
     bool keepsWifiSettings() override { return true; }
     std::string currentSsid() override;
 
+    // TOOLS-10: where btUp() looks for a soft-blocked Bluetooth rfkill entry before it powers the adapter
+    // on - a temp tree in the tests, the real /sys/class/rfkill otherwise (RfkillUnblock's own default)
+    void setRfkillRoot(const std::string &root) { rfkill_.root = root; }
+
     //*******************************
     // the parsing, pure for the tests
     //*******************************
@@ -96,6 +101,7 @@ private:
     bool nmcli_;
     BluezBusFactory bluezFactory_;
     std::unique_ptr<BluezClient> bluez_;
+    RfkillUnblock rfkill_;
     bool triedPowerOn_ = false;
     long long btRetryAt_ = 0;
     std::string btStaleError_;
