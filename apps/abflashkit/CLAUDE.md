@@ -149,14 +149,10 @@ this repository; that sentence was stale): it builds `abflashkit`, checks it aga
 glibc/GLIBCXX (`tools/check_psc_binary.sh`), and its Package step stages `resources/`, then the fresh binary,
 then the fetched `kernel/` payload into `Apps/abflashkit/` (see "Layout" above). Not built for the Pi.
 
-Visual test on Windows: this used to be `python tools/make_usb.py usb` (`autobleem2/AutoBleem2`, the launcher
-repository) staging `usb/Apps/abflashkit/`, but since ABFlashKit moved to this repository (2026-09-23) that
-script's `TOOLS = ['abflashkit']` step looks for `apps/abflashkit/resources` inside *its own* tree, which no
-longer exists there, and silently skips staging it - a plain `python tools/make_usb.py usb` no longer
-populates `usb/Apps/abflashkit/` (TOOLS-3, 2026-09-27 - found stale, not yet fixed on that side). Until the
-launcher's script is updated for the split, stage it by hand: copy this repository's
-`apps/abflashkit/resources/` and a Windows-built `abflashkit.exe` into the launcher checkout's
-`usb/Apps/abflashkit/` yourself, then `python tools/ab_drive.py start --tool abflashkit` then
+Visual test on Windows: build this repository with `make_win.sh` (so `build_win/apps/abflashkit/abflashkit.exe`
+exists) in a sibling checkout of the launcher's (`../autobleem-console-tools` next to `autobleem2/AutoBleem2`,
+or `AB_CONSOLE_TOOLS_DIR`); the launcher's `python tools/make_usb.py usb` then stages this repository's
+`apps/abflashkit/resources/` and that exe into `usb/Apps/abflashkit/`. Then `python tools/ab_drive.py start --tool abflashkit` then
 `run "press down; press x; wait 8000; shot a.png"` does a full backup through the DebugDriver (the menu is
 `GuiActionMenu` on the driver's screen stack, a question `GuiConfirm`; Up/Down pick the action, Cross runs it,
 Circle quits) - logs in `usb/System/Logs/abflashkit.log`. There is no `kernel/` in the staged folder, so a

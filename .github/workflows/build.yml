@@ -105,8 +105,8 @@ jobs:
 
   kernel-payload:
     # ABFlashKit's kernel/ (boot.img + abrootfs.tgz + recovery images + install_payload.sh) from
-    # autobleem2/psc-kernel-payload's releases - built from source there, the 2020 files checked in under
-    # payload/Apps/abflashkit/kernel are never used by CI any more (R1: a silent fallback to them here is
+    # autobleem2/psc-kernel-payload's releases - built from source there, the 2020 files once checked in under
+    # payload/Apps/abflashkit/kernel are gone (TOOLS-3) and were never a fallback (R1: a silent fallback to them here is
     # exactly what would let a develop build quietly ship stale flashing data once the payload's old
     # v2.0.0-alpha2/alpha3 releases are deleted). A tag build takes the payload released under the same tag;
     # any other build (develop, master, a pull request, a manual run) takes the payload's rolling `nightly`
