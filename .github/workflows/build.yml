@@ -105,8 +105,8 @@ jobs:
 
   kernel-payload:
     # ABFlashKit's kernel/ (boot.img + abrootfs.tgz + recovery images + install_payload.sh) from
-    # autobleem2/psc-kernel-payload's releases - built from source there, the 2020 files checked in under
-    # payload/Apps/abflashkit/kernel are never used by CI any more (R1: a silent fallback to them here is
+    # autobleem2/psc-kernel-payload's releases - built from source there, the 2020 files once checked in under
+    # payload/Apps/abflashkit/kernel are gone (TOOLS-3) and were never a fallback (R1: a silent fallback to them here is
     # exactly what would let a develop build quietly ship stale flashing data once the payload's old
     # v2.0.0-alpha2/alpha3 releases are deleted). A tag build takes the payload released under the same tag;
     # any other build (develop, master, a pull request, a manual run) takes the payload's rolling `nightly`
@@ -202,10 +202,10 @@ jobs:
           # PSC-Bios, an extension (2026-09-24): the folder ab_add_extension staged - extension.ini, the icon,
           # lang/, its files and bin/psc/pscbios.so. Not UPX-packed: a packed shared library does not load.
           cp -a build_psc/extensions/pscbios stage/Extensions/pscbios
-          # ABFlashKit, an App: payload/Apps/abflashkit/ first - it holds what resources/ deliberately doesn't,
-          # the kernel/ (boot.img, abrootfs.tgz, the recovery images, install_payload.sh) the tool flashes. Then
-          # resources/ over it (the maintained copy wins), then the fresh binary over the stale checked-in one.
-          cp -a payload/Apps/abflashkit/. stage/Apps/abflashkit/
+          # ABFlashKit, an App: resources/ first (TOOLS-3, 2026-09-27 - payload/Apps/abflashkit/ used to be
+          # copied in ahead of it, but every file there only ever duplicated resources/ or the 2020 kernel/,
+          # itself always replaced below; nothing there was ever what shipped, so the checked-in copies and
+          # this line are gone, not just guarded), then the fresh binary, then the fetched kernel/ payload.
           cp -a apps/abflashkit/resources/. stage/Apps/abflashkit/
           cp build_psc/apps/abflashkit/abflashkit stage/Apps/abflashkit/abflashkit
           upx -q --best --lzma stage/Apps/abflashkit/abflashkit || true

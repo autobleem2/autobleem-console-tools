@@ -27,8 +27,9 @@ add_executable(abflashkit
 )
 target_link_libraries(abflashkit abflashkit_core ab_classic Threads::Threads ${CMAKE_DL_LIBS})
 
-# the tool's own files next to the binary (what ships in Apps/abflashkit; the kernel/ payload lives only
-# in payload/Apps/abflashkit/kernel - release artefacts, not sources)
+# the tool's own files next to the binary (what ships in Apps/abflashkit; the kernel/ payload is fetched
+# from autobleem2/psc-kernel-payload's releases and staged into Apps/abflashkit/kernel at package time -
+# release artefacts, not sources)
 add_custom_command(TARGET abflashkit PRE_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/resources $<TARGET_FILE_DIR:abflashkit>/abflashkit_resources)
