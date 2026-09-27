@@ -141,19 +141,27 @@ over the main file (`Lang::loadMore`). Regenerate `English.txt` with
 
 ## Build, run, test
 
-Part of the root build: `make_win.sh` builds `abflashkit.exe` and runs `tests/apps/test_abflashkit_core.cpp`
-(the four sequences with a scripted `FlashUi` that also checks each bar fills, the backup round trip, the
-kernel check and write, the games backup, the LED). `make_psc.sh`
-builds it for the console, checks it, packs it and copies the binary plus `resources/` into
-`payload/Apps/abflashkit/` (binary name `abflashkit` since the port; `run.sh` matches). Not built for the Pi.
+Part of the root build: the host build (`cmake --build`, `AB_TARGET=dev`, the default) builds `abflashkit.exe`
+and runs `tests/apps/test_abflashkit_core.cpp` (the four sequences with a scripted `FlashUi` that also checks
+each bar fills, the backup round trip, the kernel check and write, the games backup, the LED). The console
+build is CI's `.github/workflows/build.yml` `psc` job (TOOLS-3, 2026-09-27 - `make_psc.sh` never existed in
+this repository; that sentence was stale): it builds `abflashkit`, checks it against the console's
+glibc/GLIBCXX (`tools/check_psc_binary.sh`), and its Package step stages `resources/`, then the fresh binary,
+then the fetched `kernel/` payload into `Apps/abflashkit/` (see "Layout" above). Not built for the Pi.
 
-Visual test on Windows: `python tools/make_usb.py usb` stages `usb/Apps/abflashkit/`;
-`python tools/ab_drive.py start --tool abflashkit` then `run "press down; press x; wait 8000; shot a.png"`
-does a full backup through the DebugDriver (the menu is `GuiActionMenu` on the driver's screen stack, a
-question `GuiConfirm`; Up/Down pick the action, Cross runs it, Circle quits) - logs in
-`usb/System/Logs/abflashkit.log`. There is no `kernel/` in the staged folder, so a Flash on the dev host
-reports "Invalid backup or invalid kernel image" and "reboots"; drop a `kernel/boot.img` + `boot.md5` into
-`usb/Apps/abflashkit/` to see the whole flash sequence.
+Visual test on Windows: this used to be `python tools/make_usb.py usb` (`autobleem2/AutoBleem2`, the launcher
+repository) staging `usb/Apps/abflashkit/`, but since ABFlashKit moved to this repository (2026-09-23) that
+script's `TOOLS = ['abflashkit']` step looks for `apps/abflashkit/resources` inside *its own* tree, which no
+longer exists there, and silently skips staging it - a plain `python tools/make_usb.py usb` no longer
+populates `usb/Apps/abflashkit/` (TOOLS-3, 2026-09-27 - found stale, not yet fixed on that side). Until the
+launcher's script is updated for the split, stage it by hand: copy this repository's
+`apps/abflashkit/resources/` and a Windows-built `abflashkit.exe` into the launcher checkout's
+`usb/Apps/abflashkit/` yourself, then `python tools/ab_drive.py start --tool abflashkit` then
+`run "press down; press x; wait 8000; shot a.png"` does a full backup through the DebugDriver (the menu is
+`GuiActionMenu` on the driver's screen stack, a question `GuiConfirm`; Up/Down pick the action, Cross runs it,
+Circle quits) - logs in `usb/System/Logs/abflashkit.log`. There is no `kernel/` in the staged folder, so a
+Flash on the dev host reports "Invalid backup or invalid kernel image" and "reboots"; drop a `kernel/boot.img`
++ `boot.md5` into `usb/Apps/abflashkit/` to see the whole flash sequence.
 
 ## Behaviour changes vs the 2020 tool
 
