@@ -612,6 +612,115 @@ TEST_CASE("PadMapping::finalElements merges stick halves, drops the unmapped and
                   "platform:Linux,");
 }
 
+TEST_CASE("PadMapping::finalElements drives a missing left stick from the d-pad") {
+    // the PSC's own controller: no sticks, its d-pad reported as two axes
+    vector<PadMapping::Element> scanned = PadMapping::standardElements();
+    auto set = [&](const char *name, const char *value) {
+        for (PadMapping::Element &e : scanned)
+            if (e.apiName == name)
+                e.value = value;
+    };
+    set("a", "b1");
+    set("dpup", "-a1");
+    set("dpdown", "+a1");
+    set("dpleft", "-a0");
+    set("dpright", "+a0");
+    vector<PadMapping::Element> finals = PadMapping::finalElements(scanned, "Linux");
+    CHECK(PadMapping::mappingLine("g", "n", finals) ==
+          "g,n,a:b1,dpup:-a1,dpdown:+a1,dpleft:-a0,dpright:+a0,leftx:a0,lefty:a1,platform:Linux,");
+
+    // a hat d-pad: the stick's halves are the hat's directions
+    scanned = PadMapping::standardElements();
+    set("dpup", "h0.1");
+    set("dpdown", "h0.4");
+    set("dpleft", "h0.8");
+    set("dpright", "h0.2");
+    finals = PadMapping::finalElements(scanned, "Linux");
+    CHECK(PadMapping::mappingLine("g", "n", finals) ==
+          "g,n,dpup:h0.1,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,-leftx:h0.8,+leftx:h0.2,-lefty:h0.1,+lefty:h0.4,"
+          "platform:Linux,");
+}
+
+TEST_CASE("PadMapping::detectChange follows the step: a stick step takes only a stick, the furthest one") {
+    ableem::JoystickState initial = rest(6, 12, 1);
+    initial.axes[4] = -32768; // a trigger resting at one end
+    ableem::JoystickState now = initial;
+    vector<PadMapping::Element> taken;
+    const auto Analog = PadMapping::Scan::Analog;
+
+    now.buttons[9] = true; // the stick clicked in while pushed
+    now.axes[0] = 20000;   // the other axis moves a little too
+    now.axes[1] = -30000;
+    CHECK(PadMapping::detectChange(initial, now, taken, Analog) == "-a1");
+    CHECK(PadMapping::detectChange(initial, now, taken) == "b9"); // a button step would take the button
+
+    now = initial;
+    now.axes[4] = 32767; // a trigger brushed during a stick step
+    now.hats[0] = ableem::Joystick::HatUp;
+    CHECK(PadMapping::detectChange(initial, now, taken, Analog) == "");
+
+    // a half already mapped is passed over for the next furthest
+    now = initial;
+    now.axes[0] = -32000;
+    now.axes[2] = 20000;
+    PadMapping::Element used;
+    used.value = "-a0";
+    taken.push_back(used);
+    CHECK(PadMapping::detectChange(initial, now, taken, Analog) == "+a2");
+}
+
+TEST_CASE("PadMapping::detectChange on a trigger step prefers the axis to the button") {
+    ableem::JoystickState initial = rest(6, 12, 1);
+    initial.axes[3] = -32768;
+    ableem::JoystickState now = initial;
+    vector<PadMapping::Element> taken;
+    const auto Trigger = PadMapping::Scan::Trigger;
+    now.buttons[6] = true; // a DualShock 4's L2 is a button and an axis
+    CHECK(PadMapping::detectChange(initial, now, taken, Trigger) == "b6");
+    now.axes[3] = 32767;
+    CHECK(PadMapping::detectChange(initial, now, taken, Trigger) == "a3");
+    now = initial;
+    now.hats[0] = ableem::Joystick::HatLeft; // never a hat
+    CHECK(PadMapping::detectChange(initial, now, taken, Trigger) == "");
+}
+
+TEST_CASE("PadMapping::wholeTrigger turns an untouched Xbox trigger's half axis into the whole axis") {
+    ableem::JoystickState rest0 = rest(6, 0, 0); // SDL reads an untouched trigger as 0
+    ableem::JoystickState now = rest0;
+    now.axes[2] = 32767; // pressed: seen as the half "+a2"
+    CHECK(PadMapping::wholeTrigger("+a2", rest0, now) == "+a2");
+    now.axes[2] = -32768; // let go: it rests at the far end from now on
+    CHECK(PadMapping::wholeTrigger("+a2", rest0, now) == "a2");
+    CHECK(rest0.axes[2] == -32768); // and that is its rest, so it no longer reads as held
+    CHECK_FALSE(PadMapping::anythingHeld(rest0, now));
+    CHECK(PadMapping::wholeTrigger("b6", rest0, now) == "b6");
+    now.axes[0] = 0;
+    CHECK(PadMapping::wholeTrigger("-a0", rest0, now) == "-a0"); // a stick back in the middle stays a half
+}
+
+TEST_CASE("PadMapping::hasFreeAxis says whether a stick step has anything left to take") {
+    vector<PadMapping::Element> elements = PadMapping::standardElements();
+    CHECK_FALSE(PadMapping::hasFreeAxis(elements, 0)); // no axes at all
+    CHECK(PadMapping::hasFreeAxis(elements, 2));
+    elements[13].value = "-a1"; // dpup
+    elements[15].value = "-a0"; // dpleft
+    CHECK_FALSE(PadMapping::hasFreeAxis(elements, 2)); // the d-pad is both axes
+    CHECK(PadMapping::hasFreeAxis(elements, 4));
+}
+
+TEST_CASE("PadMapping::elementInput and anyPressed") {
+    vector<PadMapping::Element> elements = PadMapping::standardElements();
+    const string line = "g,n,a:b1,b:b2,platform:Linux,";
+    CHECK(PadMapping::elementInput(elements, line, "a") == "b1");
+    elements[0].value = "b0"; // this session's mapping wins
+    CHECK(PadMapping::elementInput(elements, line, "a") == "b0");
+    CHECK(PadMapping::circleInput(elements, line) == "b2");
+    ableem::JoystickState state = rest(2, 3, 1);
+    CHECK_FALSE(PadMapping::anyPressed(state));
+    state.hats[0] = ableem::Joystick::HatDown;
+    CHECK(PadMapping::anyPressed(state));
+}
+
 TEST_CASE("PadMapping::cleanName keeps what SDL accepts in a mapping line") {
     CHECK(PadMapping::cleanName("Sony PLAYSTATION(R)3 Controller, v2") == "Sony PLAYSTATIONR3 Controller v2");
 }

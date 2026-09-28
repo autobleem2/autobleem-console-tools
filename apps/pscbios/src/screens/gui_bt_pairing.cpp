@@ -31,11 +31,14 @@ void GuiBtPairing::init() {
 //*******************************
 void GuiBtPairing::rebuild() {
     lines.clear();
+    labelsOnly = !hasAdapter_; // without an adapter the rows only say so - nothing to pick or scroll through
     if (!hasAdapter_) {
         lines.push_back(_("No Bluetooth adapter found."));
         lines.push_back(_("Plug a USB Bluetooth dongle into the console, then open this screen again."));
-        if (!adapterError_.empty())
-            lines.push_back(adapterError_); // why: no adapter, or the system bus / BlueZ not answering
+        // why, when it says more than the first row already does: the system bus / BlueZ not answering, the
+        // adapter blocked or off - a bare "no Bluetooth adapter" would only repeat it
+        if (!adapterError_.empty() && adapterError_.rfind(_("no Bluetooth adapter"), 0) != 0)
+            lines.push_back(adapterError_);
     } else {
         lines.push_back(_("Scan for controllers"));
         for (const BtRow &row : devices_.rows())

@@ -34,12 +34,10 @@ public:
     void doCross_Pressed() override;
     void doTriangle_Pressed() override;
 
-    bool displayAsterisksInsteadOfPassword = false;
-
     static const unsigned int RefreshInterval = 2000; // ms between re-reads of the connection and timezone
 
 private:
-    enum class Row { Ssid, Password, TimeZone, Connection, Message, WriteFile, InitNetwork };
+    enum class Row { Ssid, Password, TimeZone, Connection, Message, Spacer, WriteFile, InitNetwork };
     SsidConfig config;
     std::string connection, timezone;
     std::string message_;            // the last failure and why ("" for none): the Message row

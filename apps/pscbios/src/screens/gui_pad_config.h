@@ -1,13 +1,17 @@
 //
 // GuiPadConfig: the pad test and mapping wizard. Shows one joystick raw (its axes, buttons and hats as
-// numbers, and a DualShock picture lit by the mapped view); Reset (or Start on a keyboard) moves to the
-// next pad, Open (or Return) starts mapping: each of the 25 standard inputs is highlighted on the picture
-// in turn and the raw input the user moves is taken for it (Open skips one). At the end the mapping is
-// added to SDL for a test, and Open once more names the pad and writes it to the gamecontrollerdb.txt in
-// use. Power (or Escape) cancels a mapping, or closes the screen - and so does holding the pad's own Circle
-// for PadMapping::HoldToExitMs (a short press of it is mapped as usual): the way out for a player with no
-// front buttons and no keyboard. Circle is the pad's mapping's "b" (or what this session mapped it to);
-// while mapping a pad SDL has no mapping for, any input held that long leaves.
+// numbers, and a DualShock picture lit by the mapped view). Everything is done from the pad itself - a Pi
+// has no front buttons (the console's and a keyboard's still work, as shortcuts):
+// - Test: a button pressed on another pad shows that pad; Cross held 2 s starts mapping (a pad SDL has no
+//   mapping for starts by itself after a short countdown).
+// - Mapping: each of the 25 standard inputs is highlighted on the picture in turn and the raw input the user
+//   moves is taken for it once let go and settled; a step skips itself after PadMapping::StepTimeoutMs
+//   (the countdown is a popup at the top), and once Circle is mapped a press of it skips at once.
+// - Save: the mapping is added to SDL for a test; Cross names the pad and writes it to the
+//   gamecontrollerdb.txt in use, Circle cancels.
+// Holding Circle for PadMapping::HoldToExitMs leaves the screen from any stage. Circle and Cross are what
+// this session mapped them to, else the pad's own mapping's "b"/"a"; a pad with no mapping leaves by any
+// button held that long. Open (Return) = Cross, Power (Escape) = cancel/leave, Reset = next pad.
 //
 #pragma once
 
@@ -48,6 +52,13 @@ private:
     std::string pending;                        // the input just moved while mapping, taken when it is let go
     unsigned int holdSince = 0;                 // when Circle (see the top) went down and stayed down, 0: it is not
     unsigned int stepDeadline = 0;              // ticks() when the current step is skipped/taken even if unresolved
+    unsigned int releasedSince = 0;             // when `pending` was let go, 0: still held (see PadMapping::SettleMs)
+    bool circleWasHeld = false;                 // this session's Circle was down last frame (a release skips/cancels)
+    bool crossWasHeld = false;                  // the same for Cross (a release saves)
+    unsigned int crossSince = 0;                // Test: when Cross went down and stayed down (held 2 s: map the pad)
+    bool crossArmed = false;                    // Test: Cross was held 2 s - mapping starts when it is let go
+    unsigned int autoMapAt = 0;                 // Test: ticks() when a pad with no mapping starts mapping, 0: never
+    static constexpr unsigned AutoMapDelayMs = 3000;
     ableem::Texture padImage;                   // DS3.png, from the tool's own folder
     ableem::Font pageFont;                      // the classic font at a size every row of this page fits at (see init)
     static constexpr int PageRows = 4 + 3 + 13; // the facts, the message, the 26 mapping entries in two columns
@@ -74,6 +85,13 @@ private:
     void cancelMapping();
     void takeInput(const std::string &value);
     std::string circleNow(); // the raw input that is Circle on this pad now, "" when not known
+    std::string elementNow(const std::string &apiName); // the same for any element ("a": Cross)
+    // true once, on the frame `raw` is let go after being held (`wasHeld` carries the last frame)
+    bool releasedNow(const std::string &raw, bool &wasHeld);
+    void padControls();       // the pad's own Cross/Circle for each stage - no front buttons needed
+    void switchToPressedPad(); // Test: a button pressed on another pad shows that pad
+    void armAutoMap();         // Test: a pad SDL has no mapping for starts mapping by itself shortly
+    void renderTopPopup(const std::string &message); // a one-line popup at the top, over the frame
     bool checkHoldToExit();  // true when Circle has been held long enough on ANY connected pad
     std::string holdHint();  // the footer's hold-to-exit hint, "" when there is no Circle to hold
     void refreshOtherPads(); // keeps `others` in step with Joystick::count() and the pad being watched

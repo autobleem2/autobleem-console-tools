@@ -57,6 +57,20 @@ void GuiPadConfig::openJoystick(int index) {
     joystick.close();
     if (index >= 0 && index < Joystick::count())
         joystick.open(index);
+    holdSince = 0;
+    crossSince = 0;
+    crossArmed = false;
+    circleWasHeld = crossWasHeld = false;
+    if (joystick.isOpen()) {
+        joystick.update();
+        initialState = joystick.state();
+    }
+    if (stage == Stage::Test)
+        armAutoMap();
+}
+
+void GuiPadConfig::armAutoMap() {
+    autoMapAt = joystick.isOpen() && !joystick.isGameController() ? gui->platform().ticks() + AutoMapDelayMs : 0;
 }
 
 void GuiPadConfig::nextJoystick() {
@@ -93,7 +107,12 @@ void GuiPadConfig::startMapping() {
     stage = Stage::Mapping;
     current = 0;
     pending.clear();
+    releasedSince = 0;
+    autoMapAt = 0;
     holdSince = 0;
+    crossSince = 0;
+    crossArmed = false;
+    circleWasHeld = crossWasHeld = false;
     stepDeadline = gui->platform().ticks() + PadMapping::StepTimeoutMs;
 }
 
@@ -106,6 +125,10 @@ void GuiPadConfig::cancelMapping() {
         gui->input().addMapping(originalMapping);
     gui->input().flushEvents();
     stage = Stage::Test;
+    circleWasHeld = crossWasHeld = false;
+    crossSince = 0;
+    crossArmed = false;
+    armAutoMap();
 }
 
 //*******************************
@@ -122,11 +145,101 @@ void GuiPadConfig::takeInput(const string &value) {
 // GuiPadConfig::circleNow / checkHoldToExit / holdHint / refreshOtherPads
 //*******************************
 string GuiPadConfig::circleNow() {
+    return elementNow("b");
+}
+
+string GuiPadConfig::elementNow(const string &apiName) {
     if (!joystick.isOpen())
         return "";
     const string line =
         stage == Stage::Mapping ? originalMapping : gui->input().mappingForDeviceIndex(joystick.index());
-    return PadMapping::circleInput(elements, line);
+    return PadMapping::elementInput(elements, line, apiName);
+}
+
+bool GuiPadConfig::releasedNow(const string &raw, bool &wasHeld) {
+    const bool held = !raw.empty() && PadMapping::inputHeld(raw, initialState, joystick.state());
+    const bool released = wasHeld && !held;
+    wasHeld = held;
+    return released;
+}
+
+//*******************************
+// GuiPadConfig::padControls / switchToPressedPad
+//*******************************
+// what the pad under test does besides being tested or mapped - so that neither a Pi (no front buttons) nor
+// a console without a keyboard needs anything but the pad. Presses are taken on release: Circle held for
+// the 2 s exit must never also skip or cancel, and Cross held into the next stage must not carry over.
+void GuiPadConfig::padControls() {
+    const unsigned int now = gui->platform().ticks();
+    switch (stage) {
+    case Stage::Test: {
+        if (autoMapAt != 0) {
+            // an unmapped pad in use (the user holding a button to leave) holds the countdown back
+            if (PadMapping::anyPressed(joystick.state()))
+                autoMapAt = now + AutoMapDelayMs;
+            else if (now >= autoMapAt) {
+                app.audio().cursor.play();
+                startMapping();
+            }
+            break;
+        }
+        const string cross = elementNow("a");
+        const bool held = !cross.empty() && PadMapping::inputHeld(cross, initialState, joystick.state());
+        // held 2 s arms it; mapping starts once Cross is let go - started while still held, the pad's rest
+        // would be sampled with Cross down, and its release would read as an input that never lets go
+        if (crossArmed) {
+            if (!held) {
+                crossArmed = false;
+                startMapping();
+            }
+        } else if (PadMapping::advanceHold(crossSince, held, now)) {
+            crossSince = 0;
+            crossArmed = true;
+            app.audio().cursor.play();
+        }
+        break;
+    }
+    case Stage::Mapping: {
+        // Circle skips a step once this session has mapped it - never the pad's old mapping, which may be
+        // the very thing being fixed; before that the step's timeout is the only skip
+        string circle;
+        for (const PadMapping::Element &e : elements)
+            if (e.apiName == "b")
+                circle = e.value;
+        if (releasedNow(circle, circleWasHeld)) {
+            app.audio().cursor.play();
+            elements[current].value.clear();
+            advance();
+        }
+        break;
+    }
+    case Stage::Save:
+        if (releasedNow(elementNow("b"), circleWasHeld)) {
+            app.audio().cancel.play();
+            cancelMapping();
+        } else if (releasedNow(elementNow("a"), crossWasHeld)) {
+            app.audio().cursor.play();
+            saveMapping();
+        }
+        break;
+    }
+}
+
+void GuiPadConfig::switchToPressedPad() {
+    if (stage != Stage::Test)
+        return;
+    for (auto &entry : others) {
+        const ableem::JoystickState &state = entry.second.handle->state();
+        const ableem::JoystickState &rest = entry.second.rest;
+        size_t buttons = min(state.buttons.size(), rest.buttons.size());
+        for (size_t i = 0; i < buttons; i++)
+            if (state.buttons[i] && !rest.buttons[i]) {
+                const int index = entry.first;
+                app.audio().cursor.play();
+                openJoystick(index); // `others` is rebuilt around it on the next frame
+                return;
+            }
+    }
 }
 
 // TOOLS-9: keeps `others` (one raw handle + rest sample + hold timer per connected pad OTHER than the one
@@ -170,6 +283,8 @@ bool GuiPadConfig::checkHoldToExit() {
             heldMine = PadMapping::inputHeld(circle, initialState, joystick.state());
         else if (stage == Stage::Mapping)
             heldMine = !pending.empty(); // no mapping to name Circle: whatever is being held
+        else
+            heldMine = PadMapping::anyPressed(joystick.state()); // an unmapped pad: any button held
     }
     if (PadMapping::advanceHold(holdSince, heldMine, now))
         exit = true;
@@ -207,8 +322,17 @@ void GuiPadConfig::advance() {
         joystick.update();
         initialState = joystick.state();
     }
-    if (current + 1 < elements.size()) {
-        current++;
+    pending.clear();
+    releasedSince = 0;
+    // a stick step on a pad with no axis left to give (no sticks, or only a d-pad reported as axes - the
+    // PSC's own controller) is skipped at once instead of waiting out its timeout; finalElements() then
+    // drives the left stick from the d-pad
+    size_t next = current + 1;
+    while (next < elements.size() && elements[next].scan == PadMapping::Scan::Analog &&
+           !PadMapping::hasFreeAxis(elements, initialState.axes.size()))
+        elements[next++].value.clear();
+    if (next < elements.size()) {
+        current = next;
     } else {
         finishMapping();
     }
@@ -269,6 +393,10 @@ void GuiPadConfig::saveMapping() {
         showPopup(_("Error Storing mapping to database"));
     }
     stage = Stage::Test;
+    circleWasHeld = crossWasHeld = false;
+    crossSince = 0;
+    crossArmed = false;
+    autoMapAt = 0;
 }
 
 //*******************************
@@ -281,6 +409,17 @@ void GuiPadConfig::saveMapping() {
 void GuiPadConfig::showPopup(const string &message, unsigned int durationMs) {
     popupMessage = message;
     popupUntil = gui->platform().ticks() + durationMs;
+}
+
+// one line on a small sheet at the top of the screen, over the header - the screen under it stays
+// readable (no dim), it is only a countdown
+void GuiPadConfig::renderTopPopup(const string &message) {
+    const PanelStyle style = gui->panelStyle();
+    const ableem::Font &font = gui->assets().themeFonts[FONT_22_MED];
+    const int width = gui->text().textWidth(font, message) + 2 * (PanelStyle::RowInset + 8);
+    const int height = font.lineHeight() + 20;
+    style.sheet(renderer, ableem::Rect((SCREEN_WIDTH - width) / 2, 12, width, height));
+    gui->text().renderText(font, message, 0, 22, XALIGN_CENTER, &style.text);
 }
 
 void GuiPadConfig::renderPopup() {
@@ -420,17 +559,36 @@ void GuiPadConfig::render() {
     };
 
     if (stage == Stage::Mapping) {
+        const PadMapping::Scan scan = elements[current].scan;
         if (pending.empty()) {
-            pending = PadMapping::detectChange(initialState, joystick.state(), elements);
+            pending = PadMapping::detectChange(initialState, joystick.state(), elements, scan);
+            releasedSince = 0;
             if (!pending.empty())
                 app.audio().cursor.play();
-        } else if (!PadMapping::anythingHeld(initialState, joystick.state())) {
-            const string taken = pending;
-            pending.clear();
-            takeInput(taken);
+        } else {
+            if (scan == PadMapping::Scan::Trigger) {
+                // a pad with both a button and an axis for L2 gives the button first: the axis, once it
+                // crosses, is the better mapping (an analog trigger)
+                if (pending[0] == 'b') {
+                    const string axis = PadMapping::detectChange(initialState, joystick.state(), elements, scan);
+                    if (!axis.empty() && axis[0] != 'b')
+                        pending = axis;
+                }
+                pending = PadMapping::wholeTrigger(pending, initialState, joystick.state());
+            }
+            // taken once let go and settled for SettleMs - a stick springing back must neither be the next
+            // step's rest nor its input
+            if (PadMapping::anythingHeld(initialState, joystick.state())) {
+                releasedSince = 0;
+            } else if (releasedSince == 0) {
+                releasedSince = gui->platform().ticks();
+            } else if (gui->platform().ticks() - releasedSince >= PadMapping::SettleMs) {
+                const string taken = pending;
+                pending.clear();
+                takeInput(taken);
+            }
         }
-        // TOOLS-9: every step is skippable (the console's own Open button, always reachable regardless of
-        // what the pad under test has) OR times out - a pad missing a button/stick must still reach the
+        // TOOLS-9: every step is skippable (Circle once mapped, the console's Open) OR times out - a pad missing a button/stick must still reach the
         // end. A candidate already seen (pending) is taken as-is rather than discarded, so a reading that
         // never fully "lets go" cannot hang the wizard either.
         if (stage == Stage::Mapping && gui->platform().ticks() >= stepDeadline) {
@@ -452,6 +610,8 @@ void GuiPadConfig::render() {
         menuVisible = false;
         return;
     }
+    padControls();
+    switchToPressedPad();
 
     // the facts: the pad, its inputs, the raw buttons and hats, the axes eight to a row
     const ableem::JoystickState &state = joystick.state();
@@ -497,26 +657,19 @@ void GuiPadConfig::render() {
     case Stage::Mapping:
         switch (elements[current].scan) {
         case PadMapping::Scan::Digital:
-            first = _("Press a button highlighted or (OPEN) if not avaliable.");
+            first = _("Press the highlighted button, then let it go.");
             break;
         case PadMapping::Scan::Trigger:
-            first = _("Press a trigger highlighted fully or (OPEN) if not avaliable.");
+            first = _("Press the highlighted trigger fully, then let it go.");
             break;
         case PadMapping::Scan::Analog:
-            first = _("Move your sticks to state shown or press (OPEN) if stick position not avaliable.");
+            first = _("Move the stick as shown, then let it go.");
             break;
         }
-        second = _("Updating mapping");
-        {
-            // TOOLS-9: a visible countdown for the step's timeout, next to the existing skip hint below
-            const unsigned int now = gui->platform().ticks();
-            const unsigned int left = stepDeadline > now ? stepDeadline - now : 0;
-            const int secondsLeft = static_cast<int>((left + 999) / 1000);
-            second += "   " + _("Skip in") + " " + to_string(secondsLeft) + "s";
-        }
+        second = _("Not on your pad? The step skips itself when the time runs out.");
         break;
     case Stage::Save:
-        first = _("Mapping Complete - press (OPEN) to save. (POWER) to cancel.");
+        first = _("Mapping complete - test your pad, then save it or cancel.");
         second = _("Please test a new mapping");
         break;
     }
@@ -531,9 +684,10 @@ void GuiPadConfig::render() {
 
     renderPadPicture(joystick.controllerState());
 
-    // while Circle is held, how far the hold-to-exit has come: a bar across the foot of the content
-    if (holdSince != 0) {
-        const unsigned int held = min(+PadMapping::HoldToExitMs, gui->platform().ticks() - holdSince);
+    // while Circle (or, in Test, Cross) is held, how far the hold has come: a bar across the foot of the content
+    const unsigned int since = holdSince != 0 ? holdSince : crossSince;
+    if (since != 0) {
+        const unsigned int held = min(+PadMapping::HoldToExitMs, gui->platform().ticks() - since);
         const Rect track(content.x + PanelStyle::RowInset, content.y + content.h - 6,
                          content.w - 2 * PanelStyle::RowInset, 4);
         renderer.setBlendMode(ableem::BlendMode::Blend);
@@ -543,15 +697,36 @@ void GuiPadConfig::render() {
         renderer.fillRect(Rect(track.x, track.y, static_cast<int>(track.w * held / PadMapping::HoldToExitMs), track.h));
     }
 
-    // the console's front buttons, as chips
-    if (stage == Stage::Test)
-        gui->renderStatus("|@Reset| " + _("Next pad") + "   |@Open| " + _("Update mapping") + "   |@Power| " +
-                          _("Exit") + holdHint());
-    else if (stage == Stage::Mapping)
-        gui->renderStatus("|@Open| " + _("Skip / No button on controller") + "   |@Power| " + _("Cancel mapping") +
-                          holdHint());
-    else
-        gui->renderStatus("|@Open| " + _("Save") + "   |@Power| " + _("Cancel mapping") + holdHint());
+    // the pad's own buttons (the console's front buttons and a keyboard still work, unlisted)
+    const bool circleMapped = !elementNow("b").empty();
+    if (stage == Stage::Test) {
+        string hints = !elementNow("a").empty() ? "|@X| " + _("Hold 2 s: Map pad") : "";
+        if (circleMapped)
+            hints += "   |@O| " + _("Hold 2 s: Exit");
+        else
+            hints += "   " + _("Hold any button 2 s: Exit");
+        if (Joystick::count() > 1)
+            hints += "   " + _("Other pad: press a button");
+        gui->renderStatus(hints);
+    } else if (stage == Stage::Mapping) {
+        bool circleThisSession = false;
+        for (const PadMapping::Element &e : elements)
+            if (e.apiName == "b" && !e.value.empty())
+                circleThisSession = true;
+        gui->renderStatus((circleThisSession ? "|@O| " + _("Skip") + "   " : string()) + holdHint());
+    } else {
+        gui->renderStatus("|@X| " + _("Save") + "   |@O| " + _("Cancel mapping"));
+    }
+
+    // the step's countdown (and a pad with no mapping's), a popup at the top
+    const unsigned int now = gui->platform().ticks();
+    auto secondsTo = [&](unsigned int at) { return to_string((at > now ? at - now : 0) / 1000 + 1); };
+    if (stage == Stage::Mapping)
+        renderTopPopup(_("Skip in") + " " + secondsTo(stepDeadline) + " s");
+    else if (stage == Stage::Test && crossArmed)
+        renderTopPopup(_("Release to start mapping"));
+    else if (stage == Stage::Test && autoMapAt != 0)
+        renderTopPopup(_("Mapping starts in") + " " + secondsTo(autoMapAt) + " s");
     renderPopup();
     renderer.present();
 }
@@ -559,9 +734,9 @@ void GuiPadConfig::render() {
 //*******************************
 // GuiPadConfig::loop
 //*******************************
-// the console's front buttons drive this screen (the pad under test is not to be trusted): Power, Reset
-// and Open; on a keyboard Escape, Start (Space) and Return do the same. Input hands the power button over
-// as a key for the duration instead of powering off.
+// the pad itself drives this screen (padControls(), from render()); the console's front buttons - Power,
+// Reset and Open - and a keyboard's Escape, Start (Space) and Return are shortcuts handled here. Input
+// hands the power button over as a key for the duration instead of powering off.
 //
 // keyboardAsPad is off here, the way GuiKeyboard turns it off: the screen's own job is reading a *pad*
 // raw, so a keyboard's Esc/Backspace must read as keys, never remapped into the very Button::Circle event

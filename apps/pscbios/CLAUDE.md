@@ -181,8 +181,8 @@ src/screens/    the screens, on ab_classic (GuiFactsPage, GuiActionMenu, GuiStri
   pscbios_busy.*      BusyWork - the spinner, the pad and the backend's wait hook for the length of one slow call
   gui_gamepad_menu.*  the gamepad section, a compact three-row list; gui_pad_config.* the wizard: the facts, the
                       stage's message and (while mapping) the entries in two columns down the left of the panel,
-                      the DualShock picture at the right, the front buttons as RESET/OPEN/POWER chips in the footer
-                      (hold Circle 2 s, or keyboard Esc/Backspace/Power, also exit the wizard);
+                      the DualShock picture at the right, the pad's own Cross/Circle hints in the footer and the
+                      step's countdown as a popup at the top (see "The wizard");
                       pscbios_pages.* the static texts (the About credits with GuiAbout::HeadingMark headings)
 src/pscbios.*         PscBios - the running tool's shared part: the ConsoleBackend the screens reach as
                       PscBios::get().console(), valid while its screens show
@@ -229,16 +229,31 @@ empty on purpose - the launcher's file has them.
 
 `GuiPadConfig` opens one joystick **raw** (`ableem::Joystick`, after `Input::flushPads()` let go of the
 pads; `probePads()` takes them back after) and shows its axes/buttons/hats as numbers plus the DS3 picture
-lit by the mapped view. It is driven by the console's **front buttons** - they arrive as keyboard scancodes:
-Power (`Key::Sleep`, Escape on a keyboard) cancels/exits, Reset (`Key::Reset`, or Start = Space with the
-keyboard as pad) picks the next pad, Open (`Key::Open`, or Return) starts mapping / skips an input / saves.
-`Input::setPowerKeyAsKey(true)` for the screen's duration is what turns the power button into a key. The
-mapping: `initialState` is the pad at rest; every frame `PadMapping::detectChange()` names the raw input
-that moved; the screen waits for it to be released (`anythingHeld`) and moves on. At the end
-`finalElements()` merges the stick halves, the line is given to SDL (`Input::addMapping`) for a test, and
-Open once more asks for a name and writes it with `GameControllerDb` to `Input::currentMappingPath()` -
-the file `probePads()` loaded, i.e. the kernel's `/etc/autobleem/gamecontrollerdb.txt` when it exists,
-else the main GUI's `gamecontrollerdb.txt` - which the launcher loads at its next start (`Env::padMappingFiles()`).
+lit by the mapped view. It is driven by **the pad itself** (`padControls()`; a Pi has no front buttons):
+in Test a button on another pad shows that pad, Cross held 2 s arms mapping and its release starts it (a pad
+SDL has no mapping for starts by itself after 3 s - `autoMapAt`); while mapping, Circle (once this session
+mapped it) skips a step, and every step skips itself after `StepTimeoutMs` (a countdown popup at the top);
+at the end Cross names and saves, Circle cancels. Holding Circle 2 s (any button, on an unmapped pad) leaves
+from any stage and any connected pad. Cross/Circle are this session's "a"/"b", else the pad's own mapping's
+(`PadMapping::elementInput`), taken on release. The console's front buttons stay as unlisted shortcuts - they
+arrive as keyboard scancodes: Power (`Key::Sleep`, Escape) cancels/exits, Reset (`Key::Reset`) the next pad,
+Open (`Key::Open`, Return) starts / skips / saves; `Input::setPowerKeyAsKey(true)` for the screen's duration
+turns the power button into a key.
+
+The mapping: `initialState` is the pad at rest, sampled fresh for every step; every frame
+`PadMapping::detectChange(initial, now, taken, scan)` names the raw input that moved, by the step's kind - a
+button step a button, a hat, then an axis; a stick step only an axis that rested in the middle, the one moved
+furthest (a stick clicked in, a trigger brushed, is never the stick); a trigger step an axis before a button
+(a DualShock 4's L2 is both; a button seen first is replaced once the axis crosses). An untouched Xbox trigger
+reads 0 until first pressed, so its half axis becomes the whole axis once it rests at the far end
+(`wholeTrigger`). The input is taken once let go and settled for `SettleMs` (a stick springing back is neither
+the next rest nor the next input). A stick step with no axis left to give (`hasFreeAxis` - no sticks, or the
+PSC's own pad, whose d-pad is two axes) is skipped at once, and `finalElements()` then drives the left stick
+from the d-pad ("-leftx:h0.8", or "leftx:a0" when the d-pad is an axis). At the end `finalElements()` merges
+the stick halves, the line is given to SDL (`Input::addMapping`) for a test, and Cross asks for a name and
+writes it with `GameControllerDb` to `Input::currentMappingPath()` - the file `probePads()` loaded, i.e. the
+kernel's `/etc/autobleem/gamecontrollerdb.txt` when it exists, else the main GUI's `gamecontrollerdb.txt` -
+which the launcher loads at its next start (`Env::padMappingFiles()`).
 
 ## Build, run, test
 

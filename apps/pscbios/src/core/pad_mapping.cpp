@@ -67,35 +67,115 @@ vector<PadMapping::Element> PadMapping::standardElements() {
 //*******************************
 // PadMapping::detectChange
 //*******************************
-string PadMapping::detectChange(const JoystickState &initial, const JoystickState &now, const vector<Element> &taken) {
-    string result;
-    size_t buttons = min(initial.buttons.size(), now.buttons.size());
-    for (size_t i = 0; i < buttons && result.empty(); i++)
-        if (now.buttons[i] != initial.buttons[i])
-            result = "b" + to_string(i);
+string PadMapping::detectChange(const JoystickState &initial, const JoystickState &now, const vector<Element> &taken,
+                                Scan scan) {
+    auto isTaken = [&](const string &raw) {
+        for (const Element &element : taken)
+            if (element.value == raw)
+                return true;
+        return false;
+    };
+    auto button = [&]() {
+        size_t buttons = min(initial.buttons.size(), now.buttons.size());
+        for (size_t i = 0; i < buttons; i++)
+            if (now.buttons[i] != initial.buttons[i] && !isTaken("b" + to_string(i)))
+                return "b" + to_string(i);
+        return string();
+    };
     // a hat is reported by where it points now, one direction at a time (a diagonal is not a mapping)
-    for (size_t i = 0; i < now.hats.size() && result.empty(); i++) {
-        unsigned hat = now.hats[i];
-        if (hat == ableem::Joystick::HatUp || hat == ableem::Joystick::HatDown || hat == ableem::Joystick::HatLeft ||
-            hat == ableem::Joystick::HatRight)
-            result = "h" + to_string(i) + "." + to_string(hat);
+    auto hat = [&]() {
+        for (size_t i = 0; i < now.hats.size(); i++) {
+            unsigned h = now.hats[i];
+            if (h != ableem::Joystick::HatUp && h != ableem::Joystick::HatDown && h != ableem::Joystick::HatLeft &&
+                h != ableem::Joystick::HatRight)
+                continue;
+            string raw = "h" + to_string(i) + "." + to_string(h);
+            if (!isTaken(raw))
+                return raw;
+        }
+        return string();
+    };
+    // the axis moved furthest past AxisThreshold, not the first: pushing a stick one way moves its other
+    // axis a little too, and a diagonal-ish push must still name the axis the user meant
+    auto axis = [&](bool sticksOnly) {
+        string best;
+        int bestDelta = AxisThreshold;
+        size_t axes = min(initial.axes.size(), now.axes.size());
+        for (size_t i = 0; i < axes; i++) {
+            int delta = now.axes[i] - initial.axes[i];
+            if (abs(delta) <= bestDelta)
+                continue;
+            const bool middle = abs(initial.axes[i]) < RestTolerance;
+            if (sticksOnly && !middle)
+                continue; // rested at one end: a trigger, never a stick
+            // rested in the middle: a stick, one half of it; at one end: a trigger, the whole axis
+            string raw = middle ? string(delta > 0 ? "+" : "-") + "a" + to_string(i) : "a" + to_string(i);
+            if (isTaken(raw))
+                continue;
+            best = raw;
+            bestDelta = abs(delta);
+        }
+        return best;
+    };
+    string result;
+    switch (scan) {
+    case Scan::Digital:
+        result = button();
+        if (result.empty())
+            result = hat();
+        if (result.empty())
+            result = axis(false);
+        break;
+    case Scan::Analog:
+        result = axis(true);
+        break;
+    case Scan::Trigger:
+        result = axis(false);
+        if (result.empty())
+            result = button();
+        break;
     }
-    size_t axes = min(initial.axes.size(), now.axes.size());
-    for (size_t i = 0; i < axes && result.empty(); i++) {
-        int delta = now.axes[i] - initial.axes[i];
-        if (abs(delta) <= AxisThreshold)
-            continue;
-        if (abs(initial.axes[i]) < RestTolerance) // rested in the middle: a stick, one half of it
-            result = string(delta > 0 ? "+" : "-") + "a" + to_string(i);
-        else // rested at one end: a trigger, the whole axis
-            result = "a" + to_string(i);
-    }
-    if (result.empty())
-        return "";
-    for (const Element &element : taken)
-        if (element.value == result)
-            return "";
     return result;
+}
+
+//*******************************
+// PadMapping::wholeTrigger / anyPressed
+//*******************************
+string PadMapping::wholeTrigger(const string &pending, JoystickState &rest, const JoystickState &now) {
+    if (pending.size() < 3 || (pending[0] != '+' && pending[0] != '-') || pending[1] != 'a')
+        return pending;
+    int n = atoi(pending.c_str() + 2);
+    if (n < 0 || n >= static_cast<int>(now.axes.size()) || n >= static_cast<int>(rest.axes.size()))
+        return pending;
+    const int farEnd = 32767 - RestTolerance;
+    const bool otherEnd = pending[0] == '+' ? now.axes[n] < -farEnd : now.axes[n] > farEnd;
+    if (!otherEnd)
+        return pending;
+    rest.axes[n] = now.axes[n];
+    return "a" + to_string(n);
+}
+
+bool PadMapping::hasFreeAxis(const vector<Element> &elements, size_t axisCount) {
+    for (size_t i = 0; i < axisCount; i++) {
+        const string n = "a" + to_string(i);
+        bool used = false;
+        for (const Element &e : elements)
+            if (e.value == n || e.value == "+" + n || e.value == "-" + n || e.value == n + "~")
+                used = true;
+        if (!used)
+            return true;
+    }
+    return false;
+}
+
+bool PadMapping::anyPressed(const JoystickState &now) {
+    for (bool pressed : now.buttons)
+        if (pressed)
+            return true;
+    for (unsigned hat : now.hats)
+        if (hat != 0)
+            return true;
+    return false;
 }
 
 //*******************************
@@ -161,10 +241,14 @@ bool PadMapping::inputHeld(const string &raw, const JoystickState &initial, cons
 }
 
 string PadMapping::circleInput(const vector<Element> &elements, const string &mappingLine) {
+    return elementInput(elements, mappingLine, "b");
+}
+
+string PadMapping::elementInput(const vector<Element> &elements, const string &mappingLine, const string &apiName) {
     for (const Element &e : elements)
-        if (e.apiName == "b" && !e.value.empty())
+        if (e.apiName == apiName && !e.value.empty())
             return e.value;
-    return rawInput(mappingLine, "b");
+    return rawInput(mappingLine, apiName);
 }
 
 bool PadMapping::isExitKey(ableem::Key key) {
@@ -229,6 +313,15 @@ void PadMapping::mergeAxis(vector<Element> &elements, const string &apiName, siz
 vector<PadMapping::Element> PadMapping::finalElements(const vector<Element> &scanned, const string &platform) {
     vector<Element> elements = scanned;
     if (elements.size() >= 25) {
+        // a pad with no left stick drives it from the d-pad: each direction is also that half of the stick,
+        // at full deflection ("-leftx:h0.8"), so a game that only reads the stick still moves
+        if (elements[17].value.empty() && elements[18].value.empty() && elements[19].value.empty() &&
+            elements[20].value.empty()) {
+            elements[17].value = elements[15].value; // -leftx: dpleft
+            elements[18].value = elements[16].value; // +leftx: dpright
+            elements[19].value = elements[13].value; // -lefty: dpup
+            elements[20].value = elements[14].value; // +lefty: dpdown
+        }
         mergeAxis(elements, "leftx", 17, 18);
         mergeAxis(elements, "lefty", 19, 20);
         mergeAxis(elements, "rightx", 21, 22);

@@ -75,7 +75,7 @@ GuiNetworkMenu::Row GuiNetworkMenu::rowAt(int index) const {
 
 bool GuiNetworkMenu::skipSelectingThisLineWhenMovingByOne(int index) {
     const Row row = rowAt(index);
-    return row == Row::Connection || row == Row::Message;
+    return row == Row::Connection || row == Row::Message || row == Row::Spacer;
 }
 
 // the rows again; the selection stays on the row it was on (the message row coming or going moves the actions)
@@ -91,12 +91,12 @@ void GuiNetworkMenu::fill() {
         values.push_back(value);
     };
     row(Row::Ssid, _("SSID:"), config.ssid);
-    row(Row::Password, _("Password:"),
-        displayAsterisksInsteadOfPassword ? string(config.password.size(), '*') : config.password);
+    row(Row::Password, _("Password:"), masked(config.password));
     row(Row::TimeZone, _("Timezone:"), timezone);
     row(Row::Connection, _("Connection:"), connection);
     if (!message_.empty())
         row(Row::Message, message_, "");
+    row(Row::Spacer, "", ""); // an empty row between the settings and the actions, never selected
     row(Row::WriteFile, _("Write Configuration/Restart Network"), "");
     row(Row::InitNetwork, _("Restart Network"), "");
     for (size_t i = 0; had && i < rows.size(); i++)

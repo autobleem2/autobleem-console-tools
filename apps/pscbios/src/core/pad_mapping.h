@@ -34,18 +34,34 @@ public:
     // the 25 elements the wizard asks for, in order; every value empty
     static std::vector<Element> standardElements();
 
-    // the raw input that moved between `initial` and `now`, a button first, then a hat, then an axis (a
-    // change of more than AxisThreshold); "" when nothing did, or when the input is already the value of
-    // one of `taken` (an element cannot be mapped twice)
+    // the raw input that moved between `initial` and `now` and is not already the value of one of `taken`
+    // (an element cannot be mapped twice); "" when nothing did. An axis counts past AxisThreshold, and of
+    // several the one moved furthest wins. What is looked at follows the step: Digital - a button, then a
+    // hat, then an axis; Analog - only an axis that rested in the middle (a stick half: a button pressed
+    // with it, a stick clicked in, a trigger brushed, is never the stick); Trigger - an axis first, then a
+    // button (a pad that has both for L2 gives the button a moment before the axis crosses the threshold)
     static std::string detectChange(const ableem::JoystickState &initial, const ableem::JoystickState &now,
-                                    const std::vector<Element> &taken);
+                                    const std::vector<Element> &taken, Scan scan = Scan::Digital);
+    // a trigger mapped as the half axis "+aN"/"-aN" because it read 0 until first pressed (SDL reports an
+    // untouched Xbox trigger as 0, a released one at the far end): once let go it sits at the other end, so
+    // it is the whole axis "aN", and `rest` (the step's rest) moves to where the axis sits now. `pending`
+    // itself otherwise
+    static std::string wholeTrigger(const std::string &pending, ableem::JoystickState &rest,
+                                    const ableem::JoystickState &now);
+    // a button down or a hat off centre - what an unmapped pad has to show it is being used
+    static bool anyPressed(const ableem::JoystickState &now);
+    // one of the pad's `axisCount` axes is not yet any element's value - false for a pad with no sticks, or
+    // one whose only axes are its d-pad (the PSC's own controller), so the stick steps are skipped at once
+    static bool hasFreeAxis(const std::vector<Element> &elements, size_t axisCount);
     // the raw inputs still away from their rest position - what the wizard waits to clear before asking
     // for the next element
     static bool anythingHeld(const ableem::JoystickState &initial, const ableem::JoystickState &now);
 
     // the list to write: each stick axis' two halves merged into one "a<n>" (with "~" when the halves
     // came out inverted) when they are the two halves of one raw axis, both dropped when one is missing,
-    // kept as two half-axis keys otherwise; every unmapped element dropped; "platform:<platform>" last
+    // kept as two half-axis keys otherwise; every unmapped element dropped; "platform:<platform>" last. A
+    // left stick with none of its four halves mapped (a pad without sticks) takes the d-pad's inputs, so the
+    // d-pad also moves the stick all the way ("-leftx:h0.8")
     static std::vector<Element> finalElements(const std::vector<Element> &scanned, const std::string &platform);
 
     // the raw input a mapping line gives an element: rawInput("...,a:b0,b:b1,...", "b") -> "b1"; "" when the
@@ -59,6 +75,9 @@ public:
     // the raw input that is Circle ("b") on this pad: what the wizard mapped it to this time, else what the
     // pad's mapping line says, "" when neither knows - what the wizard's hold-to-exit watches
     static std::string circleInput(const std::vector<Element> &elements, const std::string &mappingLine);
+    // the same for any element: circleInput is elementInput(..., "b"); "a" is Cross
+    static std::string elementInput(const std::vector<Element> &elements, const std::string &mappingLine,
+                                    const std::string &apiName);
 
     // Power (Key::Sleep) or a keyboard's Esc/Backspace leaves the wizard at once. The wizard turns
     // keyboardAsPad off while it shows (ableem::Input::setKeyboardAsPad(false)/setRawKeyboard(true), the
@@ -101,6 +120,10 @@ public:
     // step's freshly-sampled rest could then be taken mid-drift. Lowered so "let go" means actually close to
     // rest again before the next step starts measuring from it.
     static const int HeldThreshold = 8000; // an axis still this far from its rest is still held
+    // a stick let go springs back past the middle and wobbles for a moment; the input is taken (and the next
+    // step's rest sampled) only once the pad has stayed let go this long, so the next step neither starts
+    // from a stick still moving nor reads its bounce as the next input
+    static const unsigned SettleMs = 250;
 
 private:
     static void mergeAxis(std::vector<Element> &elements, const std::string &apiName, size_t minus, size_t plus);
