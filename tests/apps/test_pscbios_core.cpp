@@ -395,6 +395,22 @@ TEST_CASE("BtDeviceList's battery text") {
     CHECK(BtDeviceList::batteryText(b) == "battery full");
 }
 
+TEST_CASE("BtDeviceList's rows without an adapter say why only when it adds something") {
+    CHECK(BtDeviceList::noAdapterLines("").size() == 2);
+    CHECK(BtDeviceList::noAdapterLines("no Bluetooth adapter").size() == 2); // would repeat the first row
+    CHECK(BtDeviceList::noAdapterLines("no Bluetooth adapter (org.bluez.Error)").size() == 2);
+    const vector<string> lines = BtDeviceList::noAdapterLines("the system bus cannot be reached");
+    REQUIRE(lines.size() == 3);
+    CHECK(lines[0] == "No Bluetooth adapter found.");
+    CHECK(lines[2] == "the system bus cannot be reached");
+}
+
+TEST_CASE("SsidConfig::masked shows an asterisk per letter") {
+    CHECK(SsidConfig::masked("") == "");
+    CHECK(SsidConfig::masked("secret12") == "********");
+    CHECK(SsidConfig::masked("zażółć") == "******"); // a UTF-8 letter is one asterisk, not two
+}
+
 TEST_CASE("SsidConfig reads and writes the two-line ssid.cfg") {
     TempDir tmp("ssid");
     SsidConfig cfg;
@@ -704,8 +720,29 @@ TEST_CASE("PadMapping::hasFreeAxis says whether a stick step has anything left t
     CHECK(PadMapping::hasFreeAxis(elements, 2));
     elements[13].value = "-a1"; // dpup
     elements[15].value = "-a0"; // dpleft
+    CHECK(PadMapping::hasFreeAxis(elements, 2)); // a half taken leaves the other half
+    elements[14].value = "+a1"; // dpdown
+    elements[16].value = "+a0"; // dpright
     CHECK_FALSE(PadMapping::hasFreeAxis(elements, 2)); // the d-pad is both axes
     CHECK(PadMapping::hasFreeAxis(elements, 4));
+}
+
+TEST_CASE("PadMapping::hasFreeAxis leaves the right stick's last half to be asked for") {
+    // a DualShock 4: six axes, the triggers whole, the sticks' halves one by one - after -righty the only
+    // thing left is +righty, and that step must not be skipped
+    vector<PadMapping::Element> elements = PadMapping::standardElements();
+    elements[11].value = "a2";  // lefttrigger
+    elements[12].value = "a5";  // righttrigger
+    elements[17].value = "-a0"; // -leftx
+    elements[18].value = "+a0";
+    elements[19].value = "-a1";
+    elements[20].value = "+a1";
+    elements[21].value = "-a3"; // -rightx
+    elements[22].value = "+a3";
+    elements[23].value = "-a4"; // -righty
+    CHECK(PadMapping::hasFreeAxis(elements, 6));
+    elements[24].value = "+a4";
+    CHECK_FALSE(PadMapping::hasFreeAxis(elements, 6));
 }
 
 TEST_CASE("PadMapping::elementInput and anyPressed") {

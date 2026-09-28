@@ -51,6 +51,10 @@ public:
     // "new", "pairing...", "connected, battery 80%" ... translated - the row's value column
     static std::string stateText(const BtRow &row);
     static std::string batteryText(const BtBattery &battery); // "battery 80%" / "charging 80%", "" when unknown
+    // what the pairing screen says without an adapter, translated: that there is none, what to do, and why -
+    // the backend's error - only when it says more than the first row (the bus or BlueZ not answering, the
+    // adapter blocked or off; a bare "no Bluetooth adapter" would repeat it)
+    static std::vector<std::string> noAdapterLines(const std::string &error);
 
 private:
     BtRow *row(const std::string &mac);

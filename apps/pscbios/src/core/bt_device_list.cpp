@@ -155,6 +155,17 @@ void BtDeviceList::removed(const string &mac, bool ok, const string &error) {
 }
 
 //*******************************
+// BtDeviceList::noAdapterLines
+//*******************************
+vector<string> BtDeviceList::noAdapterLines(const string &error) {
+    vector<string> lines = {_("No Bluetooth adapter found."),
+                            _("Plug a USB Bluetooth dongle into the console, then open this screen again.")};
+    if (!error.empty() && error.rfind(_("no Bluetooth adapter"), 0) != 0)
+        lines.push_back(error);
+    return lines;
+}
+
+//*******************************
 // BtDeviceList::stateText / batteryText
 //*******************************
 string BtDeviceList::batteryText(const BtBattery &battery) {

@@ -50,7 +50,8 @@ public:
                                     const ableem::JoystickState &now);
     // a button down or a hat off centre - what an unmapped pad has to show it is being used
     static bool anyPressed(const ableem::JoystickState &now);
-    // one of the pad's `axisCount` axes is not yet any element's value - false for a pad with no sticks, or
+    // one of the pad's `axisCount` axes, or one half of it, is not yet any element's value (a stick half
+    // taken leaves the other for the next step) - false for a pad with no sticks, or
     // one whose only axes are its d-pad (the PSC's own controller), so the stick steps are skipped at once
     static bool hasFreeAxis(const std::vector<Element> &elements, size_t axisCount);
     // the raw inputs still away from their rest position - what the wizard waits to clear before asking

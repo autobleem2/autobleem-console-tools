@@ -11,17 +11,6 @@
 
 using namespace std;
 
-namespace {
-// a password as the settings list shows it: an asterisk per character (UTF-8 continuation bytes not counted)
-string masked(const string &password) {
-    size_t characters = 0;
-    for (unsigned char c : password)
-        if ((c & 0xC0) != 0x80)
-            characters++;
-    return string(characters, '*');
-}
-} // namespace
-
 //*******************************
 // GuiNetworkMenu::init
 //*******************************
@@ -91,7 +80,7 @@ void GuiNetworkMenu::fill() {
         values.push_back(value);
     };
     row(Row::Ssid, _("SSID:"), config.ssid);
-    row(Row::Password, _("Password:"), masked(config.password));
+    row(Row::Password, _("Password:"), SsidConfig::masked(config.password));
     row(Row::TimeZone, _("Timezone:"), timezone);
     row(Row::Connection, _("Connection:"), connection);
     if (!message_.empty())

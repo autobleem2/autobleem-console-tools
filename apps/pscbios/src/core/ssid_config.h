@@ -25,6 +25,9 @@ public:
     // wrote when it had no ssid.cfg)
     static std::string ssidFromWpaSupplicant(const std::string &path);
 
+    // a password as the settings list shows it: an asterisk per character (a UTF-8 letter is one)
+    static std::string masked(const std::string &password);
+
     // where they are on the console: <kernel config dir>/ssid.cfg and /etc/wpa_supplicant.conf; on a
     // machine without the kernel config dir, next to the tool (so a dev host round-trips them)
     static std::string defaultPath();

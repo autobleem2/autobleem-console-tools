@@ -46,6 +46,17 @@ bool SsidConfig::save(const string &path) const {
 }
 
 //*******************************
+// SsidConfig::masked
+//*******************************
+string SsidConfig::masked(const string &password) {
+    size_t characters = 0;
+    for (unsigned char c : password)
+        if ((c & 0xC0) != 0x80) // a UTF-8 continuation byte is part of the letter before it
+            characters++;
+    return string(characters, '*');
+}
+
+//*******************************
 // SsidConfig::ssidFromWpaSupplicant
 //*******************************
 string SsidConfig::ssidFromWpaSupplicant(const string &path) {

@@ -158,11 +158,17 @@ string PadMapping::wholeTrigger(const string &pending, JoystickState &rest, cons
 bool PadMapping::hasFreeAxis(const vector<Element> &elements, size_t axisCount) {
     for (size_t i = 0; i < axisCount; i++) {
         const string n = "a" + to_string(i);
-        bool used = false;
-        for (const Element &e : elements)
-            if (e.value == n || e.value == "+" + n || e.value == "-" + n || e.value == n + "~")
-                used = true;
-        if (!used)
+        // a half ("-aN") leaves the other half for the stick's next step (-righty taken, +righty still asked)
+        bool whole = false, minus = false, plus = false;
+        for (const Element &e : elements) {
+            if (e.value == n || e.value == n + "~")
+                whole = true;
+            else if (e.value == "-" + n)
+                minus = true;
+            else if (e.value == "+" + n)
+                plus = true;
+        }
+        if (!whole && !(minus && plus))
             return true;
     }
     return false;
