@@ -437,7 +437,7 @@ void GuiPadConfig::renderPopup() {
     const int textHeight = gui->text().wrappedHeight(font, popupMessage, textWidth);
     const int height = PanelStyle::HeaderHeight + 12 + textHeight + 24;
     const ableem::Rect panel((SCREEN_WIDTH - width) / 2, (SCREEN_HEIGHT - height) / 2, width, height);
-    style.sheet(renderer, panel);
+    style.sheet(gui->uiContext(), panel);
     const int y = style.header(*gui, panel, _("Gamepad configuration"));
     gui->text().renderWrappedText(font, popupMessage, panel.x + PanelStyle::RowInset + 8, y, textWidth, style.text);
 }
