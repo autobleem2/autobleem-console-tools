@@ -690,11 +690,7 @@ void GuiPadConfig::render() {
         const unsigned int held = min(+PadMapping::HoldToExitMs, gui->platform().ticks() - since);
         const Rect track(content.x + PanelStyle::RowInset, content.y + content.h - 6,
                          content.w - 2 * PanelStyle::RowInset, 4);
-        renderer.setBlendMode(ableem::BlendMode::Blend);
-        renderer.setDrawColor(Color(style.text.r, style.text.g, style.text.b, 60));
-        renderer.fillRect(track);
-        renderer.setDrawColor(Color(style.text.r, style.text.g, style.text.b, 220));
-        renderer.fillRect(Rect(track.x, track.y, static_cast<int>(track.w * held / PadMapping::HoldToExitMs), track.h));
+        style.progress(renderer, track, held, PadMapping::HoldToExitMs, abgui::Tone::Text, 60, abgui::Tone::Text, 220);
     }
 
     // the pad's own buttons (the console's front buttons and a keyboard still work, unlisted)
