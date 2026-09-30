@@ -131,6 +131,11 @@ src/core/       pscbios_core (SDL-free, links ab_core; the tests link it)
                       Same `Runner`/`LinesRunner` test-seam style as before the rewrite (`splitTerse`,
                       `parseDevices`, `firstAddress`, `shellQuoted`); takes a `BluezBusFactory` exactly like
                       NativeBackend for its tests
+  wifi_status_worker.* WifiStatusWorker - the WiFi screen's periodic read (the Connection row, the timezone) on a thread
+                      of its own, so nmcli's blocking popen calls never stall a frame (BUG-33): start() when due,
+                      take() the finished result on a later frame, wait() before the screen uses the backend itself,
+                      joined by the destructor. NmBackend keeps the device list and the address 500 ms and the timezone
+                      until setTimezone() - a status read is 3 processes, not 8; it is not thread-safe, hence wait()
   wpa_ctrl_client.*   WpaCtrlClient: /var/run/wpa_supplicant/<iface> over third_party/wpa_ctrl (hostap 2.10's client,
                       BSD, README.autobleem.txt lists our two changes) - SCAN (waits for the event, 50 ms slices, the
                       hook asked), SCAN_RESULTS, STATUS, the one-network configure, TERMINATE; a timeout on every

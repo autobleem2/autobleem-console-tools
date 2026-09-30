@@ -33,27 +33,25 @@ void GuiNetworkMenu::init() {
 // the connection: wpa_supplicant's state (a short STATUS) and the interface's address - "Connected, 192.168.1.23",
 // "Looking for the network", "Not connected", "-" without a WiFi dongle
 void GuiNetworkMenu::refresh() {
+    worker_.wait(); // the backend is not thread-safe: never while the worker reads
     lastRefresh = gui->platform().ticks();
-    ConsoleBackend &console = PscBios::get().console();
-    const string iface = console.wifiInterface(); // any name, not only wlan0
-    if (iface.empty()) {
-        connection = "-";
-    } else {
-        string ip = console.ipOf(iface);
-        WpaStatus status;
-        if (!console.wifiStatus(status)) {
-            connection = ip.empty() ? _("Not connected") : ip;
-        } else if (status.wpaState == "COMPLETED") {
-            if (ip.empty())
-                ip = status.ipAddress;
-            connection = ip.empty() ? wifiStageText(WifiConnectStage::GettingAddress) : _("Connected") + ", " + ip;
-        } else {
-            connection = wpaStateText(status.wpaState);
-            if (connection.empty())
-                connection = _("Not connected");
-        }
+    WifiStatusSnapshot snapshot = WifiStatusWorker::read(PscBios::get().console());
+    connection = snapshot.connection;
+    timezone = snapshot.timezone;
+}
+
+// the periodic read: a finished one is taken, a due one started - the slow nmcli calls run on the worker
+void GuiNetworkMenu::refreshInBackground() {
+    WifiStatusSnapshot snapshot;
+    if (worker_.take(snapshot)) {
+        connection = snapshot.connection;
+        timezone = snapshot.timezone;
     }
-    timezone = console.timezone();
+    const unsigned int now = gui->platform().ticks();
+    if (!busy_ && !acting_ && !worker_.active() && now - lastRefresh >= RefreshInterval) {
+        lastRefresh = now;
+        worker_.start(PscBios::get().console());
+    }
 }
 
 GuiNetworkMenu::Row GuiNetworkMenu::rowAt(int index) const {
@@ -118,8 +116,7 @@ void GuiNetworkMenu::renderLineIndexOnRow(int index, int row) {
 //*******************************
 // before each frame: the status re-read every RefreshInterval, the rows filled from it
 bool GuiNetworkMenu::prepareFrame() {
-    if (!busy_ && gui->platform().ticks() - lastRefresh >= RefreshInterval)
-        refresh();
+    refreshInBackground();
     fill();
     return GuiStringMenu::prepareFrame();
 }
@@ -157,7 +154,10 @@ void GuiNetworkMenu::doCircle_Pressed() {
 void GuiNetworkMenu::doTriangle_Pressed() {
     if (rowAt(selected) == Row::Ssid) {
         app.audio().cursor.play();
+        worker_.wait();
+        acting_ = true;
         scanSsid();
+        acting_ = false;
     }
 }
 
@@ -166,6 +166,8 @@ void GuiNetworkMenu::doTriangle_Pressed() {
 //*******************************
 void GuiNetworkMenu::doCross_Pressed() {
     app.audio().cursor.play();
+    worker_.wait(); // the actions below use the backend themselves
+    acting_ = true;
     switch (rowAt(selected)) {
     case Row::Ssid:
         editSsid();
@@ -194,6 +196,7 @@ void GuiNetworkMenu::doCross_Pressed() {
     default:
         break;
     }
+    acting_ = false;
     refresh();
     fill();
     render();

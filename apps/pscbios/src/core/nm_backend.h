@@ -83,6 +83,11 @@ public:
     // a shell argument in single quotes
     static std::string shellQuoted(const std::string &value);
 
+    // the device list and the address are kept this long (ms) - one status read asks for them several times
+    static constexpr long long CacheMs = 500;
+    // drops them (a scan, a connect and the like do it themselves); the tests' seam too
+    void forgetCache();
+
     static const char *const PasswordVariable; // the environment variable the password reaches nmcli through
 
 private:
@@ -107,6 +112,12 @@ private:
     std::string btStaleError_;
     std::string lastError_;
     std::string btError_;
+    // what a status read asked for a moment ago (see CacheMs); the timezone until setTimezone()
+    std::vector<Device> devices_;
+    long long devicesAt_ = -1;
+    std::string ip_, ipIface_;
+    long long ipAt_ = -1;
+    std::string timezone_;
     std::string pendingSsid_, pendingPassword_;
     // the outcome of the last configureWifi()/restartNetwork() (nmcli does the whole connection attempt in
     // one blocking call, unlike wpa_supplicant's event stream): beginWifiConnect/pumpWifiConnect just report it

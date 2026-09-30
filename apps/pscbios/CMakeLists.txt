@@ -28,6 +28,8 @@ set(PSCBIOS_CORE_SOURCES
         src/core/ssid_config.h
         src/core/wifi_connect.cpp
         src/core/wifi_connect.h
+        src/core/wifi_status_worker.cpp
+        src/core/wifi_status_worker.h
 )
 # the native backend (docs/native-backend-plan.md): sysfs, getifaddrs and wpa_supplicant's control socket through
 # hostap's vendored client - Unix only; the Windows dev build has the FakeBackend
@@ -86,7 +88,7 @@ function(pscbios_use_dbus target)
 endfunction()
 add_library(pscbios_core STATIC ${PSCBIOS_CORE_SOURCES})
 target_include_directories(pscbios_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src PRIVATE ${PSCBIOS_WPA_CTRL_DIR})
-target_link_libraries(pscbios_core ab_core)
+target_link_libraries(pscbios_core ab_core Threads::Threads) # WifiStatusWorker
 pscbios_use_dbus(pscbios_core)
 
 if (NOT COMMAND ab_add_extension)
@@ -129,6 +131,7 @@ ab_add_extension(pscbios ${pscbios_host}
         LANG ${CMAKE_CURRENT_SOURCE_DIR}/resources/lang)
 target_include_directories(pscbios PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${PSCBIOS_WPA_CTRL_DIR})
 pscbios_use_dbus(pscbios PRIVATE)
+target_link_libraries(pscbios PRIVATE Threads::Threads) # WifiStatusWorker (an old glibc needs -pthread)
 # the console (and a Linux host) gets NativeBackend; Windows only has the FakeBackend (AB_DEBUG_HOST uses it anyway)
 if (NOT WIN32)
     target_compile_definitions(pscbios PRIVATE PSCBIOS_NATIVE_BACKEND)

@@ -1,7 +1,7 @@
 //
 // GuiNetworkMenu: the WiFi settings - the SSID (typed, or picked from a scan with each network's signal), the
 // password, the timezone, the connection as wpa_supplicant has it now (re-read every
-// RefreshInterval), and the two actions: writing the settings and restarting the network, or a restart alone.
+// RefreshInterval on a worker thread - the frame never waits for it), and the two actions: writing the settings and restarting the network, or a restart alone.
 // Every action that waits runs under the busy spinner, and after a write or a restart the connection is followed
 // to Connected or the reason it failed (a wrong password, the network not found, no address...) - Circle stops
 // following it. The last failure and its reason is a row of its own under the connection. Option rows in the
@@ -12,6 +12,7 @@
 #include "gui/menus/gui_string_menu.h"
 #include "core/network_status.h"
 #include "core/ssid_config.h"
+#include "core/wifi_status_worker.h"
 
 #include <string>
 #include <vector>
@@ -45,10 +46,13 @@ private:
     std::vector<std::string> values; // one per row of `lines`, "" for an action row
     std::string busyFooter_;         // the footer while busy, drawn on the spinner's backdrop
     bool busy_ = false;
+    bool acting_ = false; // an action (and the screens it shows) is running: no background read meanwhile
+    WifiStatusWorker worker_; // the periodic read; wait()ed for before the backend is used here, joined on destruction
     unsigned int lastRefresh = 0;
 
     Row rowAt(int index) const;
-    void refresh();     // the connection and the timezone from the console
+    void refresh();     // the connection and the timezone from the console, now (after an action)
+    void refreshInBackground(); // the same from the worker: started when due, taken when finished
     void fill();        // the rows from the current values
     bool writeConfig(); // false when nothing was written, or the console refused it (message_ says why)
     void restartNetwork();
