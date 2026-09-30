@@ -430,7 +430,7 @@ void GuiPadConfig::renderPopup() {
         return;
     }
     const PanelStyle style = gui->panelStyle();
-    style.dim(renderer);
+    style.dim(gui->uiContext());
     const int width = 800;
     const ableem::Font &font = gui->assets().themeFonts[FONT_22_MED];
     const int textWidth = width - 2 * (PanelStyle::RowInset + 8);
