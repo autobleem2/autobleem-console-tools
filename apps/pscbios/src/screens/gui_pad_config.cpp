@@ -524,7 +524,7 @@ int GuiPadConfig::renderElements(int x, int y, int width) {
         const int cy = top + (static_cast<int>(i) % perColumn) * pageFont.lineHeight();
         const bool asking = stage == Stage::Mapping && i == current;
         if (asking)
-            gui->panelStyle().selection(renderer, Rect(cx - 8, cy, columnWidth + 8, pageFont.lineHeight()));
+            gui->panelStyle().selection(gui->uiContext(), Rect(cx - 8, cy, columnWidth + 8, pageFont.lineHeight()));
         gui->text().renderText_WithColor(pageFont, element.apiName, cx, cy, asking ? text : secondary, XALIGN_LEFT);
         gui->text().renderText_WithColor(pageFont, element.value, cx + columnWidth * 6 / 10, cy, text, XALIGN_LEFT);
     }
@@ -698,7 +698,8 @@ void GuiPadConfig::draw() {
         const unsigned int held = min(+PadMapping::HoldToExitMs, gui->platform().ticks() - since);
         const Rect track(content.x + PanelStyle::RowInset, content.y + content.h - 6,
                          content.w - 2 * PanelStyle::RowInset, 4);
-        style.progress(renderer, track, held, PadMapping::HoldToExitMs, abgui::Tone::Text, 60, abgui::Tone::Text, 220);
+        style.progress(gui->uiContext(), track, held, PadMapping::HoldToExitMs, abgui::Tone::Text, 60, abgui::Tone::Text,
+                       220);
     }
 
     // the pad's own buttons (the console's front buttons and a keyboard still work, unlisted)
