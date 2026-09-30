@@ -35,7 +35,9 @@ public:
     using GuiScreen::GuiScreen;
 
     void init() override;
-    void render() override;
+    // before each frame: the pad read, the wizard's step, the pad's own controls; false once a 2 s hold left
+    bool prepareFrame() override;
+    void draw() override; // the frame's picture; the screen stack clears and presents
     void loop() override;
 
 private:

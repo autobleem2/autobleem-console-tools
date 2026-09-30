@@ -24,7 +24,7 @@ public:
     explicit GuiNetworkMenu(ableem::GuiBase &_gui) : GuiStringMenu(_gui) {}
 
     void init() override;
-    void render() override;
+    bool prepareFrame() override; // the status re-read when due and the rows filled, before the frame
     void renderLineIndexOnRow(int index, int row) override;
     std::string getTitle() override { return _("Edit Network WPA WiFi Credentials"); }
     std::string getStatusLine() override;

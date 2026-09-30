@@ -114,13 +114,14 @@ void GuiNetworkMenu::renderLineIndexOnRow(int index, int row) {
 }
 
 //*******************************
-// GuiNetworkMenu::render
+// GuiNetworkMenu::prepareFrame
 //*******************************
-void GuiNetworkMenu::render() {
+// before each frame: the status re-read every RefreshInterval, the rows filled from it
+bool GuiNetworkMenu::prepareFrame() {
     if (!busy_ && gui->platform().ticks() - lastRefresh >= RefreshInterval)
         refresh();
     fill();
-    GuiStringMenu::render();
+    return GuiStringMenu::prepareFrame();
 }
 
 //*******************************

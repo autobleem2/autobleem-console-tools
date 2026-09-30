@@ -53,13 +53,14 @@ int GuiBtPairing::deviceIndex(int line) const {
 }
 
 //*******************************
-// GuiBtPairing::render / renderLineIndexOnRow
+// GuiBtPairing::prepareFrame / renderLineIndexOnRow
 //*******************************
-// the paired devices re-read every RefreshInterval, so a pad that connects, drops or runs down shows it
-void GuiBtPairing::render() {
+// before each frame, the paired devices re-read every RefreshInterval, so a pad that connects, drops or runs down
+// shows it
+bool GuiBtPairing::prepareFrame() {
     if (hasAdapter_ && !busy_ && gui->platform().ticks() - lastRefresh_ >= RefreshInterval)
         refreshPaired();
-    GuiStringMenu::render();
+    return GuiStringMenu::prepareFrame();
 }
 
 // a device: its name at the left (elided to leave room), its state at the right edge; the other rows whole

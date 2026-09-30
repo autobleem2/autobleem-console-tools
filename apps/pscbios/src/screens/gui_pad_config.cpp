@@ -532,31 +532,16 @@ int GuiPadConfig::renderElements(int x, int y, int width) {
 }
 
 //*******************************
-// GuiPadConfig::render
+// GuiPadConfig::prepareFrame
 //*******************************
-void GuiPadConfig::render() {
+// the wizard's step for this frame, before it is drawn (render() = this, then the screen stack's frame of draw()): the
+// pad read, the input being mapped taken, the pad's own controls - and false, with no frame, once a 2 s hold left
+bool GuiPadConfig::prepareFrame() {
     if (stage != Stage::Test && Joystick::count() != joysticksAtStart) {
         cancelMapping();
         showPopup(_("Gamepad configuration changed. Mapping interrupted."));
     }
     joystick.update();
-
-    renderer.clear();
-    gui->renderBackground();
-    gui->renderTextBar();
-    gui->renderHeader(_("Gamepad configuration details"));
-    TextRenderer &text = gui->text();
-    const PanelStyle style = gui->panelStyle();
-    const ableem::Rect content = gui->classicContent();
-    const Rect picture = pictureRect();
-    const int x = content.x + PanelStyle::RowInset + 8;
-    const int width = picture.x - 24 - x;
-    const int lineHeight = pageFont.lineHeight();
-    int y = content.y + 4;
-    auto row = [&](const string &line, const ableem::Color &color) {
-        text.renderText_WithColor(pageFont, text.elide(pageFont, line, width), x, y, color, XALIGN_LEFT);
-        y += lineHeight;
-    };
 
     if (stage == Stage::Mapping) {
         const PadMapping::Scan scan = elements[current].scan;
@@ -608,10 +593,33 @@ void GuiPadConfig::render() {
         if (stage != Stage::Test)
             cancelMapping();
         menuVisible = false;
-        return;
+        return false;
     }
     padControls();
     switchToPressedPad();
+    return true;
+}
+
+//*******************************
+// GuiPadConfig::draw
+//*******************************
+// the frame's picture: the screen stack clears before it and presents after it
+void GuiPadConfig::draw() {
+    gui->renderBackground();
+    gui->renderTextBar();
+    gui->renderHeader(_("Gamepad configuration details"));
+    TextRenderer &text = gui->text();
+    const PanelStyle style = gui->panelStyle();
+    const ableem::Rect content = gui->classicContent();
+    const Rect picture = pictureRect();
+    const int x = content.x + PanelStyle::RowInset + 8;
+    const int width = picture.x - 24 - x;
+    const int lineHeight = pageFont.lineHeight();
+    int y = content.y + 4;
+    auto row = [&](const string &line, const ableem::Color &color) {
+        text.renderText_WithColor(pageFont, text.elide(pageFont, line, width), x, y, color, XALIGN_LEFT);
+        y += lineHeight;
+    };
 
     // the facts: the pad, its inputs, the raw buttons and hats, the axes eight to a row
     const ableem::JoystickState &state = joystick.state();
@@ -724,14 +732,13 @@ void GuiPadConfig::render() {
     else if (stage == Stage::Test && autoMapAt != 0)
         renderTopPopup(_("Mapping starts in") + " " + secondsTo(autoMapAt) + " s");
     renderPopup();
-    renderer.present();
 }
 
 //*******************************
 // GuiPadConfig::loop
 //*******************************
-// the pad itself drives this screen (padControls(), from render()); the console's front buttons - Power,
-// Reset and Open - and a keyboard's Escape, Start (Space) and Return are shortcuts handled here. Input
+// the pad itself drives this screen (padControls(), from render()'s prepareFrame()); the console's front buttons -
+// Power, Reset and Open - and a keyboard's Escape, Start (Space) and Return are shortcuts handled here. Input
 // hands the power button over as a key for the duration instead of powering off.
 //
 // keyboardAsPad is off here, the way GuiKeyboard turns it off: the screen's own job is reading a *pad*
