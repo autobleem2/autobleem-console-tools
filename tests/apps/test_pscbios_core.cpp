@@ -17,11 +17,13 @@
 #include "core/pad_mapping.h"
 #include "core/rfkill.h"
 #include "core/ssid_config.h"
+#include "core/wifi_status_worker.h"
 
 #include <chrono>
 #include <map>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 using std::string;
@@ -927,6 +929,81 @@ TEST_CASE("NmBackend connects on restartNetwork, the password through the enviro
     const WifiConnectWatch &watch = backend.pumpWifiConnect();
     CHECK(watch.finished());
     CHECK(watch.stage() == WifiConnectStage::Connected);
+}
+
+// BUG-33: a status read used to spawn eight processes (device status four times, device show twice, wifi list,
+// timedatectl); the WiFi screen ran it on the UI thread every 2 s
+TEST_CASE("NmBackend's WiFi status read spawns few processes, the timezone one only once") {
+    ScriptedShell shell;
+    listings[DeviceStatus] = PiDevices;
+    answers["nmcli -g IP4.ADDRESS device show 'wlan0' 2>/dev/null"] = "192.168.68.144/24";
+    answers["timedatectl show -p Timezone --value 2>/dev/null"] = "Europe/Dublin";
+    listings["nmcli -t -f ACTIVE,SSID device wifi list --rescan no 2>/dev/null"] = {"no:Other", "yes:DecoMeshArt"};
+    NmBackend backend(scriptedRun, scriptedRunLines, true, nullptr);
+
+    // what the screen asks for, in its order
+    const string iface = backend.wifiInterface();
+    CHECK(backend.ipOf(iface) == "192.168.68.144");
+    WpaStatus status;
+    REQUIRE(backend.wifiStatus(status));
+    CHECK(status.wpaState == "COMPLETED");
+    CHECK(status.ipAddress == "192.168.68.144");
+    CHECK(status.ssid == "DecoMeshArt");
+    CHECK(backend.timezone() == "Europe/Dublin");
+    CHECK(backend.timezone() == "Europe/Dublin");
+    CHECK(ran.size() == 4); // device status, device show, wifi list, timedatectl - nothing twice
+    CHECK(ran[0] == DeviceStatus);
+
+    // not connected: no SSID to look up
+    backend.forgetCache();
+    listings[DeviceStatus] = {"wlan0:wifi:disconnected"};
+    ran.clear();
+    REQUIRE(backend.wifiStatus(status));
+    CHECK(status.wpaState == "DISCONNECTED");
+    CHECK(status.ssid.empty());
+    CHECK(ran.size() == 2); // device status, device show
+
+    // setting the timezone drops the kept one
+    answers["timedatectl show -p Timezone --value 2>/dev/null"] = "America/New_York";
+    backend.setTimezone("America/New_York");
+    ran.clear();
+    CHECK(backend.timezone() == "America/New_York");
+    CHECK(ran.size() == 1);
+}
+
+TEST_CASE("WifiStatusWorker reads on its thread and hands the result over once") {
+    ScriptedShell shell;
+    listings[DeviceStatus] = PiDevices;
+    answers["nmcli -g IP4.ADDRESS device show 'wlan0' 2>/dev/null"] = "192.168.68.144/24";
+    answers["timedatectl show -p Timezone --value 2>/dev/null"] = "Europe/Dublin";
+    listings["nmcli -t -f ACTIVE,SSID device wifi list --rescan no 2>/dev/null"] = {"yes:DecoMeshArt"};
+    NmBackend backend(scriptedRun, scriptedRunLines, true, nullptr);
+
+    WifiStatusWorker worker;
+    WifiStatusSnapshot snapshot;
+    CHECK_FALSE(worker.active());
+    CHECK_FALSE(worker.take(snapshot)); // nothing started
+    worker.start(backend);
+    CHECK(worker.active());
+    worker.start(backend); // one at a time: ignored
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!worker.take(snapshot) && std::chrono::steady_clock::now() < until)
+        std::this_thread::yield();
+    CHECK(snapshot.connection == "Connected, 192.168.68.144");
+    CHECK(snapshot.timezone == "Europe/Dublin");
+    CHECK_FALSE(worker.active());
+    CHECK_FALSE(worker.take(snapshot)); // handed over once
+
+    // going away with a read running joins it (no use of the backend after)
+    {
+        WifiStatusWorker leaving;
+        leaving.start(backend);
+    }
+    // wait() drops a result and leaves the backend free
+    worker.start(backend);
+    worker.wait();
+    CHECK_FALSE(worker.active());
+    CHECK_FALSE(worker.take(snapshot));
 }
 
 TEST_CASE("NmBackend without nmcli asks nothing of the network") {
