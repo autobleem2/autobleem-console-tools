@@ -51,7 +51,8 @@ jobs:
   sdk-abi:
     # PSC-Bios is an extension the launcher checks the AB_SDK_ABI of before loading it: one built against
     # another ABI than the launcher it ships with is refused on the console. Our autobleem-core must be at
-    # the launcher's AB_SDK_ABI - the launcher's develop (a v* tag: its master, what a release ships). On the
+    # the launcher's AB_SDK_ABI - the launcher's develop (a v* tag: its master, what a release ships; a branch the
+    # launcher has too: that branch). On the
     # plain runner: the build image has no gh. The psc package waits for it.
     if: vars.AB_CI_ENABLED == 'true'
     runs-on: ubuntu-24.04
@@ -65,6 +66,11 @@ jobs:
         run: |
           set -euo pipefail
           ref=develop; [[ "$GITHUB_REF" == refs/tags/v* ]] && ref=master
+          # a feature branch the launcher has too (a preview, PLATFORM-20) ships with that branch's launcher
+          if [[ "$GITHUB_REF" == refs/heads/* ]] && [ "$GITHUB_REF_NAME" != develop ] &&
+             gh api "repos/autobleem2/autobleem/branches/$GITHUB_REF_NAME" --silent 2>/dev/null; then
+            ref="$GITHUB_REF_NAME"
+          fi
           core=$(gh api "repos/autobleem2/autobleem/contents/autobleem-core?ref=$ref" --jq .sha)
           theirs=$(gh api -H 'Accept: application/vnd.github.raw' \
             "repos/autobleem2/autobleem-core/contents/src/code/gui/extension.h?ref=$core" | sed -n 's/^#define AB_SDK_ABI \([0-9]*\).*/\1/p')
