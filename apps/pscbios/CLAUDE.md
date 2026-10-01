@@ -131,6 +131,11 @@ src/core/       pscbios_core (SDL-free, links ab_core; the tests link it)
                       Same `Runner`/`LinesRunner` test-seam style as before the rewrite (`splitTerse`,
                       `parseDevices`, `firstAddress`, `shellQuoted`); takes a `BluezBusFactory` exactly like
                       NativeBackend for its tests
+  wifi_status_worker.* WifiStatusWorker - the WiFi screen's periodic read (the Connection row, the timezone) on a thread
+                      of its own, so nmcli's blocking popen calls never stall a frame (BUG-33): start() when due,
+                      take() the finished result on a later frame, wait() before the screen uses the backend itself,
+                      joined by the destructor. NmBackend keeps the device list and the address 500 ms and the timezone
+                      until setTimezone() - a status read is 3 processes, not 8; it is not thread-safe, hence wait()
   wpa_ctrl_client.*   WpaCtrlClient: /var/run/wpa_supplicant/<iface> over third_party/wpa_ctrl (hostap 2.10's client,
                       BSD, README.autobleem.txt lists our two changes) - SCAN (waits for the event, 50 ms slices, the
                       hook asked), SCAN_RESULTS, STATUS, the one-network configure, TERMINATE; a timeout on every
@@ -206,7 +211,12 @@ after. Its log lines are the launcher's (`System/Logs/autobleem.log`, tagged `[p
 **Its `AB_SDK_ABI` must be the launcher's**, or the launcher refuses to load it (and Hardware Information
 falls back to the built-in screen): the CI's first step compares this repository's `autobleem-core` with the
 launcher's (its develop; for a v* tag its master) and fails when they differ - bump the submodule with every
-ABI bump in core.
+ABI bump in core. **AB_SDK_ABI 7** (2026-09-30, the ab_gui step G3z): every screen is an `abgui::Screen` through the
+classic `GuiScreen` - it has `draw()` only (the screen stack clears and presents; `render()` is the stack's and
+final), and what it does before a frame goes in `prepareFrame()` (`GuiNetworkMenu`/`GuiBtPairing`'s refresh when
+due, `GuiPadConfig`'s pad read and wizard step, which returns false - no frame - once the 2 s hold left);
+`GuiPscBiosMain::collect()` returns `abgui::FactsSection`s (`GuiFactsPage::sectionsOf` turns `InfoSection`s into
+them); `GuiConfirm`/`GuiKeyboard`/`GuiTextPage`/`GuiActionMenu` are the ab_gui widgets under their old names.
 
 ## Theme and language
 

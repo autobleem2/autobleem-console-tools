@@ -112,10 +112,23 @@ string NmBackend::shellQuoted(const string &value) {
 //*******************************
 // NmBackend::devices / deviceOfType
 //*******************************
+// one `device status` serves wifiInterface(), isUp() and the rest of a status read that follow it within
+// CacheMs: the WiFi screen's refresh used to spawn it four times
 vector<NmBackend::Device> NmBackend::devices() {
     if (!nmcli_)
         return {};
-    return parseDevices(runLines_("nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null"));
+    const long long now = steadyMs();
+    if (devicesAt_ >= 0 && now - devicesAt_ < CacheMs)
+        return devices_;
+    devices_ = parseDevices(runLines_("nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null"));
+    devicesAt_ = steadyMs();
+    return devices_;
+}
+
+void NmBackend::forgetCache() {
+    devicesAt_ = -1;
+    ipAt_ = -1;
+    ipIface_.clear();
 }
 
 string NmBackend::deviceOfType(const string &type) {
@@ -159,13 +172,20 @@ bool NmBackend::isUp(const string &iface) {
 string NmBackend::ipOf(const string &iface) {
     if (iface.empty())
         return "";
-    return firstAddress(run_("nmcli -g IP4.ADDRESS device show " + shellQuoted(iface) + " 2>/dev/null"));
+    const long long now = steadyMs();
+    if (ipAt_ >= 0 && iface == ipIface_ && now - ipAt_ < CacheMs)
+        return ip_;
+    ip_ = firstAddress(run_("nmcli -g IP4.ADDRESS device show " + shellQuoted(iface) + " 2>/dev/null"));
+    ipIface_ = iface;
+    ipAt_ = steadyMs();
+    return ip_;
 }
 
 // SIGNAL is a 0-100 percentage; approximated to dBm (0% -> -100 dBm, 100% -> -50 dBm) for signalText()'s
 // thresholds - nmcli never reports a real dBm figure
 vector<WifiNetwork> NmBackend::scanNetworks() {
     lastError_.clear();
+    forgetCache(); // a scan is asked for: what the interface is now, not a moment ago
     string iface = wifiInterface();
     if (iface.empty()) {
         lastError_ = _("no WiFi interface");
@@ -209,6 +229,7 @@ void NmBackend::configureWifi(const string &ssid, const string &password) {
 // afterwards, so beginWifiConnect/pumpWifiConnect just report what happened here
 void NmBackend::restartNetwork() {
     lastError_.clear();
+    forgetCache();
     string device = wifiInterface();
     if (device.empty()) {
         lastError_ = _("no WiFi interface");
@@ -232,6 +253,7 @@ void NmBackend::restartNetwork() {
 #ifndef _WIN32
     unsetenv(PasswordVariable);
 #endif
+    forgetCache(); // the connection changed under the cache
     PLOG_INFO << "nmcli: " << answer;
     lastConnectSsid_ = ssid;
     lastConnectDetail_ = answer;
@@ -248,8 +270,10 @@ bool NmBackend::wifiStatus(WpaStatus &out) {
     if (iface.empty())
         return false;
     out.ipAddress = ipOf(iface);
-    out.ssid = currentSsid();
-    out.wpaState = isUp(iface) ? "COMPLETED" : "DISCONNECTED";
+    const bool up = isUp(iface); // the device list wifiInterface() just read, not a second nmcli
+    out.wpaState = up ? "COMPLETED" : "DISCONNECTED";
+    if (up) // "" while not associated: no need to ask
+        out.ssid = currentSsid();
     return true;
 }
 
@@ -466,12 +490,16 @@ BtBattery NmBackend::btBattery(const string &mac) {
 //*******************************
 // time
 //*******************************
+// read once (an answer that is not empty) and kept until setTimezone(): the screens ask for it every 2 s
 string NmBackend::timezone() {
-    return run_("timedatectl show -p Timezone --value 2>/dev/null");
+    if (timezone_.empty())
+        timezone_ = run_("timedatectl show -p Timezone --value 2>/dev/null");
+    return timezone_;
 }
 
 void NmBackend::setTimezone(const string &zone) {
     lastError_.clear();
+    timezone_.clear();
     string answer = run_("timedatectl set-timezone " + shellQuoted(zone) + " 2>&1");
     if (!answer.empty())
         lastError_ = _("the timezone could not be changed") + " (" + answer + ")";

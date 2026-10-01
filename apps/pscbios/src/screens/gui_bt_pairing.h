@@ -25,7 +25,7 @@ public:
     explicit GuiBtPairing(ableem::GuiBase &_gui) : GuiStringMenu(_gui) {}
 
     void init() override;
-    void render() override;
+    bool prepareFrame() override; // the paired devices re-read when due, before the frame
     void renderLineIndexOnRow(int index, int row) override;
     std::string getTitle() override { return _("Bluetooth controller pairing"); }
     std::string getStatusLine() override;
