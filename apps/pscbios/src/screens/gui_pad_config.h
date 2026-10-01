@@ -93,7 +93,7 @@ private:
     void padControls();       // the pad's own Cross/Circle for each stage - no front buttons needed
     void switchToPressedPad(); // Test: a button pressed on another pad shows that pad
     void armAutoMap();         // Test: a pad SDL has no mapping for starts mapping by itself shortly
-    void renderTopPopup(const std::string &message); // a one-line popup at the top, over the frame
+    void renderTopPopup(const std::string &message); // a one-line chip in the title band, inside the panel
     bool checkHoldToExit();  // true when Circle has been held long enough on ANY connected pad
     std::string holdHint();  // the footer's hold-to-exit hint, "" when there is no Circle to hold
     void refreshOtherPads(); // keeps `others` in step with Joystick::count() and the pad being watched

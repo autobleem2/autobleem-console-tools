@@ -411,15 +411,27 @@ void GuiPadConfig::showPopup(const string &message, unsigned int durationMs) {
     popupUntil = gui->platform().ticks() + durationMs;
 }
 
-// one line on a small sheet at the top of the screen, over the header - the screen under it stays
-// readable (no dim), it is only a countdown
+// one line as a chip inside the panel, at the right end of the title's band - the theme's `chip` plate (the box
+// the footer draws a named button on, else the same box drawn in code); the screen under it stays readable
+// (no dim), it is only a countdown. Never across the panel's top frame
 void GuiPadConfig::renderTopPopup(const string &message) {
     const PanelStyle style = gui->panelStyle();
     const ableem::Font &font = gui->assets().themeFonts[FONT_22_MED];
-    const int width = gui->text().textWidth(font, message) + 2 * (PanelStyle::RowInset + 8);
-    const int height = font.lineHeight() + 20;
-    style.sheet(renderer, ableem::Rect((SCREEN_WIDTH - width) / 2, 12, width, height));
-    gui->text().renderText(font, message, 0, 22, XALIGN_CENTER, &style.text);
+    const ableem::Rect content = gui->classicContent();
+    const int width = gui->text().textWidth(font, message) + 2 * PanelStyle::ChipPadding + 8;
+    const int height = font.lineHeight() + 8;
+    const int bandCentre = content.y - PanelStyle::HeaderHeight / 2;
+    const ableem::Rect chip(content.x + content.w - PanelStyle::RowInset - width, bandCentre - height / 2, width,
+                            height);
+    if (!style.drawFrame(gui->uiContext(), "chip", chip)) {
+        renderer.setBlendMode(ableem::BlendMode::Blend);
+        renderer.setDrawColor(ableem::Color(255, 255, 255, 24));
+        renderer.fillRect(chip);
+        renderer.setDrawColor(ableem::Color(style.edge.r, style.edge.g, style.edge.b, 200));
+        renderer.drawRect(chip);
+    }
+    gui->text().renderText_WithColor(font, message, chip.x + (width - gui->text().textWidth(font, message)) / 2,
+                                     chip.y + (height - font.lineHeight()) / 2, style.text, XALIGN_LEFT);
 }
 
 void GuiPadConfig::renderPopup() {
