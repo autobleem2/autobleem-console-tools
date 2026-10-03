@@ -21,7 +21,7 @@ public:
     explicit GuiFlashKitMain(ableem::GuiBase &_gui) : GuiScreen(_gui), menu(_gui) {}
 
     void init() override;
-    void render() override;
+    void draw() override; // the menu as it stands; the screen stack clears and presents
     void loop() override;
 
     // FlashUi

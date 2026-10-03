@@ -20,7 +20,7 @@ public:
 
 protected:
     std::string title() override { return _("Playstation Classic Hardware Information"); }
-    std::vector<InfoSection> collect() override;
+    std::vector<abgui::FactsSection> collect() override;
     std::string extraHints() override;
     bool onButton(ableem::Button button) override;
 

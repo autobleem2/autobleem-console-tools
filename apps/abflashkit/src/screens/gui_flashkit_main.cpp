@@ -36,10 +36,11 @@ void GuiFlashKitMain::init() {
 }
 
 //*******************************
-// GuiFlashKitMain::render
+// GuiFlashKitMain::draw
 //*******************************
-void GuiFlashKitMain::render() {
-    menu.render();
+// the frame's picture - the menu as it stands (the spinner's backdrop); the screen stack clears and presents
+void GuiFlashKitMain::draw() {
+    menu.draw();
 }
 
 //*******************************

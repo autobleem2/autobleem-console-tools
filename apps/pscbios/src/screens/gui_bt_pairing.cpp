@@ -3,6 +3,7 @@
 //
 #include "gui_bt_pairing.h"
 #include "pscbios_busy.h"
+#include <ab_gui/panel.h>
 #include "gui/gui.h"
 #include "gui/screens/gui_confirm.h"
 #include "pscbios.h"
@@ -33,7 +34,11 @@ void GuiBtPairing::rebuild() {
     lines.clear();
     labelsOnly = !hasAdapter_; // without an adapter the rows only say so - nothing to pick or scroll through
     if (!hasAdapter_) {
-        lines = BtDeviceList::noAdapterLines(adapterError_);
+        // a dialog's text wraps, never cut: each line (the error's can be long) split to the row's width
+        const int width = abgui::Panel::CompactWidth - 64;
+        for (const string &line : BtDeviceList::noAdapterLines(adapterError_))
+            for (const string &part : gui->text().wrapLines(font, line, width))
+                lines.push_back(part);
     } else {
         lines.push_back(_("Scan for controllers"));
         for (const BtRow &row : devices_.rows())
@@ -53,13 +58,14 @@ int GuiBtPairing::deviceIndex(int line) const {
 }
 
 //*******************************
-// GuiBtPairing::render / renderLineIndexOnRow
+// GuiBtPairing::prepareFrame / renderLineIndexOnRow
 //*******************************
-// the paired devices re-read every RefreshInterval, so a pad that connects, drops or runs down shows it
-void GuiBtPairing::render() {
+// before each frame, the paired devices re-read every RefreshInterval, so a pad that connects, drops or runs down
+// shows it
+bool GuiBtPairing::prepareFrame() {
     if (hasAdapter_ && !busy_ && gui->platform().ticks() - lastRefresh_ >= RefreshInterval)
         refreshPaired();
-    GuiStringMenu::render();
+    return GuiStringMenu::prepareFrame();
 }
 
 // a device: its name at the left (elided to leave room), its state at the right edge; the other rows whole

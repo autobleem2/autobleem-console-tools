@@ -58,7 +58,7 @@ string GuiPscBiosMain::clockText() {
 //*******************************
 // the sections; the keys are the 2020 tool's (translated), a trailing colon dropped where the heading
 // band or the value column makes it redundant
-vector<InfoSection> GuiPscBiosMain::collect() {
+vector<abgui::FactsSection> GuiPscBiosMain::collect() {
     auto plain = [](string text) {
         while (!text.empty() && (text.back() == ':' || text.back() == ' '))
             text.pop_back();
@@ -119,7 +119,7 @@ vector<InfoSection> GuiPscBiosMain::collect() {
             pads.rows.push_back({_("Controller") + " " + to_string(i + 1), name + " (" + playerLabel + ")"});
     }
     sections.push_back(pads);
-    return sections;
+    return sectionsOf(sections);
 }
 
 //*******************************

@@ -411,15 +411,27 @@ void GuiPadConfig::showPopup(const string &message, unsigned int durationMs) {
     popupUntil = gui->platform().ticks() + durationMs;
 }
 
-// one line on a small sheet at the top of the screen, over the header - the screen under it stays
-// readable (no dim), it is only a countdown
+// one line as a chip inside the panel, at the right end of the title's band - the theme's `chip` plate (the box
+// the footer draws a named button on, else the same box drawn in code); the screen under it stays readable
+// (no dim), it is only a countdown. Never across the panel's top frame
 void GuiPadConfig::renderTopPopup(const string &message) {
     const PanelStyle style = gui->panelStyle();
     const ableem::Font &font = gui->assets().themeFonts[FONT_22_MED];
-    const int width = gui->text().textWidth(font, message) + 2 * (PanelStyle::RowInset + 8);
-    const int height = font.lineHeight() + 20;
-    style.sheet(renderer, ableem::Rect((SCREEN_WIDTH - width) / 2, 12, width, height));
-    gui->text().renderText(font, message, 0, 22, XALIGN_CENTER, &style.text);
+    const ableem::Rect content = gui->classicContent();
+    const int width = gui->text().textWidth(font, message) + 2 * PanelStyle::ChipPadding + 8;
+    const int height = font.lineHeight() + 8;
+    const int bandCentre = content.y - PanelStyle::HeaderHeight / 2;
+    const ableem::Rect chip(content.x + content.w - PanelStyle::RowInset - width, bandCentre - height / 2, width,
+                            height);
+    if (!style.drawFrame(gui->uiContext(), "chip", chip)) {
+        renderer.setBlendMode(ableem::BlendMode::Blend);
+        renderer.setDrawColor(ableem::Color(255, 255, 255, 24));
+        renderer.fillRect(chip);
+        renderer.setDrawColor(ableem::Color(style.edge.r, style.edge.g, style.edge.b, 200));
+        renderer.drawRect(chip);
+    }
+    gui->text().renderText_WithColor(font, message, chip.x + (width - gui->text().textWidth(font, message)) / 2,
+                                     chip.y + (height - font.lineHeight()) / 2, style.text, XALIGN_LEFT);
 }
 
 void GuiPadConfig::renderPopup() {
@@ -430,14 +442,14 @@ void GuiPadConfig::renderPopup() {
         return;
     }
     const PanelStyle style = gui->panelStyle();
-    style.dim(renderer);
+    style.dim(gui->uiContext());
     const int width = 800;
     const ableem::Font &font = gui->assets().themeFonts[FONT_22_MED];
     const int textWidth = width - 2 * (PanelStyle::RowInset + 8);
     const int textHeight = gui->text().wrappedHeight(font, popupMessage, textWidth);
     const int height = PanelStyle::HeaderHeight + 12 + textHeight + 24;
     const ableem::Rect panel((SCREEN_WIDTH - width) / 2, (SCREEN_HEIGHT - height) / 2, width, height);
-    style.sheet(renderer, panel);
+    style.sheet(gui->uiContext(), panel);
     const int y = style.header(*gui, panel, _("Gamepad configuration"));
     gui->text().renderWrappedText(font, popupMessage, panel.x + PanelStyle::RowInset + 8, y, textWidth, style.text);
 }
@@ -524,7 +536,7 @@ int GuiPadConfig::renderElements(int x, int y, int width) {
         const int cy = top + (static_cast<int>(i) % perColumn) * pageFont.lineHeight();
         const bool asking = stage == Stage::Mapping && i == current;
         if (asking)
-            gui->panelStyle().selection(renderer, Rect(cx - 8, cy, columnWidth + 8, pageFont.lineHeight()));
+            gui->panelStyle().selection(gui->uiContext(), Rect(cx - 8, cy, columnWidth + 8, pageFont.lineHeight()));
         gui->text().renderText_WithColor(pageFont, element.apiName, cx, cy, asking ? text : secondary, XALIGN_LEFT);
         gui->text().renderText_WithColor(pageFont, element.value, cx + columnWidth * 6 / 10, cy, text, XALIGN_LEFT);
     }
@@ -532,31 +544,16 @@ int GuiPadConfig::renderElements(int x, int y, int width) {
 }
 
 //*******************************
-// GuiPadConfig::render
+// GuiPadConfig::prepareFrame
 //*******************************
-void GuiPadConfig::render() {
+// the wizard's step for this frame, before it is drawn (render() = this, then the screen stack's frame of draw()): the
+// pad read, the input being mapped taken, the pad's own controls - and false, with no frame, once a 2 s hold left
+bool GuiPadConfig::prepareFrame() {
     if (stage != Stage::Test && Joystick::count() != joysticksAtStart) {
         cancelMapping();
         showPopup(_("Gamepad configuration changed. Mapping interrupted."));
     }
     joystick.update();
-
-    renderer.clear();
-    gui->renderBackground();
-    gui->renderTextBar();
-    gui->renderHeader(_("Gamepad configuration details"));
-    TextRenderer &text = gui->text();
-    const PanelStyle style = gui->panelStyle();
-    const ableem::Rect content = gui->classicContent();
-    const Rect picture = pictureRect();
-    const int x = content.x + PanelStyle::RowInset + 8;
-    const int width = picture.x - 24 - x;
-    const int lineHeight = pageFont.lineHeight();
-    int y = content.y + 4;
-    auto row = [&](const string &line, const ableem::Color &color) {
-        text.renderText_WithColor(pageFont, text.elide(pageFont, line, width), x, y, color, XALIGN_LEFT);
-        y += lineHeight;
-    };
 
     if (stage == Stage::Mapping) {
         const PadMapping::Scan scan = elements[current].scan;
@@ -608,10 +605,33 @@ void GuiPadConfig::render() {
         if (stage != Stage::Test)
             cancelMapping();
         menuVisible = false;
-        return;
+        return false;
     }
     padControls();
     switchToPressedPad();
+    return true;
+}
+
+//*******************************
+// GuiPadConfig::draw
+//*******************************
+// the frame's picture: the screen stack clears before it and presents after it
+void GuiPadConfig::draw() {
+    gui->renderBackground();
+    gui->renderTextBar();
+    gui->renderHeader(_("Gamepad configuration details"));
+    TextRenderer &text = gui->text();
+    const PanelStyle style = gui->panelStyle();
+    const ableem::Rect content = gui->classicContent();
+    const Rect picture = pictureRect();
+    const int x = content.x + PanelStyle::RowInset + 8;
+    const int width = picture.x - 24 - x;
+    const int lineHeight = pageFont.lineHeight();
+    int y = content.y + 4;
+    auto row = [&](const string &line, const ableem::Color &color) {
+        text.renderText_WithColor(pageFont, text.elide(pageFont, line, width), x, y, color, XALIGN_LEFT);
+        y += lineHeight;
+    };
 
     // the facts: the pad, its inputs, the raw buttons and hats, the axes eight to a row
     const ableem::JoystickState &state = joystick.state();
@@ -690,11 +710,8 @@ void GuiPadConfig::render() {
         const unsigned int held = min(+PadMapping::HoldToExitMs, gui->platform().ticks() - since);
         const Rect track(content.x + PanelStyle::RowInset, content.y + content.h - 6,
                          content.w - 2 * PanelStyle::RowInset, 4);
-        renderer.setBlendMode(ableem::BlendMode::Blend);
-        renderer.setDrawColor(Color(style.text.r, style.text.g, style.text.b, 60));
-        renderer.fillRect(track);
-        renderer.setDrawColor(Color(style.text.r, style.text.g, style.text.b, 220));
-        renderer.fillRect(Rect(track.x, track.y, static_cast<int>(track.w * held / PadMapping::HoldToExitMs), track.h));
+        style.progress(gui->uiContext(), track, held, PadMapping::HoldToExitMs, abgui::Tone::Text, 60, abgui::Tone::Text,
+                       220);
     }
 
     // the pad's own buttons (the console's front buttons and a keyboard still work, unlisted)
@@ -728,14 +745,13 @@ void GuiPadConfig::render() {
     else if (stage == Stage::Test && autoMapAt != 0)
         renderTopPopup(_("Mapping starts in") + " " + secondsTo(autoMapAt) + " s");
     renderPopup();
-    renderer.present();
 }
 
 //*******************************
 // GuiPadConfig::loop
 //*******************************
-// the pad itself drives this screen (padControls(), from render()); the console's front buttons - Power,
-// Reset and Open - and a keyboard's Escape, Start (Space) and Return are shortcuts handled here. Input
+// the pad itself drives this screen (padControls(), from render()'s prepareFrame()); the console's front buttons -
+// Power, Reset and Open - and a keyboard's Escape, Start (Space) and Return are shortcuts handled here. Input
 // hands the power button over as a key for the duration instead of powering off.
 //
 // keyboardAsPad is off here, the way GuiKeyboard turns it off: the screen's own job is reading a *pad*
