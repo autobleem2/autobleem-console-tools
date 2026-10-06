@@ -117,4 +117,3 @@ vector<abgui::FactsSection> GuiPscBiosMain::collect() {
     sections.push_back(pads);
     return sectionsOf(sections);
 }
-
