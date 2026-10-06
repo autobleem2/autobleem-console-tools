@@ -443,12 +443,12 @@ void GuiPadConfig::renderPopup() {
     }
     const PanelStyle style = gui->panelStyle();
     style.dim(gui->uiContext());
-    const int width = 800;
+    const int width = min(800, renderer.width() - 2 * PanelStyle::Margin); // a 4:3 canvas is narrower
     const ableem::Font &font = gui->assets().themeFonts[FONT_22_MED];
     const int textWidth = width - 2 * (PanelStyle::RowInset + 8);
     const int textHeight = gui->text().wrappedHeight(font, popupMessage, textWidth);
     const int height = PanelStyle::HeaderHeight + 12 + textHeight + 24;
-    const ableem::Rect panel((SCREEN_WIDTH - width) / 2, (SCREEN_HEIGHT - height) / 2, width, height);
+    const ableem::Rect panel((renderer.width() - width) / 2, (renderer.height() - height) / 2, width, height);
     style.sheet(gui->uiContext(), panel);
     const int y = style.header(*gui, panel, _("Gamepad configuration"));
     gui->text().renderWrappedText(font, popupMessage, panel.x + PanelStyle::RowInset + 8, y, textWidth, style.text);
