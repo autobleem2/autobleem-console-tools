@@ -2,12 +2,8 @@
 // GuiPscBiosMain: the hardware information screen.
 //
 #include "gui_pscbios_main.h"
-#include "gui_gamepad_menu.h"
-#include "gui_network_menu.h"
-#include "pscbios_pages.h"
 #include "../pscbios.h"
 #include "gui/gui.h"
-#include "gui/screens/gui_about.h"
 #include "core/services/environment.h"
 #include "core/model/pad_assignment.h"
 
@@ -122,55 +118,3 @@ vector<abgui::FactsSection> GuiPscBiosMain::collect() {
     return sectionsOf(sections);
 }
 
-//*******************************
-// GuiPscBiosMain::extraHints / onButton
-//*******************************
-string GuiPscBiosMain::extraHints() {
-    string menu;
-    if (status.wirelessFound && kernel)
-        menu += "|@Select| " + _("WiFi Settings") + "   ";
-    menu += "|@S| " + _("Setup Gamepads") + "   |@T| " + _("About");
-    return menu;
-}
-
-bool GuiPscBiosMain::onButton(ableem::Button button) {
-    switch (button) {
-    case Button::Square:
-        openGamepadMenu();
-        return true;
-    case Button::Triangle:
-        openAbout();
-        return true;
-    case Button::Select:
-        if (!kernel)
-            return false;
-        openNetworkMenu();
-        return true;
-    default:
-        return false;
-    }
-}
-
-//*******************************
-// GuiPscBiosMain::open*
-//*******************************
-void GuiPscBiosMain::openNetworkMenu() {
-    app.audio().cursor.play();
-    GuiNetworkMenu menu(*gui);
-    menu.show();
-}
-
-void GuiPscBiosMain::openGamepadMenu() {
-    app.audio().cursor.play();
-    GuiGamepadMenu menu(*gui);
-    menu.show();
-}
-
-// the foot is AutoBleem's - support, copyright and the GPL notice cover this tool too
-void GuiPscBiosMain::openAbout() {
-    app.audio().cursor.play();
-    GuiAbout about(*gui);
-    about.credits = pscbiosCredits();
-    about.foot = GuiAbout::autobleemFoot();
-    about.show();
-}
