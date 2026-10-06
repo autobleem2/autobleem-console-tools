@@ -170,8 +170,8 @@ src/screens/    the screens, on ab_classic (GuiFactsPage, GuiActionMenu, GuiStri
                  GuiTextPage, GuiAbout)
   gui_pscbios_main.*  the opening screen, a GuiFactsPage (sections: time, timezone, WiFi, ethernet, Bluetooth, the
                       controllers with their mapping and the mapping file). `run()` shows it as the facts screen
-                      (Select = WiFi where the kernel/NetworkManager is there, Square = gamepads, Triangle = About,
-                      Circle = quit); `runEntry("network")` shows it as the **Network & Controllers hub** instead,
+                      (Circle = quit, its only key since 2026-10-06 - the owner: the Wi-Fi and gamepad items are the
+                      quick menu's, and the About it had crashed); `runEntry("network")` shows it as the **Network & Controllers hub** instead,
                       with four interactive items in a `GuiActionMenu` on its back side (Select/Square/L1/R1 pick
                       Wi-Fi network, Bluetooth controllers, DualShock 3 pairing, the mapping wizard)
   gui_network_menu.*  the WiFi settings: option rows (label left, value right - a compact panel; no driver-mode row,
