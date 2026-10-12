@@ -210,7 +210,7 @@ after. Its log lines are the launcher's (`System/Logs/autobleem.log`, tagged `[p
 
 **Its `AB_SDK_ABI` must be the launcher's**, or the launcher refuses to load it (and Hardware Information
 falls back to the built-in screen): the CI's first step compares this repository's `autobleem-core` with the
-launcher's (its develop; for a v* tag its master) and fails when they differ - bump the submodule with every
+launcher's (its develop; for a v* tag the launcher's same tag, for a feature branch the launcher's branch of that name; see the root CLAUDE.md) and fails when they differ - bump the submodule with every
 ABI bump in core. **AB_SDK_ABI 7** (2026-09-30, the ab_gui step G3z): every screen is an `abgui::Screen` through the
 classic `GuiScreen` - it has `draw()` only (the screen stack clears and presents; `render()` is the stack's and
 final), and what it does before a frame goes in `prepareFrame()` (`GuiNetworkMenu`/`GuiBtPairing`'s refresh when
@@ -297,6 +297,6 @@ real pad (the keyboard-as-pad is not a joystick) - it shows "NO GAME CONTROLLERS
 - The mapping is saved to the file the launcher loads (`Input::currentMappingPath()`), never to the
   tool's own folder, and the launcher actually loads it now (it never called `loadMappings` before).
 - Dead code gone: `bluetool`, the BT menu, `cfgprocessor`, `DebugTimer`, the theme/sony copies.
-- The shared look (2026-09-21, the root CLAUDE.md's "UI styling standards"): the facts page, compact
+- The shared look (2026-09-21, "UI styling standards" in autobleem-core's docs/developer-guide.md): the facts page, compact
   option lists with the values at the right edge, chips for the front buttons, Back everywhere leaving
   loses nothing; the gamepad menu's copy of the controller list is gone (the opening screen has it).

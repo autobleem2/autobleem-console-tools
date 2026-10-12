@@ -2,7 +2,7 @@
 # common.cmake: the Windows PC with the "SysGCC for Raspberry Pi" toolchain (AB_RPI_TOOLCHAIN, a sysroot
 # rsynced from a real Pi; cmake/FindSDL2.cmake papers over its missing SDL headers with borrowed ones), or a
 # Debian host with crossbuild-essential-armhf and the multiarch libsdl2*-dev:armhf packages (the Docker
-# image). Separate from the PSC's own toolchain (toolchains/psc/PSCtoolchainV8.cmake) - see CLAUDE.md.
+# image). Separate from the PSC's own toolchain (toolchains/psc/PSCtoolchainV8.cmake, in the build image) - see the launcher's CLAUDE.md.
 
 set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR arm)
