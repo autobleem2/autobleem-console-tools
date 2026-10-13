@@ -8,7 +8,19 @@ overlay unpacked onto the data partition by `kernel/install_payload.sh`, the fla
 **Full backup** (all four partitions, rootfs included, to `LBOOT.EPB`), **Restore Mode** (checks the
 backup is ours and is the stock firmware, sets the recovery flag and reboots - Sony's own recovery then
 restores the console from the file on the stick) and **Back up games** (2026-09-24: the built-in games in
-`/gaadata/<id>/` copied to `<usb root>/Games Backup/<title>/`, see below). Ported on 2026-09-18 from the 2020 standalone tool (a fork of the old AutoBleem
+`/gaadata/<id>/` copied to `<usb root>/Games Backup/<title>/`, see below) and **Restore to factory**
+(AUTOBLEEM-32, five actions plus About; `core/factory_restore.*` + `FlashActions::restoreFactory`):
+1 inspect, write nothing (BOOTIMG1 md5 vs the stock one, ROOTFS1 = stock / Project Eris / unknown or
+BleemSync, foreign folders on USRDATA, the recovery flag), shown for a Cross/Circle confirm; 2 backups on
+the stick (LBOOT.EPB if none, always the built-in games' saves to `System/Backups/factory-<date>/`);
+3 `stock/boot.img` to BOOTIMG1 with `writeImage`; 4 ROOTFS1: stock = untouched, Eris = rw remount, the
+`eris_reverse.json` "remove" / "restore_text" / blkid link, then the whole tree checked against
+`data/rootfs1_stock_manifest.json` (foreign paths deleted, an unrestorable stock path = STOP with "use
+Restore Mode with your own stock LBOOT.EPB"), BleemSync/unknown refused at step 1; 5 USRDATA umount,
+mkfs.ext4 with the label/features of `tune2fs -l`, mount, saves put back; 6 flag cleared, sync, reboot.
+Only ConsoleFlasher touches the device; FakeFlasher has fakeRootfsDir/fakeDataDir knobs for tests.
+`stock/` (boot.img + README) and `data/*.json` ship next to the App like `kernel/`. Untested on a real
+console (the mkfs tools and the /usr/sony/share/recovery/AppData seed are assumptions). Ported on 2026-09-18 from the 2020 standalone tool (a fork of the old AutoBleem
 GUI, in git history under `psctools/abflashkit`) onto `lib_ableem` + `ab_core` + `ab_classic`; the root
 CLAUDE.md covers those and the build.
 
