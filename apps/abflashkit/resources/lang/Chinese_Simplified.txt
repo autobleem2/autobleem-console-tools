@@ -1,6 +1,6 @@
 # AutoBleem Chinese_Simplified Translation - abflashkit
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 3 / Total: 72
+# Untranslated: 3 / Total: 73
 
 About=
 All done - when the screen goes black replace power cord=全部完成 - 屏幕变黑后请重新插拔电源线
@@ -61,6 +61,7 @@ The kernel and system files go back to Sony's, and the data partition is erased 
 The kernel image could not be written. Nothing was changed.=无法写入内核镜像。未做任何更改。
 The LBOOT does not contain CLEAN PSC firmware. You may SOFTBRICK your console. Are you sure?=LBOOT 中不是纯净的 PSC 固件。主机可能会软砖。确定继续吗？
 The LBOOT does not contain rootfs1. This may be ABFK1.0a backup. Are you sure?=LBOOT 中没有 rootfs1。这可能是 ABFK 1.0a 的备份。确定继续吗？
+The LBOOT.EPB backup failed. Nothing was changed.=LBOOT.EPB 备份失败。未做任何更改。
 The recovery flag is already set=恢复标志已设置
 The saves could not be backed up. Nothing was changed.=无法备份存档。未作任何更改。
 The saves could not be put back - they are in the Backups folder on the stick=无法放回存档 - 它们在U盘的 Backups 文件夹中

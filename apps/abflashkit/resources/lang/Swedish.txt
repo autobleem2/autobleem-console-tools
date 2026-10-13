@@ -1,6 +1,6 @@
 # AutoBleem Swedish Translation - abflashkit
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 3 / Total: 72
+# Untranslated: 3 / Total: 73
 
 About=
 All done - when the screen goes black replace power cord=Klart - när skärmen blir svart, sätt i strömkabeln igen
@@ -61,6 +61,7 @@ The kernel and system files go back to Sony's, and the data partition is erased 
 The kernel image could not be written. Nothing was changed.=Kärnavbilden kunde inte skrivas. Ingenting ändrades.
 The LBOOT does not contain CLEAN PSC firmware. You may SOFTBRICK your console. Are you sure?=LBOOT innehåller inte REN PSC-firmware. Du riskerar att SOFTBRICKA din konsol. Är du säker?
 The LBOOT does not contain rootfs1. This may be ABFK1.0a backup. Are you sure?=LBOOT innehåller inte rootfs1. Det kan vara en ABFK 1.0a-kopia. Är du säker?
+The LBOOT.EPB backup failed. Nothing was changed.=Säkerhetskopian LBOOT.EPB misslyckades. Ingenting ändrades.
 The recovery flag is already set=Återställningsflaggan är redan satt
 The saves could not be backed up. Nothing was changed.=Sparfilerna kunde inte säkerhetskopieras. Inget ändrades.
 The saves could not be put back - they are in the Backups folder on the stick=Sparfilerna kunde inte läggas tillbaka - de finns i mappen Backups på minnet

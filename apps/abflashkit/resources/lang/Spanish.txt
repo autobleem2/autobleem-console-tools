@@ -1,6 +1,6 @@
 # AutoBleem Spanish Translation - abflashkit
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 3 / Total: 72
+# Untranslated: 3 / Total: 73
 
 About=
 All done - when the screen goes black replace power cord=Todo listo - cuando la pantalla se ponga en negro, vuelve a conectar el cable de alimentación
@@ -61,6 +61,7 @@ The kernel and system files go back to Sony's, and the data partition is erased 
 The kernel image could not be written. Nothing was changed.=No se ha podido escribir la imagen del kernel. No se ha cambiado nada.
 The LBOOT does not contain CLEAN PSC firmware. You may SOFTBRICK your console. Are you sure?=LBOOT no contiene un firmware PSC LIMPIO. Podrías dejar la consola en SOFTBRICK. ¿Continuar?
 The LBOOT does not contain rootfs1. This may be ABFK1.0a backup. Are you sure?=LBOOT no contiene rootfs1. Puede ser una copia de ABFK 1.0a. ¿Continuar?
+The LBOOT.EPB backup failed. Nothing was changed.=No se ha podido crear la copia de seguridad LBOOT.EPB. No se ha cambiado nada.
 The recovery flag is already set=La marca de recuperación ya está activada
 The saves could not be backed up. Nothing was changed.=No se pudieron copiar las partidas guardadas. No se cambió nada.
 The saves could not be put back - they are in the Backups folder on the stick=No se pudieron devolver las partidas guardadas - están en la carpeta Backups del pendrive

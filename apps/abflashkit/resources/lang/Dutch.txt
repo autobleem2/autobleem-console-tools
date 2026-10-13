@@ -1,6 +1,6 @@
 # AutoBleem Dutch Translation - abflashkit
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 3 / Total: 72
+# Untranslated: 3 / Total: 73
 
 About=
 All done - when the screen goes black replace power cord=Klaar - als het scherm zwart wordt, steek de stroomkabel opnieuw in
@@ -61,6 +61,7 @@ The kernel and system files go back to Sony's, and the data partition is erased 
 The kernel image could not be written. Nothing was changed.=De kernel-image kon niet worden geschreven. Er is niets gewijzigd.
 The LBOOT does not contain CLEAN PSC firmware. You may SOFTBRICK your console. Are you sure?=LBOOT bevat geen SCHONE PSC-firmware. Je console kan SOFTBRICKEN. Weet je het zeker?
 The LBOOT does not contain rootfs1. This may be ABFK1.0a backup. Are you sure?=LBOOT bevat geen rootfs1. Dit is mogelijk een ABFK 1.0a-back-up. Weet je het zeker?
+The LBOOT.EPB backup failed. Nothing was changed.=De back-up LBOOT.EPB is mislukt. Er is niets gewijzigd.
 The recovery flag is already set=De herstelvlag is al ingesteld
 The saves could not be backed up. Nothing was changed.=De savegames konden niet worden gekopieerd. Er is niets gewijzigd.
 The saves could not be put back - they are in the Backups folder on the stick=De savegames konden niet worden teruggezet - ze staan in de map Backups op de stick

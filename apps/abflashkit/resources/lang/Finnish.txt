@@ -1,6 +1,6 @@
 # AutoBleem Finnish Translation - abflashkit
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 3 / Total: 72
+# Untranslated: 3 / Total: 73
 
 About=
 All done - when the screen goes black replace power cord=Valmis - kun näyttö pimenee, kytke virtajohto uudelleen
@@ -61,6 +61,7 @@ The kernel and system files go back to Sony's, and the data partition is erased 
 The kernel image could not be written. Nothing was changed.=Ydinkuvaa ei voitu kirjoittaa. Mitään ei muutettu.
 The LBOOT does not contain CLEAN PSC firmware. You may SOFTBRICK your console. Are you sure?=LBOOT ei sisällä PUHDASTA PSC-laiteohjelmistoa. Konsolisi voi SOFTBRICKAANTUA. Oletko varma?
 The LBOOT does not contain rootfs1. This may be ABFK1.0a backup. Are you sure?=LBOOT ei sisällä rootfs1:tä. Tämä voi olla ABFK 1.0a:n varmuuskopio. Oletko varma?
+The LBOOT.EPB backup failed. Nothing was changed.=LBOOT.EPB-varmuuskopiointi epäonnistui. Mitään ei muutettu.
 The recovery flag is already set=Palautuslippu on jo asetettu
 The saves could not be backed up. Nothing was changed.=Tallennuksia ei voitu varmuuskopioida. Mitään ei muutettu.
 The saves could not be put back - they are in the Backups folder on the stick=Tallennuksia ei voitu palauttaa - ne ovat tikun Backups-kansiossa
