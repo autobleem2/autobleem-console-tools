@@ -352,7 +352,7 @@ FlashKitActions::Outcome FlashKitActions::restoreFactory() {
             ui_.runInBackground([&] { valid = flasher_.validateBackup(paths_.backup); });
         }
         if (!made || !valid) {
-            ui_.status(_("Invalid backup or invalid kernel image"));
+            ui_.status(_("The LBOOT.EPB backup failed. Nothing was changed."));
             ui_.wait(3000);
             led_.setMode(LedMode::Green);
             return Outcome::Failed;

@@ -497,7 +497,8 @@ string FactoryRestore::mkfsCommand(const string &tune2fsOutput, const string &de
 string FactoryRestore::folderName(long long when) {
     time_t stamp = static_cast<time_t>(when);
     char text[32];
-    const tm *parts = gmtime(&stamp);
+    tm local = {};
+    const tm *parts = localtime_r(&stamp, &local); // the console's own date
     if (!parts || strftime(text, sizeof(text), "%Y-%m-%d", parts) == 0)
         return "factory";
     return string("factory-") + text;

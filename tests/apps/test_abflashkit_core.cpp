@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include <cstdlib>
 #include <ctime>
 #include <unistd.h>
 
@@ -747,8 +748,11 @@ TEST_CASE("mkfsCommand: the factory label, block and inode size, features and re
 }
 
 TEST_CASE("the backup folder's name is the date") {
+    // the console's local date: the zone is pinned so the host's does not matter
+    setenv("TZ", "UTC", 1);
+    tzset();
     CHECK(FactoryRestore::folderName(0) == "factory-1970-01-01");
-    CHECK(FactoryRestore::folderName(1760400000) == "factory-2025-10-13");
+    CHECK(FactoryRestore::folderName(1760443200) == "factory-2025-10-14"); // noon
 }
 
 namespace {
@@ -772,6 +776,7 @@ struct FactoryRun {
         fb.tmp.writeFile("parts/boot", "BOOT");
         fb.tmp.writeFile("parts/user", "USER");
         fb.tmp.writeFile("parts/tee", "TEE");
+        fb.tmp.makeSubDir("stick"); // the stick is mounted: LBOOT.EPB is written into an existing folder
         FakeFlasher maker(0);
         maker.createBackup({{fb.tmp.at("parts/boot"), "boot.img"}, {fb.tmp.at("parts/user"), "userdata.ext4"},
                             {fb.tmp.at("parts/tee"), "tz.img"}},
@@ -893,6 +898,19 @@ TEST_CASE("restoreFactory: Circle at the question writes nothing; a saves backup
         CHECK_FALSE(r.wrote());
         CHECK_FALSE(r.flasher.rebooted);
     }
+}
+
+TEST_CASE("restoreFactory: an LBOOT.EPB backup that cannot be written stops before anything is written") {
+    FactoryRun r(false);
+    ableem::DirEntry::removeFile(r.paths.backup);
+    r.paths.backup = r.fb.tmp.at("no-such-folder/LBOOT.EPB"); // the stick is not there to write to
+    CHECK(r.run() == FlashKitActions::Outcome::Failed);
+    CHECK(r.ui.said("Nothing was changed"));
+    CHECK_FALSE(r.wrote());
+    CHECK_FALSE(r.flasher.rebooted);
+    CHECK_FALSE(r.flasher.recoveryMode);
+    for (const string &step : r.flasher.log)
+        CHECK(step.find("backup saves") == string::npos);
 }
 
 TEST_CASE("restoreFactory: the stock path it cannot restore stops it with the Restore Mode advice, nothing further written") {
