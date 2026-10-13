@@ -771,6 +771,9 @@ struct FactoryRun {
         flasher.findings.foreignFolders = {"AutoBleem", "Eris"};
         flasher.fakeRootfsDir = fb.root;
         flasher.fakeDataDir = fb.tmp.at("usrdata");
+        // a backup the action makes itself reads stand-ins, never the host's /dev/disk/by-partlabel
+        flasher.fakePartitionsDir = fb.tmp.at("fake-partitions");
+        flasher.fakePartitionBytes = 64 * 1024;
         fb.tmp.writeFile("usrdata/AppData/sony/pcsx/5/.pcsx/memcards/card1.mcd", "CARD 5");
         fb.tmp.writeFile("stock/boot.img", "STOCK KERNEL");
         fb.tmp.writeFile("parts/boot", "BOOT");
