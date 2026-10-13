@@ -1,8 +1,9 @@
 //
-// FlashKitActions: the four things ABFlashKit does, step by step - Flash Kernel (back up, validate, set the
+// FlashKitActions: the five things ABFlashKit does, step by step - Flash Kernel (back up, validate, set the
 // recovery flag, write the kernel and the payload, clear the flag, reboot), Full backup, Restore Mode (check
 // the backup is ours and vanilla, set the recovery flag, reboot so that Sony's recovery restores from it),
-// and Back up games (the console's built-in games copied to the stick). The screen is behind FlashUi
+// Back up games (the console's built-in games copied to the stick) and Restore to factory (the stock kernel,
+// ROOTFS1 and an empty data partition put back, in steps). The screen is behind FlashUi
 // (status lines, a progress bar, the confirmations, the pauses), the console behind Flasher and Led, so a
 // test can run them all to the end.
 //
@@ -45,6 +46,9 @@ struct FlashKitPaths {
     std::string internalGamesDir; // the console's built-in games, /gaadata
     std::string internalDb;       // <usb root>/System/Databases/internal.db - their titles
     std::string gamesBackupDir;   // <usb root>/Games Backup
+    std::string stockDir;         // <app dir>/stock - Sony's boot.img
+    std::string dataDir;          // <app dir>/data - the stock ROOTFS1 manifest and the Project Eris reversal
+    std::string backupsDir;       // <usb root>/System/Backups - factory-<date>/ goes in it
 };
 
 //******************
@@ -66,6 +70,7 @@ public:
     Outcome fullBackup();
     Outcome restore();
     Outcome backupGames();
+    Outcome restoreFactory();
 
     static const char *name(Outcome outcome);
     // how many steps the bar is drawn in: a byte count becomes a fraction of it

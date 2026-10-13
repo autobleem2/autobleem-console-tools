@@ -227,6 +227,11 @@ jobs:
           cp -a apps/abflashkit/resources/. stage/Apps/abflashkit/
           cp build_psc/apps/abflashkit/abflashkit stage/Apps/abflashkit/abflashkit
           upx -q --best --lzma stage/Apps/abflashkit/abflashkit || true
+          # Restore to factory (AUTOBLEEM-32): Sony's kernel image with its README, and the stock ROOTFS1
+          # manifest + Project Eris reversal data, next to the App like kernel/
+          mkdir -p stage/Apps/abflashkit/stock stage/Apps/abflashkit/data
+          cp apps/abflashkit/stock/boot.img apps/abflashkit/stock/README.md stage/Apps/abflashkit/stock/
+          cp apps/abflashkit/data/*.json stage/Apps/abflashkit/data/
           # the kernel payload from psc-kernel-payload's release always replaces the checked-in 2020 one now
           # (kernel-payload job; R1 - no silent fallback to it is left on any path)
           rm -rf stage/Apps/abflashkit/kernel
@@ -240,6 +245,12 @@ jobs:
             || { echo "::error::kernel/boot.img does not match boot.md5"; exit 1; }
           (cd stage/Apps/abflashkit/kernel && [ "$(md5sum abrootfs.tgz | cut -c1-32)" = "$(head -c 32 abrootfs.md5)" ]) \
             || { echo "::error::kernel/abrootfs.tgz does not match abrootfs.md5"; exit 1; }
+          # the stock kernel image is the one Sony shipped; a package without it cannot restore to factory
+          (cd stage/Apps/abflashkit/stock && [ "$(md5sum boot.img | cut -c1-32)" = "28ce5f6de4981764411393310311b517" ]) \
+            || { echo "::error::stock/boot.img is not Sony's kernel image"; exit 1; }
+          for f in rootfs1_stock_manifest.json eris_reverse.json; do
+            test -s "stage/Apps/abflashkit/data/$f" || { echo "::error::Apps/abflashkit/data/$f missing"; exit 1; }
+          done
           tar -czf "out/console-tools-psc-$V.tar.gz" -C stage .
           ls -l out
       - uses: actions/upload-artifact@v7

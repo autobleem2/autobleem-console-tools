@@ -7,6 +7,7 @@
 
 #include "support/temp_dir.h"
 
+#include "core/factory_restore.h"
 #include "core/flash_actions.h"
 #include "core/flasher.h"
 #include "core/games_backup.h"
@@ -18,6 +19,9 @@
 
 #include <string>
 #include <vector>
+
+#include <ctime>
+#include <unistd.h>
 
 using std::string;
 using std::vector;
@@ -524,4 +528,424 @@ TEST_CASE("sizeText") {
     CHECK(FlashKitActions::sizeText(0) == "0 MB");
     CHECK(FlashKitActions::sizeText(700ull * 1024 * 1024) == "700 MB");
     CHECK(FlashKitActions::sizeText(1536ull * 1024 * 1024) == "1.5 GB");
+}
+
+//*******************************
+// Restore to factory
+//*******************************
+namespace {
+// a small stock tree and the manifest + Eris data that describe it; `eris` makes the tree what Project Eris
+// leaves: its files added, the text files rewritten, /sbin/blkid gone, a foreign file written live
+struct FactoryBench {
+    explicit FactoryBench(bool eris = true) : tmp("factory") {
+        tmp.writeFile("root/etc/fstab", "stock fstab");
+        tmp.writeFile("root/etc/group", eris ? "eris group" : "stock group\n");
+        tmp.writeFile("root/bin/busybox.nosuid", "BUSYBOX");
+        tmp.makeSubDir("root/sbin");
+        tmp.makeSubDir("root/tmp");
+        tmp.writeFile("data/rootfs1_stock_manifest.json",
+                      R"({"entries": {
+  "/etc": {"type":"dir","mode":"0755","uid":0,"gid":0},
+  "/etc/fstab": {"type":"file","mode":"0644","uid":0,"gid":0,"size":11,"md5":")" +
+                          ableem::Md5::ofString("stock fstab") + R"("},
+  "/etc/group": {"type":"file","mode":"0644","uid":0,"gid":0,"size":12,"md5":")" +
+                          ableem::Md5::ofString("stock group\n") + R"("},
+  "/bin": {"type":"dir","mode":"0755","uid":0,"gid":0},
+  "/bin/busybox.nosuid": {"type":"file","mode":"0755","uid":0,"gid":0,"size":7,"md5":")" +
+                          ableem::Md5::ofString("BUSYBOX") + R"("},
+  "/sbin": {"type":"dir","mode":"0755","uid":0,"gid":0},
+  "/sbin/blkid": {"type":"link","mode":"0777","uid":0,"gid":0,"target":"/bin/busybox.nosuid"},
+  "/tmp": {"type":"dir","mode":"01777","uid":0,"gid":0}}})");
+        tmp.writeFile("data/eris_reverse.json", R"({
+  "detect": ["/usr/bin/project_eris_service"],
+  "remove": ["/opt", "/usr/bin/project_eris_service", "/etc/eris.conf"],
+  "restore_text": {"/etc/group": "stock group\n"},
+  "restore_other": {"/sbin/blkid": {"type":"link","mode":"0777","uid":0,"gid":0,"target":"/bin/busybox.nosuid"}}})");
+        if (eris) {
+            tmp.writeFile("root/opt/eris/loader", "ERIS");
+            tmp.writeFile("root/usr/bin/project_eris_service", "ERIS SERVICE");
+            tmp.writeFile("root/etc/eris.conf", "x");
+            tmp.writeFile("root/var/log/live.log", "written live"); // not in the manifest
+        } else {
+            symlink("/bin/busybox.nosuid", tmp.at("root/sbin/blkid").c_str());
+        }
+        root = tmp.at("root");
+        data = tmp.at("data");
+    }
+    bool loaded() { return manifest.load(data + "/rootfs1_stock_manifest.json") && erisData.load(data + "/eris_reverse.json"); }
+    TempDir tmp;
+    string root, data;
+    FactoryRestore::Manifest manifest;
+    FactoryRestore::Eris erisData;
+};
+
+string linkTarget(const string &path) {
+    char target[256];
+    ssize_t n = readlink(path.c_str(), target, sizeof(target) - 1);
+    return n < 0 ? "" : string(target, static_cast<size_t>(n));
+}
+} // namespace
+
+TEST_CASE("the checked-in stock data: Sony's boot image, a manifest and Eris data that agree") {
+    const string app = AB_FLASHKIT_DIR;
+    CHECK(FactoryRestore::validateStock(app + "/stock", app + "/data"));
+    CHECK(ableem::Md5::ofFile(app + "/stock/boot.img") == FactoryRestore::StockBootMd5);
+    FactoryRestore::Manifest manifest;
+    FactoryRestore::Eris eris;
+    REQUIRE(manifest.load(app + "/data/rootfs1_stock_manifest.json"));
+    REQUIRE(eris.load(app + "/data/eris_reverse.json"));
+    CHECK(manifest.entries.size() > 2000);
+    CHECK(manifest.entries.at("/etc/fstab").type == "file");
+    CHECK(manifest.entries.at("/sbin/blkid").target == "/bin/busybox.nosuid");
+    CHECK(manifest.entries.at("/etc/passwd").mode == 0644);
+    CHECK(manifest.entries.at("/bin/busybox.suid").mode == 04755);
+    // what Eris adds is not stock; what it rewrites is
+    for (const string &path : eris.remove)
+        CHECK(manifest.entries.count(path) == 0);
+    for (const auto &item : eris.restoreText)
+        CHECK(manifest.entries.count(item.first) == 1);
+    CHECK(eris.restoreText.size() == 7);
+    CHECK(eris.restoreOther.count("/sbin/blkid") == 1);
+
+    // a different boot image, or data files that are not there, are not stock
+    TempDir tmp("stock_bad");
+    tmp.writeFile("stock/boot.img", "not Sony's");
+    CHECK_FALSE(FactoryRestore::validateStock(tmp.at("stock"), app + "/data"));
+    CHECK_FALSE(FactoryRestore::validateStock(app + "/stock", tmp.at("nothing")));
+}
+
+TEST_CASE("restoreEris: Eris removed, the text back, the link back, foreign paths deleted, the tree equals the manifest") {
+    FactoryBench b;
+    REQUIRE(b.loaded());
+    CHECK(b.erisData.installedIn(b.root));
+    uint64_t last = 0;
+    FactoryRestore::Result result = FactoryRestore::restoreEris(b.root, b.manifest, b.erisData,
+                                                                [&](uint64_t done, uint64_t) { last = done; });
+    INFO(result.problem);
+    REQUIRE(result.ok);
+    CHECK(last > 0);
+    CHECK_FALSE(b.erisData.installedIn(b.root));
+    CHECK_FALSE(ableem::DirEntry::exists(b.tmp.at("root/opt")));
+    CHECK_FALSE(ableem::DirEntry::exists(b.tmp.at("root/etc/eris.conf")));
+    CHECK_FALSE(ableem::DirEntry::exists(b.tmp.at("root/var"))); // the live log and its folder
+    CHECK(b.tmp.readFile("root/etc/group") == "stock group\n");
+    CHECK(linkTarget(b.tmp.at("root/sbin/blkid")) == "/bin/busybox.nosuid");
+    CHECK(b.tmp.readFile("root/etc/fstab") == "stock fstab");
+    CHECK_FALSE(ableem::DirEntry::exists(b.tmp.at("root/etc/group.ab-restore")));
+    vector<string> foreign, problems;
+    FactoryRestore::checkTree(b.root, b.manifest, nullptr, foreign, problems);
+    CHECK(foreign.empty());
+    CHECK(problems.empty());
+}
+
+TEST_CASE("restoreEris: a stock file that differs or is missing stops it, and no foreign path is deleted") {
+    {
+        FactoryBench b;
+        REQUIRE(b.loaded());
+        b.tmp.writeFile("root/bin/busybox.nosuid", "PATCHED"); // not Sony's, and nothing here can put it back
+        FactoryRestore::Result result = FactoryRestore::restoreEris(b.root, b.manifest, b.erisData, nullptr);
+        CHECK_FALSE(result.ok);
+        CHECK(result.problem.find("/bin/busybox.nosuid") != string::npos);
+        CHECK(ableem::DirEntry::exists(b.tmp.at("root/var/log/live.log"))); // nothing further was touched
+    }
+    {
+        FactoryBench b;
+        REQUIRE(b.loaded());
+        ableem::DirEntry::removeFile(b.tmp.at("root/etc/fstab"));
+        FactoryRestore::Result result = FactoryRestore::restoreEris(b.root, b.manifest, b.erisData, nullptr);
+        CHECK_FALSE(result.ok);
+        CHECK(result.problem.find("/etc/fstab") != string::npos);
+        CHECK(ableem::DirEntry::exists(b.tmp.at("root/var/log/live.log")));
+    }
+    {
+        // a stock link pointing elsewhere, and a stock folder that is a file
+        FactoryBench b(false);
+        REQUIRE(b.loaded());
+        unlink(b.tmp.at("root/sbin/blkid").c_str());
+        symlink("/bin/other", b.tmp.at("root/sbin/blkid").c_str());
+        vector<string> foreign, problems;
+        FactoryRestore::checkTree(b.root, b.manifest, nullptr, foreign, problems);
+        // restoreEris puts the blkid link back before checking, so only an unrelated link would stop it
+        CHECK(problems.size() == 1);
+        CHECK(FactoryRestore::restoreEris(b.root, b.manifest, b.erisData, nullptr).ok);
+    }
+}
+
+TEST_CASE("checkTree: a stock tree has nothing foreign, a stray file is listed, a mount point is not looked into") {
+    FactoryBench b(false);
+    REQUIRE(b.loaded());
+    vector<string> foreign, problems;
+    FactoryRestore::checkTree(b.root, b.manifest, nullptr, foreign, problems);
+    CHECK(foreign.empty());
+    CHECK(problems.empty());
+    b.tmp.writeFile("root/etc/stray", "x");
+    b.tmp.writeFile("root/tmp/session", "written live"); // in /tmp: not in the manifest either
+    FactoryRestore::checkTree(b.root, b.manifest, nullptr, foreign, problems);
+    CHECK(foreign == vector<string>{"/etc/stray", "/tmp/session"});
+    CHECK(problems.empty());
+    // a root that is not there
+    foreign.clear();
+    FactoryRestore::checkTree(b.tmp.at("nowhere"), b.manifest, nullptr, foreign, problems);
+    CHECK_FALSE(problems.empty());
+}
+
+TEST_CASE("the saves: <data>/AppData/sony/pcsx/<id>/.pcsx/{memcards,sstates} copied away and back") {
+    TempDir tmp("saves");
+    tmp.writeFile("data/AppData/sony/pcsx/3/.pcsx/memcards/card1.mcd", "CARD 3");
+    tmp.writeFile("data/AppData/sony/pcsx/3/.pcsx/sstates/slot.0", "STATE 3");
+    tmp.writeFile("data/AppData/sony/pcsx/3/.pcsx/cheats/not-a-save", "x");
+    tmp.writeFile("data/AppData/sony/pcsx/7/.pcsx/memcards/card1.mcd", "CARD 7");
+    tmp.writeFile("data/autobleem/config.ini", "x");
+    CHECK(FactoryRestore::backupSaves(tmp.at("data"), tmp.at("stick/factory-1")));
+    CHECK(tmp.readFile("stick/factory-1/3/.pcsx/memcards/card1.mcd") == "CARD 3");
+    CHECK(tmp.readFile("stick/factory-1/3/.pcsx/sstates/slot.0") == "STATE 3");
+    CHECK(tmp.readFile("stick/factory-1/7/.pcsx/memcards/card1.mcd") == "CARD 7");
+    CHECK_FALSE(ableem::DirEntry::exists(tmp.at("stick/factory-1/3/.pcsx/cheats")));
+    CHECK(FactoryRestore::backupSaves(tmp.at("no-data"), tmp.at("stick/factory-2"))); // nothing to copy is fine
+    CHECK(ableem::DirEntry::isDirectory(tmp.at("stick/factory-2")));
+
+    // onto a new, empty data partition
+    CHECK(FactoryRestore::restoreSaves(tmp.at("stick/factory-1"), tmp.at("newdata")));
+    CHECK(tmp.readFile("newdata/AppData/sony/pcsx/3/.pcsx/sstates/slot.0") == "STATE 3");
+    CHECK(tmp.readFile("newdata/AppData/sony/pcsx/7/.pcsx/memcards/card1.mcd") == "CARD 7");
+}
+
+TEST_CASE("foreign folders on USRDATA, whatever their case") {
+    TempDir tmp("foreign");
+    tmp.makeSubDir("data/AutoBleem");
+    tmp.makeSubDir("data/Eris");
+    tmp.makeSubDir("data/bleemsync");
+    tmp.makeSubDir("data/AppData");
+    tmp.writeFile("data/eris.txt", "a file is not a folder");
+    CHECK(FactoryRestore::foreignFolders(tmp.at("data")) == vector<string>{"AutoBleem", "Eris", "bleemsync"});
+    CHECK(FactoryRestore::foreignFolders(tmp.at("nowhere")).empty());
+}
+
+TEST_CASE("mkfsCommand: the factory label, block and inode size, features and reserve, from tune2fs -l") {
+    const string info =
+        "tune2fs 1.43.4 (31-Jan-2017)\n"
+        "Filesystem volume name:   userdata\n"
+        "Filesystem features:      has_journal ext_attr resize_inode dir_index filetype needs_recovery extent "
+        "flex_bg sparse_super large_file huge_file dir_nlink extra_isize\n"
+        "Block count:              1000000\n"
+        "Reserved block count:     50000\n"
+        "Block size:               4096\n"
+        "Inode size:               256\n";
+    const string command = FactoryRestore::mkfsCommand(info, "/dev/disk/by-partlabel/USRDATA");
+    CHECK(command == "mkfs.ext4 -F -q -b 4096 -I 256 -m 5.00 -O none,has_journal,ext_attr,resize_inode,dir_index,"
+                     "filetype,extent,flex_bg,sparse_super,large_file,huge_file,dir_nlink,extra_isize -L userdata "
+                     "/dev/disk/by-partlabel/USRDATA");
+    // no label, an unusable label, no output at all
+    string none = info;
+    none.replace(none.find("userdata"), 8, "<none>");
+    CHECK(FactoryRestore::mkfsCommand(none, "/dev/x").find("-L") == string::npos);
+    string odd = info;
+    odd.replace(odd.find("userdata"), 8, "a;b");
+    CHECK(FactoryRestore::mkfsCommand(odd, "/dev/x").find("-L") == string::npos);
+    CHECK(FactoryRestore::mkfsCommand("", "/dev/x").empty());
+    CHECK(FactoryRestore::mkfsCommand("tune2fs: Bad magic number in super-block\n", "/dev/x").empty());
+}
+
+TEST_CASE("the backup folder's name is the date") {
+    CHECK(FactoryRestore::folderName(0) == "factory-1970-01-01");
+    CHECK(FactoryRestore::folderName(1760400000) == "factory-2025-10-13");
+}
+
+namespace {
+struct FactoryRun {
+    explicit FactoryRun(bool eris = true) : fb(eris) {
+        // the bench's usual pieces plus the factory ones
+        FlashKitPaths paths;
+        paths.backup = fb.tmp.at("stick/LBOOT.EPB");
+        paths.kernelDir = fb.tmp.at("kernel");
+        paths.stockDir = fb.tmp.at("stock");
+        paths.dataDir = fb.data;
+        paths.backupsDir = fb.tmp.at("stick/System/Backups");
+        this->paths = paths;
+        flasher.findings.bootIsStock = false;
+        flasher.findings.rootfs = eris ? FactoryRestore::Rootfs::Eris : FactoryRestore::Rootfs::Stock;
+        flasher.findings.foreignFolders = {"AutoBleem", "Eris"};
+        flasher.fakeRootfsDir = fb.root;
+        flasher.fakeDataDir = fb.tmp.at("usrdata");
+        fb.tmp.writeFile("usrdata/AppData/sony/pcsx/5/.pcsx/memcards/card1.mcd", "CARD 5");
+        fb.tmp.writeFile("stock/boot.img", "STOCK KERNEL");
+        fb.tmp.writeFile("parts/boot", "BOOT");
+        fb.tmp.writeFile("parts/user", "USER");
+        fb.tmp.writeFile("parts/tee", "TEE");
+        FakeFlasher maker(0);
+        maker.createBackup({{fb.tmp.at("parts/boot"), "boot.img"}, {fb.tmp.at("parts/user"), "userdata.ext4"},
+                            {fb.tmp.at("parts/tee"), "tz.img"}},
+                           paths.backup, [](const string &) {}, nullptr);
+    }
+    FactoryBench fb;
+    FlashKitPaths paths;
+    FakeFlasher flasher{0};
+    NullLed led;
+    ScriptedUi ui;
+    FlashKitActions::Outcome run() {
+        FlashKitActions actions(flasher, led, ui, paths);
+        return actions.restoreFactory();
+    }
+    bool wrote() const {
+        for (const string &step : flasher.log)
+            if (step.rfind("recovery mode on", 0) == 0 || step.rfind("flash ", 0) == 0 ||
+                step.rfind("restore rootfs", 0) == 0 || step == "reset user data")
+                return true;
+        return false;
+    }
+};
+} // namespace
+
+TEST_CASE("restoreFactory on Project Eris: inspect, saves, kernel, rootfs, data partition, saves back, reboot") {
+    FactoryRun r;
+    CHECK(r.run() == FlashKitActions::Outcome::Rebooting);
+    // the confirmation shows the findings and what will be done
+    REQUIRE(r.ui.questions.size() == 1);
+    CHECK(r.ui.questions[0].find("Project Eris") != string::npos);
+    CHECK(r.ui.questions[0].find("AutoBleem Eris") != string::npos);
+    CHECK(r.ui.questions[0].find("not stock") != string::npos);
+    // the saves went to the stick under the date, then back, in the order of the plan
+    const vector<string> &log = r.flasher.log;
+    REQUIRE(log.size() == 10);
+    CHECK(log[0] == "validate stock in " + r.paths.stockDir);
+    CHECK(log[1] == "inspect factory state");
+    CHECK(log[2].rfind("backup saves to " + r.paths.backupsDir + "/factory-", 0) == 0);
+    CHECK(log[3] == "recovery mode on");
+    CHECK(log[4] == "flash " + r.paths.stockDir + "/boot.img");
+    CHECK(log[5] == "restore rootfs (Project Eris)");
+    CHECK(log[6] == "reset user data");
+    CHECK(log[7].rfind("restore saves from " + r.paths.backupsDir + "/factory-", 0) == 0);
+    CHECK(log[8] == "recovery mode off");
+    CHECK(log[9] == "reboot");
+    CHECK_FALSE(r.flasher.recoveryMode);
+    CHECK(r.flasher.rebooted);
+    // the real tree code ran on the fake root, and the saves really travelled
+    CHECK(r.fb.tmp.readFile("root/etc/group") == "stock group\n");
+    CHECK_FALSE(ableem::DirEntry::exists(r.fb.tmp.at("root/opt")));
+    CHECK(r.ui.said("All done"));
+    const string day = FactoryRestore::folderName(static_cast<long long>(time(nullptr)));
+    CHECK(r.fb.tmp.readFile("stick/System/Backups/" + day + "/5/.pcsx/memcards/card1.mcd") == "CARD 5");
+}
+
+TEST_CASE("restoreFactory on a stock ROOTFS1 leaves it alone, and makes the backup when there is none") {
+    FactoryRun r(false);
+    ableem::DirEntry::removeFile(r.paths.backup);
+    CHECK(r.run() == FlashKitActions::Outcome::Rebooting);
+    CHECK(r.ui.questions[0].find("System files: stock") != string::npos);
+    CHECK(ableem::DirEntry::exists(r.paths.backup));
+    CHECK(LbootBackup::isAutoBleemBackup(r.paths.backup));
+    bool backedUp = false;
+    for (const string &step : r.flasher.log) {
+        backedUp = backedUp || step == "backup to " + r.paths.backup;
+        CHECK(step.find("restore rootfs (Project Eris)") == string::npos);
+    }
+    CHECK(backedUp);
+    CHECK(r.fb.tmp.readFile("root/etc/fstab") == "stock fstab"); // untouched
+
+    // an existing LBOOT.EPB is kept as it is
+    FactoryRun again(false);
+    const long long size = ableem::DirEntry::fileSize(again.paths.backup);
+    CHECK(again.run() == FlashKitActions::Outcome::Rebooting);
+    CHECK(ableem::DirEntry::fileSize(again.paths.backup) == size);
+    for (const string &step : again.flasher.log)
+        CHECK(step.find("backup to") != 0);
+}
+
+TEST_CASE("restoreFactory refuses BleemSync, an unknown rootfs, games on USRDATA and a tool without the stock files") {
+    {
+        FactoryRun r;
+        r.flasher.findings.rootfs = FactoryRestore::Rootfs::Unknown;
+        CHECK(r.run() == FlashKitActions::Outcome::Refused);
+        CHECK(r.ui.said("stock LBOOT.EPB"));
+        CHECK(r.ui.questions.empty());
+        CHECK_FALSE(r.wrote());
+    }
+    {
+        FactoryRun r;
+        r.flasher.findings.gamesOnUserData = true;
+        CHECK(r.run() == FlashKitActions::Outcome::Refused);
+        CHECK(r.ui.said("built-in games"));
+        CHECK_FALSE(r.wrote());
+    }
+    {
+        FactoryRun r;
+        r.flasher.stockValid = false;
+        CHECK(r.run() == FlashKitActions::Outcome::Refused);
+        CHECK(r.ui.said("missing from this tool"));
+        CHECK(r.flasher.log == vector<string>{"validate stock in " + r.paths.stockDir});
+    }
+}
+
+TEST_CASE("restoreFactory: Circle at the question writes nothing; a saves backup that fails stops before the kernel") {
+    {
+        FactoryRun r;
+        r.ui.answers = {false};
+        CHECK(r.run() == FlashKitActions::Outcome::Cancelled);
+        CHECK_FALSE(r.wrote());
+        for (const string &step : r.flasher.log)
+            CHECK(step.find("backup") == string::npos);
+    }
+    {
+        FactoryRun r;
+        r.flasher.savesOk = false;
+        CHECK(r.run() == FlashKitActions::Outcome::Failed);
+        CHECK(r.ui.said("Nothing was changed"));
+        CHECK_FALSE(r.wrote());
+        CHECK_FALSE(r.flasher.rebooted);
+    }
+}
+
+TEST_CASE("restoreFactory: the stock path it cannot restore stops it with the Restore Mode advice, nothing further written") {
+    FactoryRun r;
+    r.fb.tmp.writeFile("root/bin/busybox.nosuid", "PATCHED");
+    CHECK(r.run() == FlashKitActions::Outcome::Failed);
+    CHECK(r.ui.said("Restore Mode with your own stock LBOOT.EPB"));
+    const vector<string> &log = r.flasher.log;
+    CHECK(log.back() == "recovery mode off"); // the flag is cleared, the console is not sent into recovery
+    for (const string &step : log) {
+        CHECK(step != "reset user data");
+        CHECK(step.find("restore saves") == string::npos);
+    }
+    CHECK_FALSE(r.flasher.rebooted);
+    CHECK_FALSE(r.flasher.recoveryMode);
+    CHECK(ableem::DirEntry::exists(r.fb.tmp.at("root/var/log/live.log"))); // no foreign path deleted
+    CHECK(r.fb.tmp.readFile("usrdata/AppData/sony/pcsx/5/.pcsx/memcards/card1.mcd") == "CARD 5");
+}
+
+TEST_CASE("restoreFactory: a kernel write that fails, and a data partition that cannot be made") {
+    {
+        FactoryRun r;
+        r.flasher.kernelWrite = Flasher::KernelWrite::NothingWritten;
+        CHECK(r.run() == FlashKitActions::Outcome::Failed);
+        CHECK_FALSE(r.flasher.recoveryMode);
+        CHECK(r.ui.said("Nothing was changed"));
+        for (const string &step : r.flasher.log)
+            CHECK(step.find("restore rootfs") == string::npos);
+    }
+    {
+        FactoryRun r;
+        r.flasher.kernelWrite = Flasher::KernelWrite::Failed;
+        CHECK(r.run() == FlashKitActions::Outcome::Failed);
+        CHECK(r.flasher.recoveryMode); // the flag stays: Sony's recovery restores the backup
+        CHECK(r.flasher.rebooted);
+        for (const string &step : r.flasher.log)
+            CHECK(step.find("restore rootfs") == string::npos);
+    }
+    {
+        FactoryRun r;
+        r.flasher.userDataReset = Flasher::UserDataReset::Untouched; // could not be unmounted
+        CHECK(r.run() == FlashKitActions::Outcome::Failed);
+        CHECK_FALSE(r.flasher.recoveryMode);
+        CHECK_FALSE(r.flasher.rebooted);
+        for (const string &step : r.flasher.log)
+            CHECK(step.find("restore saves") == string::npos);
+    }
+    {
+        FactoryRun r;
+        r.flasher.userDataReset = Flasher::UserDataReset::Failed; // mkfs failed: the filesystem is gone
+        CHECK(r.run() == FlashKitActions::Outcome::Failed);
+        CHECK(r.flasher.recoveryMode);
+        CHECK(r.flasher.rebooted);
+        CHECK(r.ui.said("restore itself from LBOOT.EPB"));
+    }
 }

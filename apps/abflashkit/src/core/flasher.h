@@ -7,6 +7,7 @@
 //
 #pragma once
 
+#include "factory_restore.h"
 #include "lboot_backup.h"
 
 #include <ableem/engine/byte_progress.h>
@@ -52,6 +53,26 @@ public:
     // <kernelDir>/install_payload.sh - the AutoBleem rootfs overlay onto the data partition
     virtual void installPayload(const std::string &kernelDir) = 0;
 
+    // Restore to factory (AUTOBLEEM-32). Step 1: what the console is like, nothing written - the BOOTIMG1 and
+    // ROOTFS1 md5s (`bytes` covers both), Project Eris by <dataDir>/eris_reverse.json's detect files, the other firmware's folders on USRDATA, the MISC flag
+    virtual FactoryRestore::Findings inspectFactory(const std::string &kernelDir, const std::string &dataDir,
+                                                    const ableem::ByteProgress &bytes) = 0;
+    // <stockDir>/boot.img is Sony's (the stock md5) and <dataDir>'s two JSON files load
+    virtual bool validateStock(const std::string &stockDir, const std::string &dataDir) = 0;
+    // the built-in games' saves copied to `dir`, and back onto the (new) USRDATA
+    virtual bool backupSaves(const std::string &dir) = 0;
+    virtual bool restoreSaves(const std::string &dir) = 0;
+    // ROOTFS1 put back to Sony's: a stock one is left alone, Project Eris's is reversed (mounted read-write for
+    // this step only) and the whole tree checked against the manifest in <dataDir>. ok false = stopped, nothing
+    // further written.
+    virtual FactoryRestore::Result restoreRootfs(FactoryRestore::Rootfs state, const std::string &dataDir,
+                                                 const ableem::ByteProgress &bytes) = 0;
+    // USRDATA unmounted, made again with mkfs.ext4 under the factory parameters, mounted. Untouched = it failed
+    // before anything was written (cannot unmount, cannot read the parameters); Failed = the filesystem is gone
+    // or half made.
+    enum class UserDataReset { Untouched, Done, Failed };
+    virtual UserDataReset resetUserData() = 0;
+
     virtual void sync() = 0;
     // stops the launcher and the compositor and reboots; the tool does not return from it on the console
     virtual void reboot() = 0;
@@ -71,9 +92,20 @@ public:
     void setRecoveryMode(bool on, const std::string &kernelDir) override;
     KernelWrite flashKernel(const std::string &kernelDir, const ableem::ByteProgress &bytes) override;
     void installPayload(const std::string &kernelDir) override;
+    FactoryRestore::Findings inspectFactory(const std::string &kernelDir, const std::string &dataDir,
+                                            const ableem::ByteProgress &bytes) override;
+    bool validateStock(const std::string &stockDir, const std::string &dataDir) override;
+    bool backupSaves(const std::string &dir) override;
+    bool restoreSaves(const std::string &dir) override;
+    FactoryRestore::Result restoreRootfs(FactoryRestore::Rootfs state, const std::string &dataDir,
+                                         const ableem::ByteProgress &bytes) override;
+    UserDataReset resetUserData() override;
     void sync() override;
     void reboot() override;
 
+    static const char *const RootfsPartition; // /dev/disk/by-partlabel/ROOTFS1
+    static const char *const UserDataPartition; // /dev/disk/by-partlabel/USRDATA
+    static const char *const DataMount;         // /data - USRDATA's mount point
     static const char *const MiscPartition; // /dev/disk/by-partlabel/MISC
     static const char *const BootPartition; // /dev/disk/by-partlabel/BOOTIMG1
 
@@ -102,6 +134,14 @@ public:
     void setRecoveryMode(bool on, const std::string &kernelDir) override;
     KernelWrite flashKernel(const std::string &kernelDir, const ableem::ByteProgress &bytes) override;
     void installPayload(const std::string &kernelDir) override;
+    FactoryRestore::Findings inspectFactory(const std::string &kernelDir, const std::string &dataDir,
+                                            const ableem::ByteProgress &bytes) override;
+    bool validateStock(const std::string &stockDir, const std::string &dataDir) override;
+    bool backupSaves(const std::string &dir) override;
+    bool restoreSaves(const std::string &dir) override;
+    FactoryRestore::Result restoreRootfs(FactoryRestore::Rootfs state, const std::string &dataDir,
+                                         const ableem::ByteProgress &bytes) override;
+    UserDataReset resetUserData() override;
     void sync() override {}
     void reboot() override;
 
@@ -114,6 +154,14 @@ public:
     // for the progress bar to be seen moving
     std::string fakePartitionsDir;
     long long fakePartitionBytes = 8 * 1024 * 1024;
+
+    // Restore to factory: what inspectFactory() answers; the saves, the rootfs and the data partition are
+    // stood in for by folders when these are set (a fake ROOTFS1 tree, a fake /data), else the steps just log
+    FactoryRestore::Findings findings;
+    std::string fakeRootfsDir, fakeDataDir;
+    bool stockValid = true;
+    bool savesOk = true;
+    UserDataReset userDataReset = UserDataReset::Done;
 
 private:
     void step(const std::string &what);

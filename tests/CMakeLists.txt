@@ -10,3 +10,5 @@ ab_add_test(test_abflashkit_core apps/test_abflashkit_core.cpp LIBS abflashkit_c
 if (NOT WIN32)
     ab_add_test(test_pscbios_native apps/test_pscbios_native.cpp LIBS pscbios_core Threads::Threads)
 endif ()
+# the checked-in stock kernel image and data files of ABFlashKit's Restore to factory
+target_compile_definitions(test_abflashkit_core PRIVATE AB_FLASHKIT_DIR="${CMAKE_SOURCE_DIR}/apps/abflashkit")

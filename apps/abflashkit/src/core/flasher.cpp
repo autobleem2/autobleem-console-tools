@@ -21,12 +21,19 @@
 #include <thread>
 
 #ifndef _WIN32
+#include <sys/stat.h>
+#endif
+
+#ifndef _WIN32
 #include <fcntl.h>
 #include <unistd.h>
 #endif
 
 using namespace std;
 
+const char *const ConsoleFlasher::RootfsPartition = "/dev/disk/by-partlabel/ROOTFS1";
+const char *const ConsoleFlasher::UserDataPartition = "/dev/disk/by-partlabel/USRDATA";
+const char *const ConsoleFlasher::DataMount = "/data";
 const char *const ConsoleFlasher::MiscPartition = "/dev/disk/by-partlabel/MISC";
 const char *const ConsoleFlasher::BootPartition = "/dev/disk/by-partlabel/BOOTIMG1";
 
@@ -91,6 +98,16 @@ bool fileMatchesMd5(const string &kernelDir, const string &file, const string &m
 bool kernelIsValid(const string &kernelDir) {
     return fileMatchesMd5(kernelDir, "boot.img", "boot.md5") &&
            fileMatchesMd5(kernelDir, "abrootfs.tgz", "abrootfs.md5");
+}
+
+// a console command that succeeded (its output goes nowhere, the answer is the exit status)
+bool commandSucceeds(const string &command) {
+    return System::execUnixCommand(("(" + command + ") >/dev/null 2>&1 && echo ABOK").c_str()).find("ABOK") !=
+           string::npos;
+}
+
+bool manifestAndEris(const string &dataDir, FactoryRestore::Manifest &manifest, FactoryRestore::Eris &eris) {
+    return manifest.load(dataDir + sep + "rootfs1_stock_manifest.json") && eris.load(dataDir + sep + "eris_reverse.json");
 }
 
 bool extractInto(const string &path, const string &dir, const ableem::ByteProgress &bytes) {
@@ -234,6 +251,120 @@ void ConsoleFlasher::installPayload(const string &kernelDir) {
     System::execUnixCommand(("bash " + kernelDir + sep + "install_payload.sh").c_str());
 }
 
+//*******************************
+// ConsoleFlasher: Restore to factory
+//*******************************
+FactoryRestore::Findings ConsoleFlasher::inspectFactory(const string &kernelDir, const string &dataDir,
+                                                        const ableem::ByteProgress &bytes) {
+    FactoryRestore::Findings found;
+    const long long bootSize = DirEntry::sizeBySeeking(BootPartition);
+    const long long rootSize = DirEntry::sizeBySeeking(RootfsPartition);
+    const uint64_t boot = bootSize > 0 ? static_cast<uint64_t>(bootSize) : 0;
+    const uint64_t total = boot + (rootSize > 0 ? static_cast<uint64_t>(rootSize) : 0);
+    found.bootMd5 = ableem::Md5::ofFile(BootPartition, [&](uint64_t done, uint64_t) {
+        if (bytes)
+            bytes(done, total);
+    });
+    found.bootIsStock = found.bootMd5 == FactoryRestore::StockBootMd5;
+    const string rootfsMd5 = ableem::Md5::ofFile(RootfsPartition, [&](uint64_t done, uint64_t) {
+        if (bytes)
+            bytes(boot + done, total);
+    });
+    found.bleemSync = DirEntry::exists("/usr/bin/bleemsync_service");
+    FactoryRestore::Eris eris;
+    if (rootfsMd5 == FactoryRestore::StockRootfsMd5)
+        found.rootfs = FactoryRestore::Rootfs::Stock;
+    else if (!found.bleemSync && eris.load(dataDir + sep + "eris_reverse.json") && eris.installedIn("/"))
+        found.rootfs = FactoryRestore::Rootfs::Eris;
+    else
+        found.rootfs = FactoryRestore::Rootfs::Unknown;
+    found.foreignFolders = FactoryRestore::foreignFolders(DataMount);
+    // the flag is set when MISC starts with recovery-on.img's bytes
+    string flag;
+    ifstream on(kernelDir + sep + "recovery-on.img", ios::binary);
+    ifstream misc(MiscPartition, ios::binary);
+    if (on && misc) {
+        string expected(16, '\0'), actual(16, '\0');
+        on.read(&expected[0], 16);
+        misc.read(&actual[0], 16);
+        found.recoveryFlag = on.gcount() == 16 && misc.gcount() == 16 && expected == actual;
+    }
+#ifndef _WIN32
+    // the games must not live on the filesystem about to be made again
+    struct stat games, data;
+    found.gamesOnUserData = stat("/gaadata", &games) == 0 && stat(DataMount, &data) == 0 && games.st_dev == data.st_dev;
+#endif
+    return found;
+}
+
+bool ConsoleFlasher::validateStock(const string &stockDir, const string &dataDir) {
+    return FactoryRestore::validateStock(stockDir, dataDir);
+}
+
+bool ConsoleFlasher::backupSaves(const string &dir) {
+    PLOG_INFO << "Copying the built-in games' saves to " << dir;
+    return FactoryRestore::backupSaves(DataMount, dir);
+}
+
+bool ConsoleFlasher::restoreSaves(const string &dir) {
+    PLOG_INFO << "Putting the built-in games' saves back from " << dir;
+    return FactoryRestore::restoreSaves(dir, DataMount);
+}
+
+FactoryRestore::Result ConsoleFlasher::restoreRootfs(FactoryRestore::Rootfs state, const string &dataDir,
+                                                     const ableem::ByteProgress &bytes) {
+    FactoryRestore::Result result;
+    if (state == FactoryRestore::Rootfs::Stock) {
+        result.ok = true; // its md5 is Sony's: nothing to do
+        return result;
+    }
+    FactoryRestore::Manifest manifest;
+    FactoryRestore::Eris eris;
+    if (state != FactoryRestore::Rootfs::Eris || !manifestAndEris(dataDir, manifest, eris)) {
+        result.problem = "no way to restore this ROOTFS1";
+        return result;
+    }
+    // the running system's root is ROOTFS1: read-write for this step only
+    if (!commandSucceeds("mount -o remount,rw /")) {
+        result.problem = "ROOTFS1 cannot be mounted read-write";
+        return result;
+    }
+    result = FactoryRestore::restoreEris("/", manifest, eris, bytes);
+    System::execUnixCommand("sync");
+    if (!commandSucceeds("mount -o remount,ro /")) {
+        PLOG_WARNING << "ROOTFS1 could not be mounted read-only again";
+    }
+    return result;
+}
+
+Flasher::UserDataReset ConsoleFlasher::resetUserData() {
+    const string device = UserDataPartition;
+    const string mkfs = FactoryRestore::mkfsCommand(
+        System::execUnixCommand(("tune2fs -l " + device + " 2>/dev/null").c_str()), device);
+    if (mkfs.empty()) {
+        PLOG_ERROR << "Cannot read the parameters of " << device;
+        return UserDataReset::Untouched;
+    }
+    PLOG_INFO << "Making USRDATA again: " << mkfs;
+    if (!commandSucceeds(string("sync; umount ") + DataMount)) {
+        PLOG_ERROR << DataMount << " cannot be unmounted";
+        return UserDataReset::Untouched;
+    }
+    if (!commandSucceeds(mkfs)) {
+        PLOG_ERROR << "mkfs failed";
+        return UserDataReset::Failed;
+    }
+    if (!commandSucceeds(string("mount ") + DataMount) &&
+        !commandSucceeds("mount -t ext4 " + device + " " + DataMount)) {
+        PLOG_ERROR << device << " cannot be mounted again";
+        return UserDataReset::Failed;
+    }
+    // Sony's recovery lays this template down on a fresh data partition
+    if (DirEntry::isDirectory("/usr/sony/share/recovery/AppData"))
+        commandSucceeds(string("cp -a /usr/sony/share/recovery/AppData ") + DataMount + "/");
+    return UserDataReset::Done;
+}
+
 void ConsoleFlasher::sync() {
     System::execUnixCommand("sync");
 }
@@ -331,4 +462,55 @@ void FakeFlasher::installPayload(const string &kernelDir) {
 void FakeFlasher::reboot() {
     step("reboot");
     rebooted = true;
+}
+
+//*******************************
+// FakeFlasher: Restore to factory
+//*******************************
+FactoryRestore::Findings FakeFlasher::inspectFactory(const string &, const string &, const ableem::ByteProgress &) {
+    step("inspect factory state");
+    return findings;
+}
+
+bool FakeFlasher::validateStock(const string &stockDir, const string &) {
+    step("validate stock in " + stockDir);
+    return stockValid;
+}
+
+bool FakeFlasher::backupSaves(const string &dir) {
+    step("backup saves to " + dir);
+    if (fakeDataDir.empty())
+        return savesOk;
+    return savesOk && FactoryRestore::backupSaves(fakeDataDir, dir);
+}
+
+bool FakeFlasher::restoreSaves(const string &dir) {
+    step("restore saves from " + dir);
+    if (fakeDataDir.empty())
+        return savesOk;
+    return savesOk && FactoryRestore::restoreSaves(dir, fakeDataDir);
+}
+
+FactoryRestore::Result FakeFlasher::restoreRootfs(FactoryRestore::Rootfs state, const string &dataDir,
+                                                  const ableem::ByteProgress &bytes) {
+    step("restore rootfs (" + FactoryRestore::rootfsName(state) + ")");
+    FactoryRestore::Result result;
+    if (state == FactoryRestore::Rootfs::Stock) {
+        result.ok = true;
+        return result;
+    }
+    FactoryRestore::Manifest manifest;
+    FactoryRestore::Eris eris;
+    if (fakeRootfsDir.empty() || state != FactoryRestore::Rootfs::Eris || !manifestAndEris(dataDir, manifest, eris)) {
+        result.ok = state == FactoryRestore::Rootfs::Eris && fakeRootfsDir.empty();
+        if (!result.ok)
+            result.problem = "no way to restore this ROOTFS1";
+        return result;
+    }
+    return FactoryRestore::restoreEris(fakeRootfsDir, manifest, eris, bytes);
+}
+
+Flasher::UserDataReset FakeFlasher::resetUserData() {
+    step("reset user data");
+    return userDataReset;
 }

@@ -16,7 +16,7 @@
 using namespace std;
 
 namespace {
-enum Action { Flash = 0, FullBackup, Restore, BackupGames, About };
+enum Action { Flash = 0, FullBackup, Restore, BackupGames, RestoreFactory, About };
 }
 
 //*******************************
@@ -31,6 +31,7 @@ void GuiFlashKitMain::init() {
         {_("Full backup"), _("All four partitions to LBOOT.EPB on the stick, for a restore later")},
         {_("Restore Mode"), _("Reboot into Sony's recovery, which restores the console from LBOOT.EPB")},
         {_("Back up games"), _("Copy the console's built-in games to the Games Backup folder on the stick")},
+        {_("Restore to factory"), _("Put Sony's kernel, system files and an empty data partition back")},
         {_("About"), _("Version, credits and licence")},
     };
 }
@@ -173,6 +174,9 @@ void GuiFlashKitMain::loop() {
             break;
         case BackupGames:
             run(&FlashKitActions::backupGames);
+            break;
+        case RestoreFactory:
+            run(&FlashKitActions::restoreFactory);
             break;
         case About:
             showAbout();
