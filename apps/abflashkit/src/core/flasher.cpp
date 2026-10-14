@@ -12,13 +12,20 @@
 
 #include <ableem/engine/log.h>
 #include <ableem/engine/md5.h>
+#include <ableem/engine/sha256.h>
 #include <ableem/engine/zip_archive.h>
 #include <ableem/engine/zip_writer.h>
 
 #include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <sstream>
 #include <thread>
+
+#ifndef _WIN32
+#include <sys/stat.h>
+#include <sys/wait.h>
+#endif
 
 #ifndef _WIN32
 #include <fcntl.h>
@@ -27,6 +34,9 @@
 
 using namespace std;
 
+const char *const ConsoleFlasher::RootfsPartition = "/dev/disk/by-partlabel/ROOTFS1";
+const char *const ConsoleFlasher::UserDataPartition = "/dev/disk/by-partlabel/USRDATA";
+const char *const ConsoleFlasher::DataMount = "/data";
 const char *const ConsoleFlasher::MiscPartition = "/dev/disk/by-partlabel/MISC";
 const char *const ConsoleFlasher::BootPartition = "/dev/disk/by-partlabel/BOOTIMG1";
 
@@ -88,9 +98,53 @@ bool fileMatchesMd5(const string &kernelDir, const string &file, const string &m
     return actual == expected;
 }
 
+// the first 64 characters of <kernelDir>/<sumFile> - a bare hash, or sha256sum's "<hash>  <name>", lower-cased
+string expectedSha256(const string &kernelDir, const string &sumFile) {
+    ifstream in(kernelDir + sep + sumFile);
+    string line;
+    getline(in, line);
+    if (line.size() < 64)
+        return "";
+    line = line.substr(0, 64);
+    for (char &c : line)
+        c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+    return line;
+}
+
+// <kernelDir>/<file> is there and its sha256 is the one in <kernelDir>/<sumFile>
+bool fileMatchesSha256(const string &kernelDir, const string &file, const string &sumFile) {
+    string path = kernelDir + sep + file;
+    if (!DirEntry::exists(path))
+        return false;
+    string expected = expectedSha256(kernelDir, sumFile);
+    if (expected.empty())
+        return false;
+    string actual = ableem::Sha256::ofFile(path);
+    if (actual != expected) {
+        PLOG_WARNING << file << " sha256 " << actual << " is not the expected " << expected;
+    }
+    return actual == expected;
+}
+
+// boot.img against boot.md5 always; then the AutoBleem rootfs: abrootfs.squashfs against its .sha256 (the
+// AUTOBLEEM-33 payload, which install_payload.sh copies to /media/System/Kernel/), and only a kit without a
+// squashfs (an old payload) abrootfs.tgz against abrootfs.md5. A squashfs that is there but fails is never
+// excused by an old tgz next to it.
 bool kernelIsValid(const string &kernelDir) {
-    return fileMatchesMd5(kernelDir, "boot.img", "boot.md5") &&
-           fileMatchesMd5(kernelDir, "abrootfs.tgz", "abrootfs.md5");
+    if (!fileMatchesMd5(kernelDir, "boot.img", "boot.md5"))
+        return false;
+    if (DirEntry::exists(kernelDir + sep + "abrootfs.squashfs"))
+        return fileMatchesSha256(kernelDir, "abrootfs.squashfs", "abrootfs.squashfs.sha256");
+    return fileMatchesMd5(kernelDir, "abrootfs.tgz", "abrootfs.md5");
+}
+
+// a console command that succeeded (its output goes nowhere, the answer is the exit status)
+bool commandSucceeds(const string &command) {
+    return ConsoleFlasher::runCommand("(" + command + ") >/dev/null 2>&1").status == 0;
+}
+
+bool manifestAndEris(const string &dataDir, FactoryRestore::Manifest &manifest, FactoryRestore::Eris &eris) {
+    return manifest.load(dataDir + sep + "rootfs1_stock_manifest.json") && eris.load(dataDir + sep + "eris_reverse.json");
 }
 
 bool extractInto(const string &path, const string &dir, const ableem::ByteProgress &bytes) {
@@ -111,6 +165,30 @@ bool ConsoleFlasher::hasForeignFirmware() {
 bool ConsoleFlasher::createBackup(const vector<LbootBackup::Partition> &partitions, const string &path,
                                   const Progress &status, const ableem::ByteProgress &bytes) {
     return writeBackup(partitions, path, status, bytes);
+}
+
+// System::execUnixCommand erases every '\n' of the output (other callers rely on that), so the dumpe2fs header
+// came back as one long line and no "Name:" was ever found. This keeps the output as it is.
+ConsoleFlasher::CommandResult ConsoleFlasher::runCommand(const string &command) {
+    CommandResult result;
+#ifdef _WIN32
+    FILE *pipe = _popen(command.c_str(), "r");
+#else
+    FILE *pipe = popen(command.c_str(), "r");
+#endif
+    if (!pipe)
+        return result;
+    char buffer[4096];
+    size_t got;
+    while ((got = fread(buffer, 1, sizeof(buffer), pipe)) > 0)
+        result.output.append(buffer, got);
+#ifdef _WIN32
+    result.status = _pclose(pipe);
+#else
+    int raw = pclose(pipe);
+    result.status = raw == -1 ? -1 : (WIFEXITED(raw) ? WEXITSTATUS(raw) : 128);
+#endif
+    return result;
 }
 
 bool ConsoleFlasher::validateBackup(const string &path) {
@@ -234,6 +312,164 @@ void ConsoleFlasher::installPayload(const string &kernelDir) {
     System::execUnixCommand(("bash " + kernelDir + sep + "install_payload.sh").c_str());
 }
 
+//*******************************
+// ConsoleFlasher: Restore to factory
+//*******************************
+FactoryRestore::Findings ConsoleFlasher::inspectFactory(const string &kernelDir, const string &dataDir,
+                                                        const ableem::ByteProgress &bytes) {
+    FactoryRestore::Findings found;
+    const long long bootSize = DirEntry::sizeBySeeking(BootPartition);
+    const long long rootSize = DirEntry::sizeBySeeking(RootfsPartition);
+    const uint64_t boot = bootSize > 0 ? static_cast<uint64_t>(bootSize) : 0;
+    const uint64_t total = boot + (rootSize > 0 ? static_cast<uint64_t>(rootSize) : 0);
+    found.bootMd5 = ableem::Md5::ofFile(BootPartition, [&](uint64_t done, uint64_t) {
+        if (bytes)
+            bytes(done, total);
+    });
+    found.bootIsStock = found.bootMd5 == FactoryRestore::StockBootMd5;
+    const string rootfsMd5 = ableem::Md5::ofFile(RootfsPartition, [&](uint64_t done, uint64_t) {
+        if (bytes)
+            bytes(boot + done, total);
+    });
+    found.bleemSync = DirEntry::exists("/usr/bin/bleemsync_service");
+    FactoryRestore::Eris eris;
+    if (rootfsMd5 == FactoryRestore::StockRootfsMd5)
+        found.rootfs = FactoryRestore::Rootfs::Stock;
+    else if (!found.bleemSync && eris.load(dataDir + sep + "eris_reverse.json") && eris.installedIn("/"))
+        found.rootfs = FactoryRestore::Rootfs::Eris;
+    else
+        found.rootfs = FactoryRestore::Rootfs::Unknown;
+    found.foreignFolders = FactoryRestore::foreignFolders(DataMount);
+    // the flag is set when MISC starts with recovery-on.img's bytes
+    string flag;
+    ifstream on(kernelDir + sep + "recovery-on.img", ios::binary);
+    ifstream misc(MiscPartition, ios::binary);
+    if (on && misc) {
+        string expected(16, '\0'), actual(16, '\0');
+        on.read(&expected[0], 16);
+        misc.read(&actual[0], 16);
+        found.recoveryFlag = on.gcount() == 16 && misc.gcount() == 16 && expected == actual;
+    }
+#ifndef _WIN32
+    // the games must not live on the filesystem about to be made again
+    struct stat games, data;
+    found.gamesOnUserData = stat("/gaadata", &games) == 0 && stat(DataMount, &data) == 0 && games.st_dev == data.st_dev;
+#endif
+    return found;
+}
+
+bool ConsoleFlasher::validateStock(const string &stockDir, const string &dataDir) {
+    return FactoryRestore::validateStock(stockDir, dataDir);
+}
+
+bool ConsoleFlasher::backupSaves(const string &dir) {
+    PLOG_INFO << "Copying the built-in games' saves to " << dir;
+    return FactoryRestore::backupSaves(DataMount, dir);
+}
+
+bool ConsoleFlasher::restoreSaves(const string &dir) {
+    PLOG_INFO << "Putting the built-in games' saves back from " << dir;
+    return FactoryRestore::restoreSaves(dir, DataMount);
+}
+
+FactoryRestore::Result ConsoleFlasher::restoreRootfs(FactoryRestore::Rootfs state, const string &dataDir,
+                                                     const ableem::ByteProgress &bytes) {
+    FactoryRestore::Result result;
+    if (state == FactoryRestore::Rootfs::Stock) {
+        result.ok = true; // its md5 is Sony's: nothing to do
+        return result;
+    }
+    FactoryRestore::Manifest manifest;
+    FactoryRestore::Eris eris;
+    if (state != FactoryRestore::Rootfs::Eris || !manifestAndEris(dataDir, manifest, eris)) {
+        result.problem = "no way to restore this ROOTFS1";
+        return result;
+    }
+    // the running system's root is ROOTFS1: read-write for this step only
+    if (!commandSucceeds("mount -o remount,rw /")) {
+        result.problem = "ROOTFS1 cannot be mounted read-write";
+        return result;
+    }
+    result = FactoryRestore::restoreEris("/", manifest, eris, bytes);
+    System::execUnixCommand("sync");
+    if (!commandSucceeds("mount -o remount,ro /")) {
+        PLOG_WARNING << "ROOTFS1 could not be mounted read-only again";
+    }
+    return result;
+}
+
+Flasher::UserDataReset ConsoleFlasher::resetUserData() {
+    const string device = UserDataPartition;
+    const string mkfs = userDataMkfs();
+    if (mkfs.empty()) {
+        PLOG_ERROR << "Cannot read the parameters of " << device;
+        return UserDataReset::Untouched;
+    }
+    PLOG_INFO << "Making USRDATA again: " << mkfs;
+    if (!commandSucceeds(string("sync; umount ") + DataMount)) {
+        PLOG_ERROR << DataMount << " cannot be unmounted";
+        return UserDataReset::Untouched;
+    }
+    if (!commandSucceeds(mkfs)) {
+        PLOG_ERROR << "mkfs failed";
+        return UserDataReset::Failed;
+    }
+    if (!commandSucceeds(string("mount ") + DataMount) &&
+        !commandSucceeds("mount -t ext4 " + device + " " + DataMount)) {
+        PLOG_ERROR << device << " cannot be mounted again";
+        return UserDataReset::Failed;
+    }
+    // Sony's recovery lays this template down on a fresh data partition
+    if (DirEntry::isDirectory("/usr/sony/share/recovery/AppData"))
+        commandSucceeds(string("cp -a /usr/sony/share/recovery/AppData ") + DataMount + "/");
+    return UserDataReset::Done;
+}
+
+// the mkfs command under USRDATA's present parameters, "" when they cannot be read. tune2fs, else dumpe2fs -h (the
+// console has no tune2fs): the same header lines, read with their newlines.
+string ConsoleFlasher::userDataMkfs() {
+    const string device = UserDataPartition;
+    string mkfs = FactoryRestore::mkfsCommand(runCommand("tune2fs -l " + device + " 2>/dev/null").output, device);
+    if (mkfs.empty())
+        mkfs = FactoryRestore::mkfsCommand(runCommand("dumpe2fs -h " + device + " 2>/dev/null").output, device);
+    return mkfs;
+}
+
+// The unmount is tried for real and undone at once: /proc/mounts and fuser only guess (fuser is not on every
+// console, and says nothing of a mount that is read-only or busy for another reason), umount is the answer the
+// erase itself will get. Nothing is written to the partition by it.
+Flasher::UserDataCheck ConsoleFlasher::checkUserData() {
+    const string device = UserDataPartition;
+    if (userDataMkfs().empty()) {
+        PLOG_ERROR << "Cannot read the parameters of " << device;
+        return UserDataCheck::ParametersUnreadable;
+    }
+    if (!commandSucceeds(string("sync; umount ") + DataMount)) {
+        PLOG_ERROR << DataMount << " cannot be unmounted";
+        return UserDataCheck::CannotUnmount;
+    }
+    if (!commandSucceeds(string("mount ") + DataMount) &&
+        !commandSucceeds("mount -t ext4 " + device + " " + DataMount)) {
+        PLOG_ERROR << device << " could not be mounted again after the unmount test";
+    }
+    return UserDataCheck::Ready;
+}
+
+bool ConsoleFlasher::userDataErasable() {
+    ifstream in(procMounts);
+    if (!in) {
+        PLOG_WARNING << "Cannot read " << procMounts << ", taking the data partition for in use";
+        return false;
+    }
+    stringstream text;
+    text << in.rdbuf();
+    const bool inUse = FactoryRestore::dataInUse(text.str(), DataMount);
+    if (inUse) {
+        PLOG_WARNING << DataMount << " is in use by the running system";
+    }
+    return !inUse;
+}
+
 void ConsoleFlasher::sync() {
     System::execUnixCommand("sync");
 }
@@ -243,6 +479,23 @@ void ConsoleFlasher::reboot() {
     System::execUnixCommand("killall -9 autobleem-gui");
     System::execUnixCommand("systemctl stop weston");
     System::execUnixCommand("systemctl reboot");
+}
+
+// BUG-9: Restore to factory used to end in reboot() and left the kit on its "done" screen when systemctl did not
+// act (the AutoBleem start-up may not run systemd as init, and /data had just been unmounted and made again).
+// The shutdown now falls through systemctl, busybox/sysvinit poweroff -f and the kernel's own sysrq switch-off,
+// each only when the one before did not leave the console; the disks are flushed first.
+void ConsoleFlasher::powerOff() {
+    PLOG_INFO << "Powering off";
+    System::execUnixCommand("sync");
+    System::execUnixCommand("killall -9 autobleem-gui");
+    System::execUnixCommand("systemctl stop weston");
+    System::execUnixCommand("systemctl poweroff");
+    this_thread::sleep_for(chrono::seconds(5));
+    PLOG_WARNING << "systemctl poweroff did not switch the console off, forcing it";
+    System::execUnixCommand("poweroff -f");
+    this_thread::sleep_for(chrono::seconds(3));
+    System::execUnixCommand("sync; echo 1 > /proc/sys/kernel/sysrq; echo o > /proc/sysrq-trigger");
 }
 
 //*******************************
@@ -331,4 +584,68 @@ void FakeFlasher::installPayload(const string &kernelDir) {
 void FakeFlasher::reboot() {
     step("reboot");
     rebooted = true;
+}
+
+void FakeFlasher::powerOff() {
+    step("power off");
+    poweredOff = true;
+}
+
+//*******************************
+// FakeFlasher: Restore to factory
+//*******************************
+FactoryRestore::Findings FakeFlasher::inspectFactory(const string &, const string &, const ableem::ByteProgress &) {
+    step("inspect factory state");
+    return findings;
+}
+
+bool FakeFlasher::validateStock(const string &stockDir, const string &) {
+    step("validate stock in " + stockDir);
+    return stockValid;
+}
+
+bool FakeFlasher::backupSaves(const string &dir) {
+    step("backup saves to " + dir);
+    if (fakeDataDir.empty())
+        return savesOk;
+    return savesOk && FactoryRestore::backupSaves(fakeDataDir, dir);
+}
+
+bool FakeFlasher::restoreSaves(const string &dir) {
+    step("restore saves from " + dir);
+    if (fakeDataDir.empty())
+        return savesOk;
+    return savesOk && FactoryRestore::restoreSaves(dir, fakeDataDir);
+}
+
+FactoryRestore::Result FakeFlasher::restoreRootfs(FactoryRestore::Rootfs state, const string &dataDir,
+                                                  const ableem::ByteProgress &bytes) {
+    step("restore rootfs (" + FactoryRestore::rootfsName(state) + ")");
+    FactoryRestore::Result result;
+    if (state == FactoryRestore::Rootfs::Stock) {
+        result.ok = true;
+        return result;
+    }
+    FactoryRestore::Manifest manifest;
+    FactoryRestore::Eris eris;
+    if (fakeRootfsDir.empty() || state != FactoryRestore::Rootfs::Eris || !manifestAndEris(dataDir, manifest, eris)) {
+        result.ok = state == FactoryRestore::Rootfs::Eris && fakeRootfsDir.empty();
+        if (!result.ok)
+            result.problem = "no way to restore this ROOTFS1";
+        return result;
+    }
+    return FactoryRestore::restoreEris(fakeRootfsDir, manifest, eris, bytes);
+}
+
+Flasher::UserDataReset FakeFlasher::resetUserData() {
+    step("reset user data");
+    return userDataReset;
+}
+
+bool FakeFlasher::userDataErasable() {
+    return dataErasable; // a question, not a step: not in the log
+}
+
+Flasher::UserDataCheck FakeFlasher::checkUserData() {
+    return userDataCheck; // a question, not a step: not in the log
 }

@@ -10,6 +10,7 @@
 #include <ableem/engine/zip_archive.h>
 
 #include <cstdio>
+#include <ctime>
 #include <memory>
 #include <utility>
 
@@ -35,6 +36,8 @@ const char *FlashKitActions::name(Outcome outcome) {
         return "done";
     case Outcome::Rebooting:
         return "rebooting";
+    case Outcome::PoweringOff:
+        return "powering off";
     }
     return "?";
 }
@@ -58,6 +61,13 @@ void FlashKitActions::rebootNow() {
     led_.setMode(LedMode::Off);
     ui_.wait(100);
     flasher_.reboot();
+}
+
+// the same, for the power off
+void FlashKitActions::powerOffNow() {
+    led_.setMode(LedMode::Off);
+    ui_.wait(100);
+    flasher_.powerOff();
 }
 
 //*******************************
@@ -293,4 +303,186 @@ FlashKitActions::Outcome FlashKitActions::backupGames() {
     ui_.status(ok ? _("Games backed up to the Games Backup folder") : _("Games backup failed"));
     ui_.wait(2500);
     return ok ? Outcome::Done : Outcome::Failed;
+}
+
+//*******************************
+// FlashKitActions::restoreFactory
+//*******************************
+// Restore to factory (AUTOBLEEM-32): inspect and ask, back up, the stock kernel, ROOTFS1, USRDATA, the flag off.
+FlashKitActions::Outcome FlashKitActions::restoreFactory() {
+    using Rootfs = FactoryRestore::Rootfs;
+    // 1. look, write nothing
+    ui_.status(_("Checking the console...") + "   " + _("Please wait..."));
+    if (!flasher_.validateStock(paths_.stockDir, paths_.dataDir)) {
+        ui_.status(_("The stock kernel image or its data files are missing from this tool"));
+        ui_.wait(4000);
+        return Outcome::Refused;
+    }
+    FactoryRestore::Findings found = flasher_.inspectFactory(paths_.kernelDir, paths_.dataDir, bar());
+    noBar();
+    if (found.rootfs == Rootfs::Unknown) {
+        ui_.status(_("This console runs BleemSync or another system that cannot be undone from here. Use Restore "
+                     "Mode with your own stock LBOOT.EPB."));
+        ui_.wait(5000);
+        return Outcome::Refused;
+    }
+    if (found.gamesOnUserData) {
+        ui_.status(_("The built-in games are on the data partition - it would not be erased."));
+        ui_.wait(4000);
+        return Outcome::Refused;
+    }
+    // the data partition must be free to erase, or nothing is written: the half-done state of a console whose
+    // kernel and system files are Sony's already would only ever end at this step
+    if (!flasher_.userDataErasable()) {
+        ui_.status(_("The data partition is in use by the running system - restart with the AutoBleem stick's new "
+                     "start-up, or use Restore Mode with your own stock LBOOT.EPB."));
+        ui_.wait(6000);
+        return Outcome::Refused;
+    }
+    // and the erase must be certain to work: its parameters readable, /data unmountable. Checked before the
+    // confirmation, so a console that cannot be restored is told so before anything is written.
+    switch (flasher_.checkUserData()) {
+    case Flasher::UserDataCheck::ParametersUnreadable:
+        ui_.status(_("The settings of the data partition cannot be read. Nothing was changed."));
+        ui_.wait(5000);
+        return Outcome::Refused;
+    case Flasher::UserDataCheck::CannotUnmount:
+        ui_.status(_("The data partition cannot be unmounted. Nothing was changed."));
+        ui_.wait(5000);
+        return Outcome::Refused;
+    case Flasher::UserDataCheck::Ready:
+        break;
+    }
+    // the kernel image is Sony's and the system files are stock: only the data partition is left
+    const bool dataOnly = found.bootIsStock && found.rootfs == Rootfs::Stock;
+    string summary = _("Kernel image:") + " " + (found.bootIsStock ? _("stock") : _("not stock")) + "\n" +
+                     _("System files:") + " " + (found.rootfs == Rootfs::Stock ? _("stock") : _("Project Eris"));
+    if (!found.foreignFolders.empty()) {
+        summary += "\n" + _("Found on the data partition:");
+        for (const string &folder : found.foreignFolders)
+            summary += " " + folder;
+    }
+    if (found.recoveryFlag)
+        summary += "\n" + _("The recovery flag is already set");
+    summary += "\n\n" + _("The kernel and system files go back to Sony's, and the data partition is erased and made "
+                           "again; the built-in games' saves are kept. Continue?");
+    PLOG_INFO << "Restore to factory: boot " << (found.bootIsStock ? "stock" : "not stock") << " (" << found.bootMd5
+              << "), rootfs " << FactoryRestore::rootfsName(found.rootfs) << ", " << found.foreignFolders.size()
+              << " foreign folders";
+    if (!ui_.confirm(summary))
+        return Outcome::Cancelled;
+
+    // 2. the backups: LBOOT.EPB if there is none, always the built-in games' saves
+    led_.setMode(LedMode::BlinkGreen);
+    if (!backupExists()) {
+        ui_.status(_("Creating backup...."));
+        bool made = flasher_.createBackup(
+            LbootBackup::partitionsForFlash(), paths_.backup, [&](const string &text) { ui_.status(text); }, bar());
+        noBar();
+        bool valid = false;
+        if (made) {
+            ui_.status(_("Validating backup...   Please wait..."));
+            ui_.runInBackground([&] { valid = flasher_.validateBackup(paths_.backup); });
+        }
+        if (!made || !valid) {
+            ui_.status(_("The LBOOT.EPB backup failed. Nothing was changed."));
+            ui_.wait(3000);
+            led_.setMode(LedMode::Green);
+            return Outcome::Failed;
+        }
+    }
+    ui_.status(_("Backing up the built-in games' saves..."));
+    string savesDir = paths_.backupsDir + sep + FactoryRestore::folderName(static_cast<long long>(time(nullptr)));
+    for (int n = 2; DirEntry::exists(savesDir) && n < 100; n++)
+        savesDir = paths_.backupsDir + sep + FactoryRestore::folderName(static_cast<long long>(time(nullptr))) + "-" +
+                   to_string(n);
+    bool saved = false;
+    ui_.runInBackground([&] { saved = flasher_.backupSaves(savesDir); });
+    ui_.runInBackground([&] { flasher_.sync(); });
+    if (!saved) {
+        ui_.status(_("The saves could not be backed up. Nothing was changed."));
+        ui_.wait(4000);
+        led_.setMode(LedMode::Green);
+        return Outcome::Failed;
+    }
+
+    // 3. the stock kernel, with the recovery flag around it as Flash Kernel does
+    led_.setMode(LedMode::Red);
+    ui_.wait(2000);
+    ui_.status(_("Setting recovery mode: on"));
+    flasher_.setRecoveryMode(true, paths_.kernelDir);
+    Flasher::KernelWrite written = Flasher::KernelWrite::Written;
+    if (!dataOnly) {
+        ui_.status(_("Flashing KERNEL IMAGE"));
+        written = flasher_.flashKernel(paths_.stockDir, bar());
+        noBar();
+    }
+    if (written == Flasher::KernelWrite::NothingWritten) {
+        flasher_.setRecoveryMode(false, paths_.kernelDir);
+        led_.setMode(LedMode::Green);
+        ui_.status(_("The kernel image could not be written. Nothing was changed."));
+        ui_.wait(4000);
+        return Outcome::Failed;
+    }
+    if (written == Flasher::KernelWrite::Failed) {
+        ui_.status(_("Writing the kernel failed. The console will restore itself from LBOOT.EPB when it restarts."));
+        ui_.wait(6000);
+        rebootNow();
+        return Outcome::Failed;
+    }
+
+    // 4. ROOTFS1: a stock one is left alone, Eris is reversed and the tree checked
+    if (found.rootfs == Rootfs::Eris) {
+        ui_.status(_("Restoring the system files...") + "   " + _("Please wait..."));
+        FactoryRestore::Result result = flasher_.restoreRootfs(found.rootfs, paths_.dataDir, bar());
+        noBar();
+        if (!result.ok) {
+            PLOG_ERROR << "Restore to factory stopped: " << result.problem;
+            flasher_.setRecoveryMode(false, paths_.kernelDir);
+            led_.setMode(LedMode::Green);
+            ui_.status(_("The system files cannot be restored from here. Use Restore Mode with your own stock "
+                         "LBOOT.EPB."));
+            ui_.wait(6000);
+            return Outcome::Failed;
+        }
+    }
+
+    // 5. USRDATA made again, the saves put back
+    ui_.status(_("Erasing the data partition..."));
+    Flasher::UserDataReset reset = Flasher::UserDataReset::Failed;
+    ui_.runInBackground([&] { reset = flasher_.resetUserData(); });
+    if (reset == Flasher::UserDataReset::Untouched) {
+        flasher_.setRecoveryMode(false, paths_.kernelDir);
+        led_.setMode(LedMode::Green);
+        ui_.status(_("The data partition could not be erased. The kernel and system files are Sony's already."));
+        ui_.wait(5000);
+        return Outcome::Failed;
+    }
+    if (reset == Flasher::UserDataReset::Failed) {
+        // the filesystem is gone or half made: the flag stays on, Sony's recovery restores from the backup
+        ui_.status(_("The data partition could not be made again. The console will restore itself from LBOOT.EPB "
+                     "when it restarts."));
+        ui_.wait(6000);
+        rebootNow();
+        return Outcome::Failed;
+    }
+    ui_.status(_("Putting the saves back..."));
+    bool back = false;
+    ui_.runInBackground([&] { back = flasher_.restoreSaves(savesDir); });
+    if (!back) {
+        ui_.status(_("The saves could not be put back - they are in the Backups folder on the stick"));
+        ui_.wait(5000);
+    }
+
+    // 6. the flag off, the disks flushed, the reboot
+    led_.setMode(LedMode::Green);
+    ui_.status(_("Setting recovery mode: off"));
+    flasher_.setRecoveryMode(false, paths_.kernelDir);
+    ui_.runInBackground([&] { flasher_.sync(); });
+    ui_.wait(2000);
+    // BUG-9: a restored console is switched off, not restarted into the stock system - and the message says so
+    ui_.status(_("Done, switching off..."));
+    ui_.wait(3000);
+    powerOffNow();
+    return Outcome::PoweringOff;
 }

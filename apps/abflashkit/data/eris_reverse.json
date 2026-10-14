@@ -1,0 +1,74 @@
+{
+ "changed_all": [
+  "/etc/group",
+  "/etc/hostname",
+  "/etc/passwd",
+  "/etc/passwd-",
+  "/etc/shadow",
+  "/etc/shadow-",
+  "/etc/versions/variant"
+ ],
+ "detect": [
+  "/etc/systemd/system/project_eris.service",
+  "/usr/bin/project_eris_service"
+ ],
+ "remove": [
+  "/etc/profile.d/motd-pe.sh",
+  "/etc/systemd/system/ftp.socket",
+  "/etc/systemd/system/ftp@.service",
+  "/etc/systemd/system/multi-user.target.wants/project_eris.service",
+  "/etc/systemd/system/multi-user.target.wants/ssh.service",
+  "/etc/systemd/system/multi-user.target.wants/usbhost.service",
+  "/etc/systemd/system/pe_loader.ver",
+  "/etc/systemd/system/project_eris.service",
+  "/etc/systemd/system/sockets.target.wants",
+  "/etc/systemd/system/ssh.service",
+  "/etc/systemd/system/sshd.service",
+  "/etc/systemd/system/telnet.socket",
+  "/etc/systemd/system/telnet@.service",
+  "/etc/systemd/system/usbhost.service",
+  "/etc/upg_pubk_sony.pem",
+  "/etc/versions/pe_kernel.ver",
+  "/etc/versions/pe_loader.ver",
+  "/etc/versions/project_eris_initial.ver",
+  "/etc/versions/project_eris_ssh.ver",
+  "/etc/versions/project_eris_usb_host.ver",
+  "/opt",
+  "/sbin/mount.exfat",
+  "/sbin/mount.ntfs",
+  "/usr/bin/blkid",
+  "/usr/bin/busybox-pe",
+  "/usr/bin/project_eris_service",
+  "/usr/bin/reboot-recovery",
+  "/usr/bin/scp",
+  "/usr/bin/sftp",
+  "/usr/bin/ssh",
+  "/usr/bin/ssh-add",
+  "/usr/bin/ssh-agent",
+  "/usr/bin/ssh-keygen",
+  "/usr/bin/ssh-keyscan",
+  "/usr/bin/usbhost_service",
+  "/usr/etc",
+  "/usr/sbin/sshd",
+  "/var/empty"
+ ],
+ "restore_other": {
+  "/sbin/blkid": {
+   "gid": 0,
+   "mode": "0777",
+   "target": "/bin/busybox.nosuid",
+   "type": "link",
+   "uid": 0
+  }
+ },
+ "restore_text": {
+  "/etc/group": "root:x:0:\ndaemon:x:1:\nbin:x:2:\nsys:x:3:\nadm:x:4:\ntty:x:5:\ndisk:x:6:\nlp:x:7:\nmail:x:8:\nnews:x:9:\nuucp:x:10:\nman:x:12:\nproxy:x:13:\nkmem:x:15:\ninput:x:19:\ndialout:x:20:\nfax:x:21:\nvoice:x:22:\ncdrom:x:24:\nfloppy:x:25:\ntape:x:26:\nsudo:x:27:\naudio:x:29:\ndip:x:30:\nwww-data:x:33:\nbackup:x:34:\noperator:x:37:\nlist:x:38:\nirc:x:39:\nsrc:x:40:\ngnats:x:41:\nshadow:x:42:\nutmp:x:43:\nvideo:x:44:\nsasl:x:45:\nplugdev:x:46:\nstaff:x:50:\ngames:x:60:\nshutdown:x:70:\nusers:x:100:\nnogroup:x:65534:\nnetdev:x:999:\nmessagebus:x:998:\nweston-launch:x:997:\nlock:x:996:\nsystemd-journal:x:995:\nsystemd-timesync:x:994:\n",
+  "/etc/hostname": "aiv8167-rockman-emmc\n",
+  "/etc/passwd": "root:x:0:0:root:/home/root:/bin/sh\ndaemon:x:1:1:daemon:/usr/sbin:/bin/sh\nbin:x:2:2:bin:/bin:/bin/sh\nsys:x:3:3:sys:/dev:/bin/sh\nsync:x:4:65534:sync:/bin:/bin/sync\ngames:x:5:60:games:/usr/games:/bin/sh\nman:x:6:12:man:/var/cache/man:/bin/sh\nlp:x:7:7:lp:/var/spool/lpd:/bin/sh\nmail:x:8:8:mail:/var/mail:/bin/sh\nnews:x:9:9:news:/var/spool/news:/bin/sh\nuucp:x:10:10:uucp:/var/spool/uucp:/bin/sh\nproxy:x:13:13:proxy:/bin:/bin/sh\nwww-data:x:33:33:www-data:/var/www:/bin/sh\nbackup:x:34:34:backup:/var/backups:/bin/sh\nlist:x:38:38:Mailing List Manager:/var/list:/bin/sh\nirc:x:39:39:ircd:/var/run/ircd:/bin/sh\ngnats:x:41:41:Gnats Bug-Reporting System (admin):/var/lib/gnats:/bin/sh\nnobody:x:65534:65534:nobody:/nonexistent:/bin/sh\nmessagebus:x:999:998::/var/lib/dbus:/bin/false\nsystemd-timesync:x:998:994::/:/bin/nologin\n",
+  "/etc/passwd-": "root:x:0:0:root:/home/root:/bin/sh\ndaemon:x:1:1:daemon:/usr/sbin:/bin/sh\nbin:x:2:2:bin:/bin:/bin/sh\nsys:x:3:3:sys:/dev:/bin/sh\nsync:x:4:65534:sync:/bin:/bin/sync\ngames:x:5:60:games:/usr/games:/bin/sh\nman:x:6:12:man:/var/cache/man:/bin/sh\nlp:x:7:7:lp:/var/spool/lpd:/bin/sh\nmail:x:8:8:mail:/var/mail:/bin/sh\nnews:x:9:9:news:/var/spool/news:/bin/sh\nuucp:x:10:10:uucp:/var/spool/uucp:/bin/sh\nproxy:x:13:13:proxy:/bin:/bin/sh\nwww-data:x:33:33:www-data:/var/www:/bin/sh\nbackup:x:34:34:backup:/var/backups:/bin/sh\nlist:x:38:38:Mailing List Manager:/var/list:/bin/sh\nirc:x:39:39:ircd:/var/run/ircd:/bin/sh\ngnats:x:41:41:Gnats Bug-Reporting System (admin):/var/lib/gnats:/bin/sh\nnobody:x:65534:65534:nobody:/nonexistent:/bin/sh\nmessagebus:x:999:998::/var/lib/dbus:/bin/false\n",
+  "/etc/shadow": "root:*:17783:0:99999:7:::\ndaemon:*:17783:0:99999:7:::\nbin:*:17783:0:99999:7:::\nsys:*:17783:0:99999:7:::\nsync:*:17783:0:99999:7:::\ngames:*:17783:0:99999:7:::\nman:*:17783:0:99999:7:::\nlp:*:17783:0:99999:7:::\nmail:*:17783:0:99999:7:::\nnews:*:17783:0:99999:7:::\nuucp:*:17783:0:99999:7:::\nproxy:*:17783:0:99999:7:::\nwww-data:*:17783:0:99999:7:::\nbackup:*:17783:0:99999:7:::\nlist:*:17783:0:99999:7:::\nirc:*:17783:0:99999:7:::\ngnats:*:17783:0:99999:7:::\nnobody:*:17783:0:99999:7:::\nmessagebus:!:17783::::::\nsystemd-timesync:!:17783::::::\n",
+  "/etc/shadow-": "root::17783:0:99999:7:::\ndaemon:*:17783:0:99999:7:::\nbin:*:17783:0:99999:7:::\nsys:*:17783:0:99999:7:::\nsync:*:17783:0:99999:7:::\ngames:*:17783:0:99999:7:::\nman:*:17783:0:99999:7:::\nlp:*:17783:0:99999:7:::\nmail:*:17783:0:99999:7:::\nnews:*:17783:0:99999:7:::\nuucp:*:17783:0:99999:7:::\nproxy:*:17783:0:99999:7:::\nwww-data:*:17783:0:99999:7:::\nbackup:*:17783:0:99999:7:::\nlist:*:17783:0:99999:7:::\nirc:*:17783:0:99999:7:::\ngnats:*:17783:0:99999:7:::\nnobody:*:17783:0:99999:7:::\nmessagebus:!:17783::::::\n",
+  "/etc/versions/variant": "user\n"
+ },
+ "source": "Project Eris rootfs1 (md5 244ab2c853105891eaf2d9b7cff3bc22) vs stock ROOTFS1"
+}

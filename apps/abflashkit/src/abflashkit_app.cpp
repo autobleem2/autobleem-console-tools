@@ -40,6 +40,9 @@ FlashKitPaths AbFlashKit::paths() const {
     paths.internalGamesDir = Env::getPathToInternalGamesDir();
     paths.internalDb = Env::getPathToInternalDBFile();
     paths.gamesBackupDir = Env::getPathToUSBRoot() + sep + GamesBackup::FolderName;
+    paths.stockDir = Env::getAppDir() + sep + "stock";
+    paths.dataDir = Env::getAppDir() + sep + "data";
+    paths.backupsDir = Env::getPathToUSBRoot() + sep + "System" + sep + "Backups";
     return paths;
 }
 

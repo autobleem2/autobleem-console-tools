@@ -7,6 +7,7 @@
 //
 #pragma once
 
+#include "factory_restore.h"
 #include "lboot_backup.h"
 
 #include <ableem/engine/byte_progress.h>
@@ -40,9 +41,9 @@ public:
     // the backup unpacked for LbootBackup::inspect(); false when it could not be
     virtual bool extractBackup(const std::string &path, const std::string &dir, const ableem::ByteProgress &bytes) = 0;
 
-    // <kernelDir>/boot.img is there and its md5 is the one in <kernelDir>/boot.md5, and likewise
-    // <kernelDir>/abrootfs.tgz against <kernelDir>/abrootfs.md5 (installPayload() unpacks it, unchecked
-    // until now)
+    // <kernelDir>/boot.img is there and its md5 is the one in <kernelDir>/boot.md5, and the rootfs next to it:
+    // <kernelDir>/abrootfs.squashfs against its sha256 in abrootfs.squashfs.sha256 (AUTOBLEEM-33), or, only
+    // when the kit has no squashfs (an old kit), abrootfs.tgz against abrootfs.md5
     virtual bool validateKernel(const std::string &kernelDir) = 0;
     // the bootloader's recovery flag, <kernelDir>/recovery-{on,off}.img into the MISC partition
     virtual void setRecoveryMode(bool on, const std::string &kernelDir) = 0;
@@ -52,9 +53,40 @@ public:
     // <kernelDir>/install_payload.sh - the AutoBleem rootfs overlay onto the data partition
     virtual void installPayload(const std::string &kernelDir) = 0;
 
+    // Restore to factory (AUTOBLEEM-32). Step 1: what the console is like, nothing written - the BOOTIMG1 and
+    // ROOTFS1 md5s (`bytes` covers both), Project Eris by <dataDir>/eris_reverse.json's detect files, the other firmware's folders on USRDATA, the MISC flag
+    virtual FactoryRestore::Findings inspectFactory(const std::string &kernelDir, const std::string &dataDir,
+                                                    const ableem::ByteProgress &bytes) = 0;
+    // <stockDir>/boot.img is Sony's (the stock md5) and <dataDir>'s two JSON files load
+    virtual bool validateStock(const std::string &stockDir, const std::string &dataDir) = 0;
+    // the built-in games' saves copied to `dir`, and back onto the (new) USRDATA
+    virtual bool backupSaves(const std::string &dir) = 0;
+    virtual bool restoreSaves(const std::string &dir) = 0;
+    // ROOTFS1 put back to Sony's: a stock one is left alone, Project Eris's is reversed (mounted read-write for
+    // this step only) and the whole tree checked against the manifest in <dataDir>. ok false = stopped, nothing
+    // further written.
+    virtual FactoryRestore::Result restoreRootfs(FactoryRestore::Rootfs state, const std::string &dataDir,
+                                                 const ableem::ByteProgress &bytes) = 0;
+    // USRDATA unmounted, made again with mkfs.ext4 under the factory parameters, mounted. Untouched = it failed
+    // before anything was written (cannot unmount, cannot read the parameters); Failed = the filesystem is gone
+    // or half made.
+    enum class UserDataReset { Untouched, Done, Failed };
+    virtual UserDataReset resetUserData() = 0;
+    // USRDATA can be erased: the running system does not use it (no overlay layer on it, nothing else mounted
+    // from it). Asked before anything is written.
+    virtual bool userDataErasable() = 0;
+    // Asked before anything is written, right after userDataErasable(): the USRDATA parameters can be read and
+    // the mkfs command built (ParametersUnreadable), and /data can be unmounted (CannotUnmount). A failed
+    // restore at resetUserData() would come after Sony's kernel is written.
+    enum class UserDataCheck { Ready, ParametersUnreadable, CannotUnmount };
+    virtual UserDataCheck checkUserData() = 0;
+
     virtual void sync() = 0;
     // stops the launcher and the compositor and reboots; the tool does not return from it on the console
     virtual void reboot() = 0;
+    // stops the launcher and the compositor and switches the console off, with fallbacks for a system whose
+    // systemd does not answer (BUG-9)
+    virtual void powerOff() = 0;
 };
 
 //******************
@@ -71,9 +103,34 @@ public:
     void setRecoveryMode(bool on, const std::string &kernelDir) override;
     KernelWrite flashKernel(const std::string &kernelDir, const ableem::ByteProgress &bytes) override;
     void installPayload(const std::string &kernelDir) override;
+    FactoryRestore::Findings inspectFactory(const std::string &kernelDir, const std::string &dataDir,
+                                            const ableem::ByteProgress &bytes) override;
+    bool validateStock(const std::string &stockDir, const std::string &dataDir) override;
+    bool backupSaves(const std::string &dir) override;
+    bool restoreSaves(const std::string &dir) override;
+    FactoryRestore::Result restoreRootfs(FactoryRestore::Rootfs state, const std::string &dataDir,
+                                         const ableem::ByteProgress &bytes) override;
+    UserDataReset resetUserData() override;
+    bool userDataErasable() override;
+    UserDataCheck checkUserData() override;
     void sync() override;
     void reboot() override;
+    void powerOff() override;
 
+    // a shell command's whole output, newlines kept (System::execUnixCommand erases them), and its exit status
+    // (-1 when it could not be started). What every output the kit parses line by line is read through.
+    struct CommandResult {
+        std::string output;
+        int status = -1;
+    };
+    static CommandResult runCommand(const std::string &command);
+
+    // the mounts the erasable check reads; the tests point it at a file
+    std::string procMounts = "/proc/mounts";
+
+    static const char *const RootfsPartition; // /dev/disk/by-partlabel/ROOTFS1
+    static const char *const UserDataPartition; // /dev/disk/by-partlabel/USRDATA
+    static const char *const DataMount;         // /data - USRDATA's mount point
     static const char *const MiscPartition; // /dev/disk/by-partlabel/MISC
     static const char *const BootPartition; // /dev/disk/by-partlabel/BOOTIMG1
 
@@ -82,6 +139,9 @@ public:
     // which point it at plain files.
     static KernelWrite writeImage(const std::string &image, const std::string &device,
                                   const ableem::ByteProgress &bytes);
+
+private:
+    static std::string userDataMkfs();
 };
 
 //******************
@@ -102,11 +162,23 @@ public:
     void setRecoveryMode(bool on, const std::string &kernelDir) override;
     KernelWrite flashKernel(const std::string &kernelDir, const ableem::ByteProgress &bytes) override;
     void installPayload(const std::string &kernelDir) override;
+    FactoryRestore::Findings inspectFactory(const std::string &kernelDir, const std::string &dataDir,
+                                            const ableem::ByteProgress &bytes) override;
+    bool validateStock(const std::string &stockDir, const std::string &dataDir) override;
+    bool backupSaves(const std::string &dir) override;
+    bool restoreSaves(const std::string &dir) override;
+    FactoryRestore::Result restoreRootfs(FactoryRestore::Rootfs state, const std::string &dataDir,
+                                         const ableem::ByteProgress &bytes) override;
+    UserDataReset resetUserData() override;
+    bool userDataErasable() override;
+    UserDataCheck checkUserData() override;
     void sync() override {}
     void reboot() override;
+    void powerOff() override;
 
     std::vector<std::string> log; // what it would have done, in order
     bool rebooted = false;
+    bool poweredOff = false;
     bool recoveryMode = false;
     KernelWrite kernelWrite = KernelWrite::Written; // what flashKernel() answers
     // when set, a partition's device is stood in for by <dir>/<entry>, a file of `fakePartitionBytes` made on
@@ -114,6 +186,16 @@ public:
     // for the progress bar to be seen moving
     std::string fakePartitionsDir;
     long long fakePartitionBytes = 8 * 1024 * 1024;
+
+    // Restore to factory: what inspectFactory() answers; the saves, the rootfs and the data partition are
+    // stood in for by folders when these are set (a fake ROOTFS1 tree, a fake /data), else the steps just log
+    FactoryRestore::Findings findings;
+    std::string fakeRootfsDir, fakeDataDir;
+    bool stockValid = true;
+    bool savesOk = true;
+    UserDataReset userDataReset = UserDataReset::Done;
+    bool dataErasable = true; // what userDataErasable() answers
+    UserDataCheck userDataCheck = UserDataCheck::Ready; // what checkUserData() answers
 
 private:
     void step(const std::string &what);
