@@ -36,6 +36,8 @@ const char *FlashKitActions::name(Outcome outcome) {
         return "done";
     case Outcome::Rebooting:
         return "rebooting";
+    case Outcome::PoweringOff:
+        return "powering off";
     }
     return "?";
 }
@@ -59,6 +61,13 @@ void FlashKitActions::rebootNow() {
     led_.setMode(LedMode::Off);
     ui_.wait(100);
     flasher_.reboot();
+}
+
+// the same, for the power off
+void FlashKitActions::powerOffNow() {
+    led_.setMode(LedMode::Off);
+    ui_.wait(100);
+    flasher_.powerOff();
 }
 
 //*******************************
@@ -457,8 +466,9 @@ FlashKitActions::Outcome FlashKitActions::restoreFactory() {
     flasher_.setRecoveryMode(false, paths_.kernelDir);
     ui_.runInBackground([&] { flasher_.sync(); });
     ui_.wait(2000);
-    ui_.status(_("All done - when the screen goes black replace power cord"));
+    // BUG-9: a restored console is switched off, not restarted into the stock system - and the message says so
+    ui_.status(_("Done, switching off..."));
     ui_.wait(3000);
-    rebootNow();
-    return Outcome::Rebooting;
+    powerOffNow();
+    return Outcome::PoweringOff;
 }

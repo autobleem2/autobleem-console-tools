@@ -61,7 +61,8 @@ public:
         Cancelled, // the user said no at a confirmation
         Failed,    // a step failed; nothing irreversible happened, unless the status said otherwise
         Done,      // finished, the tool goes on (a backup)
-        Rebooting  // finished with the reboot issued (a flash, a restore)
+        Rebooting, // finished with the reboot issued (a flash, a restore)
+        PoweringOff // finished with the power off issued (Restore to factory)
     };
 
     FlashKitActions(Flasher &flasher, Led &led, FlashUi &ui, FlashKitPaths paths);
@@ -81,6 +82,7 @@ public:
 private:
     bool backupExists() const;
     void rebootNow();
+    void powerOffNow();
     // a bar from 0, fed by byte counts (reported to the screen only when it moves a step); noBar() hides it
     ableem::ByteProgress bar();
     void noBar();

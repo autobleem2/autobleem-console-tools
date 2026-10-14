@@ -153,7 +153,8 @@ jobs:
           [ -n "$assets" ] || { echo "::error::$R release $tag (id $id) has no kernel-payload-psc asset"; exit 1; }
           aid="${assets%% *}"; name="${assets#* }"; name="${name%%$'\n'*}"
           gh api -H 'Accept: application/octet-stream' "repos/$R/releases/assets/$aid" > "kp/$name"
-          tar -tzf "kp/$name" kernel/boot.img kernel/abrootfs.tgz > /dev/null
+          tar -tzf "kp/$name" kernel/boot.img kernel/install_payload.sh > /dev/null
+          tar -tzf "kp/$name" | grep -qE '^(\./)?kernel/abrootfs\.(squashfs|tgz)$' || { echo "::error::$name has neither kernel/abrootfs.squashfs nor kernel/abrootfs.tgz"; exit 1; }
           echo "payload: $name from $R@$tag"
           echo "source=$tag" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
@@ -238,13 +239,26 @@ jobs:
           tar -xzf kp/kernel-payload-psc-*.tar.gz -C stage/Apps/abflashkit
           echo "ABFlashKit kernel/: psc-kernel-payload ${{ needs.kernel-payload.outputs.source }}"
           # ABFlashKit is useless without its payload - never ship one that lacks it
-          for f in boot.img boot.md5 abrootfs.tgz abrootfs.md5 install_payload.sh recovery-on.img recovery-off.img; do
+          # AUTOBLEEM-33: boot.img + boot.md5, abrootfs.squashfs + abrootfs.squashfs.sha256, install_payload.sh and
+          # the recovery images. An older payload release (abrootfs.tgz + abrootfs.md5, no squashfs) is still
+          # accepted, as the tool itself accepts it.
+          for f in boot.img boot.md5 install_payload.sh recovery-on.img recovery-off.img; do
             test -s "stage/Apps/abflashkit/kernel/$f" || { echo "::error::Apps/abflashkit/kernel/$f missing"; exit 1; }
           done
           (cd stage/Apps/abflashkit/kernel && [ "$(md5sum boot.img | cut -c1-32)" = "$(head -c 32 boot.md5)" ]) \
             || { echo "::error::kernel/boot.img does not match boot.md5"; exit 1; }
-          (cd stage/Apps/abflashkit/kernel && [ "$(md5sum abrootfs.tgz | cut -c1-32)" = "$(head -c 32 abrootfs.md5)" ]) \
-            || { echo "::error::kernel/abrootfs.tgz does not match abrootfs.md5"; exit 1; }
+          if [ -e stage/Apps/abflashkit/kernel/abrootfs.squashfs ]; then
+            test -s stage/Apps/abflashkit/kernel/abrootfs.squashfs.sha256 \
+              || { echo "::error::Apps/abflashkit/kernel/abrootfs.squashfs.sha256 missing"; exit 1; }
+            (cd stage/Apps/abflashkit/kernel && [ "$(sha256sum abrootfs.squashfs | cut -c1-64)" = "$(head -c 64 abrootfs.squashfs.sha256)" ]) \
+              || { echo "::error::kernel/abrootfs.squashfs does not match abrootfs.squashfs.sha256"; exit 1; }
+          else
+            for f in abrootfs.tgz abrootfs.md5; do
+              test -s "stage/Apps/abflashkit/kernel/$f" || { echo "::error::Apps/abflashkit/kernel/$f missing"; exit 1; }
+            done
+            (cd stage/Apps/abflashkit/kernel && [ "$(md5sum abrootfs.tgz | cut -c1-32)" = "$(head -c 32 abrootfs.md5)" ]) \
+              || { echo "::error::kernel/abrootfs.tgz does not match abrootfs.md5"; exit 1; }
+          fi
           # the stock kernel image is the one Sony shipped; a package without it cannot restore to factory
           (cd stage/Apps/abflashkit/stock && [ "$(md5sum boot.img | cut -c1-32)" = "28ce5f6de4981764411393310311b517" ]) \
             || { echo "::error::stock/boot.img is not Sony's kernel image"; exit 1; }

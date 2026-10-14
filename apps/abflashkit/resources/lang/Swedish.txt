@@ -4,6 +4,7 @@
 
 About=
 All done - when the screen goes black replace power cord=Klart - när skärmen blir svart, sätt i strömkabeln igen
+Done, switching off...=Klart, stänger av...
 All four partitions to LBOOT.EPB on the stick, for a restore later=Alla fyra partitioner till LBOOT.EPB på minnet, för en senare återställning
 Back the console up to the stick, install the AutoBleem kernel and reboot=Säkerhetskopiera konsolen till minnet, installera AutoBleem-kärnan och starta om
 Back up games=Säkerhetskopiera spel

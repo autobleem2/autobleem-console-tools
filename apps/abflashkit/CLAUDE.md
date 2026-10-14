@@ -143,6 +143,17 @@ already). Proven with a byte-for-byte diff of the Package step's staged tree bui
 identical file list, identical md5 of every file. `payload/` itself is gone with it - `abflashkit` was the
 only thing under it.
 
+**AUTOBLEEM-33 kernel files and BUG-9 (2026-10-14).** The payload now has `boot.img` + `boot.md5`,
+`abrootfs.squashfs` + `abrootfs.squashfs.sha256`, `install_payload.sh` (copies the squashfs to
+`/media/System/Kernel/`, no longer unpacks a tgz onto `/data`) and `recovery-{on,off}.img`.
+`validateKernel()` checks boot.img against boot.md5 always, then the squashfs against its sha256 (a bare hash or
+`sha256sum`'s line); `abrootfs.tgz`/`abrootfs.md5` only when the kit has no squashfs at all (an old kit) - a
+squashfs that fails is not excused by a tgz. The CI Package step checks the same. Restore to factory used to end
+in `reboot()` and the kit stayed on its "done" screen; it now ends in `Flasher::powerOff()` (sync, stop the GUI and
+weston, `systemctl poweroff`, then `poweroff -f`, then sysrq `o`) after "Done, switching off..." and returns
+`Outcome::PoweringOff`; every failure path stays on its error message and does not power off (the two that leave
+the recovery flag on still reboot into Sony's recovery, as before). Untested on a console.
+
 ## Theme and language
 
 Drawn with the main GUI's theme through `AppBase` (the 2020 tool had its own `background.jpg`, button PNGs

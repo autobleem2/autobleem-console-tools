@@ -130,7 +130,7 @@ void GuiFlashKitMain::run(FlashKitActions::Outcome (FlashKitActions::*action)())
         busy = false;
     }
     // a reboot has been issued on the console; on a dev host there is nothing to reboot, the tool closes
-    if (outcome == FlashKitActions::Outcome::Rebooting)
+    if (outcome == FlashKitActions::Outcome::Rebooting || outcome == FlashKitActions::Outcome::PoweringOff)
         menuVisible = false;
     gui->input().flushEvents();
 }

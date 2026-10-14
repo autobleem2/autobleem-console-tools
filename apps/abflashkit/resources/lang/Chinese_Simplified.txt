@@ -4,6 +4,7 @@
 
 About=
 All done - when the screen goes black replace power cord=全部完成 - 屏幕变黑后请重新插拔电源线
+Done, switching off...=完成，正在关机...
 All four partitions to LBOOT.EPB on the stick, for a restore later=将全部四个分区备份到U盘的 LBOOT.EPB，以备日后恢复
 Back the console up to the stick, install the AutoBleem kernel and reboot=先将主机备份到U盘，然后安装 AutoBleem 内核并重启
 Back up games=备份游戏

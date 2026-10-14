@@ -4,6 +4,7 @@
 
 About=
 All done - when the screen goes black replace power cord=Gotowe - gdy ekran zgaśnie, wepnij ponownie kabel zasilający
+Done, switching off...=Gotowe, wyłączanie...
 All four partitions to LBOOT.EPB on the stick, for a restore later=Wszystkie cztery partycje do LBOOT.EPB na pendrive, do późniejszego przywrócenia
 Back the console up to the stick, install the AutoBleem kernel and reboot=Wykonaj kopię konsoli na pendrive, zainstaluj kernel AutoBleem i uruchom ponownie
 Back up games=Kopia zapasowa gier

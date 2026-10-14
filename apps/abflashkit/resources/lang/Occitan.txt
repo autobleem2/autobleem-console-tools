@@ -4,6 +4,7 @@
 
 About=
 All done - when the screen goes black replace power cord=Acabat - quand l'ecran ven negre, rebrancatz lo cable d'alimentacion
+Done, switching off...=Acabat, atudament en cors...
 All four partitions to LBOOT.EPB on the stick, for a restore later=Las quatre particions dins LBOOT.EPB sus la clau, per una restauracion ulteriora
 Back the console up to the stick, install the AutoBleem kernel and reboot=Salvar la consòla sus la clau, installar lo nucli AutoBleem e reaviar
 Back up games=Salvar los jòcs

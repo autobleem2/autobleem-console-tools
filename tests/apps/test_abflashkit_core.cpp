@@ -15,6 +15,7 @@
 #include "core/led.h"
 
 #include <ableem/engine/md5.h>
+#include <ableem/engine/sha256.h>
 #include <ableem/engine/zip_archive.h>
 
 #include <string>
@@ -181,6 +182,40 @@ TEST_CASE("the kernel check also wants abrootfs.tgz and a matching abrootfs.md5 
     CHECK_FALSE(flasher.validateKernel(b.kernelDir));
     b.tmp.writeFile("kernel/abrootfs.md5", ableem::Md5::ofString("the new rootfs overlay") + "  abrootfs.tgz\n");
     ableem::DirEntry::removeFile(b.tmp.at("kernel/abrootfs.tgz")); // the .tgz itself missing
+    CHECK_FALSE(flasher.validateKernel(b.kernelDir));
+}
+
+TEST_CASE("the kernel check uses abrootfs.squashfs and its .sha256 when the kit has one (AUTOBLEEM-33)") {
+    Bench b;
+    FakeFlasher flasher(0);
+    const string squash = "the squashfs rootfs";
+    const string sum = ableem::Sha256::ofString(squash);
+    b.tmp.writeFile("kernel/abrootfs.squashfs", squash);
+    b.tmp.writeFile("kernel/abrootfs.squashfs.sha256", sum + "  abrootfs.squashfs\n");
+    CHECK(flasher.validateKernel(b.kernelDir));
+    // the old tgz is not looked at any more: a broken tgz md5 does not matter next to a good squashfs
+    b.tmp.writeFile("kernel/abrootfs.md5", "00000000000000000000000000000000");
+    CHECK(flasher.validateKernel(b.kernelDir));
+    b.tmp.writeFile("kernel/abrootfs.squashfs.sha256", sum); // bare hash
+    CHECK(flasher.validateKernel(b.kernelDir));
+    // a squashfs that fails is never excused by a good tgz
+    b.tmp.writeFile("kernel/abrootfs.md5", ableem::Md5::ofString("the new rootfs overlay") + "  abrootfs.tgz\n");
+    b.tmp.writeFile("kernel/abrootfs.squashfs.sha256", string(64, '0') + "  abrootfs.squashfs\n");
+    CHECK_FALSE(flasher.validateKernel(b.kernelDir));
+    b.tmp.writeFile("kernel/abrootfs.squashfs.sha256", "");
+    CHECK_FALSE(flasher.validateKernel(b.kernelDir));
+    ableem::DirEntry::removeFile(b.tmp.at("kernel/abrootfs.squashfs.sha256"));
+    CHECK_FALSE(flasher.validateKernel(b.kernelDir));
+    // a corrupted squashfs against the right sum
+    b.tmp.writeFile("kernel/abrootfs.squashfs.sha256", sum + "  abrootfs.squashfs\n");
+    b.tmp.writeFile("kernel/abrootfs.squashfs", "the squashfs rootfs, damaged");
+    CHECK_FALSE(flasher.validateKernel(b.kernelDir));
+    // a squashfs-only kit needs no tgz; boot.img is still checked
+    b.tmp.writeFile("kernel/abrootfs.squashfs", squash);
+    ableem::DirEntry::removeFile(b.tmp.at("kernel/abrootfs.tgz"));
+    ableem::DirEntry::removeFile(b.tmp.at("kernel/abrootfs.md5"));
+    CHECK(flasher.validateKernel(b.kernelDir));
+    b.tmp.writeFile("kernel/boot.md5", "00000000000000000000000000000000");
     CHECK_FALSE(flasher.validateKernel(b.kernelDir));
 }
 
@@ -804,9 +839,9 @@ struct FactoryRun {
 };
 } // namespace
 
-TEST_CASE("restoreFactory on Project Eris: inspect, saves, kernel, rootfs, data partition, saves back, reboot") {
+TEST_CASE("restoreFactory on Project Eris: inspect, saves, kernel, rootfs, data partition, saves back, power off") {
     FactoryRun r;
-    CHECK(r.run() == FlashKitActions::Outcome::Rebooting);
+    CHECK(r.run() == FlashKitActions::Outcome::PoweringOff);
     // the confirmation shows the findings and what will be done
     REQUIRE(r.ui.questions.size() == 1);
     CHECK(r.ui.questions[0].find("Project Eris") != string::npos);
@@ -824,13 +859,14 @@ TEST_CASE("restoreFactory on Project Eris: inspect, saves, kernel, rootfs, data 
     CHECK(log[6] == "reset user data");
     CHECK(log[7].rfind("restore saves from " + r.paths.backupsDir + "/factory-", 0) == 0);
     CHECK(log[8] == "recovery mode off");
-    CHECK(log[9] == "reboot");
+    CHECK(log[9] == "power off"); // BUG-9: the console is switched off after the visible message, not rebooted
     CHECK_FALSE(r.flasher.recoveryMode);
-    CHECK(r.flasher.rebooted);
+    CHECK(r.flasher.poweredOff);
+    CHECK_FALSE(r.flasher.rebooted);
     // the real tree code ran on the fake root, and the saves really travelled
     CHECK(r.fb.tmp.readFile("root/etc/group") == "stock group\n");
     CHECK_FALSE(ableem::DirEntry::exists(r.fb.tmp.at("root/opt")));
-    CHECK(r.ui.said("All done"));
+    CHECK(r.ui.said("Done, switching off"));
     const string day = FactoryRestore::folderName(static_cast<long long>(time(nullptr)));
     CHECK(r.fb.tmp.readFile("stick/System/Backups/" + day + "/5/.pcsx/memcards/card1.mcd") == "CARD 5");
 }
@@ -838,7 +874,7 @@ TEST_CASE("restoreFactory on Project Eris: inspect, saves, kernel, rootfs, data 
 TEST_CASE("restoreFactory on a stock ROOTFS1 leaves it alone, and makes the backup when there is none") {
     FactoryRun r(false);
     ableem::DirEntry::removeFile(r.paths.backup);
-    CHECK(r.run() == FlashKitActions::Outcome::Rebooting);
+    CHECK(r.run() == FlashKitActions::Outcome::PoweringOff);
     CHECK(r.ui.questions[0].find("System files: stock") != string::npos);
     CHECK(ableem::DirEntry::exists(r.paths.backup));
     CHECK(LbootBackup::isAutoBleemBackup(r.paths.backup));
@@ -853,7 +889,7 @@ TEST_CASE("restoreFactory on a stock ROOTFS1 leaves it alone, and makes the back
     // an existing LBOOT.EPB is kept as it is
     FactoryRun again(false);
     const long long size = ableem::DirEntry::fileSize(again.paths.backup);
-    CHECK(again.run() == FlashKitActions::Outcome::Rebooting);
+    CHECK(again.run() == FlashKitActions::Outcome::PoweringOff);
     CHECK(ableem::DirEntry::fileSize(again.paths.backup) == size);
     for (const string &step : again.flasher.log)
         CHECK(step.find("backup to") != 0);
@@ -928,6 +964,7 @@ TEST_CASE("restoreFactory: the stock path it cannot restore stops it with the Re
         CHECK(step.find("restore saves") == string::npos);
     }
     CHECK_FALSE(r.flasher.rebooted);
+    CHECK_FALSE(r.flasher.poweredOff); // BUG-9: a failure stays on the error screen
     CHECK_FALSE(r.flasher.recoveryMode);
     CHECK(ableem::DirEntry::exists(r.fb.tmp.at("root/var/log/live.log"))); // no foreign path deleted
     CHECK(r.fb.tmp.readFile("usrdata/AppData/sony/pcsx/5/.pcsx/memcards/card1.mcd") == "CARD 5");
@@ -958,6 +995,7 @@ TEST_CASE("restoreFactory: a kernel write that fails, and a data partition that 
         CHECK(r.run() == FlashKitActions::Outcome::Failed);
         CHECK_FALSE(r.flasher.recoveryMode);
         CHECK_FALSE(r.flasher.rebooted);
+        CHECK_FALSE(r.flasher.poweredOff);
         for (const string &step : r.flasher.log)
             CHECK(step.find("restore saves") == string::npos);
     }
@@ -966,7 +1004,8 @@ TEST_CASE("restoreFactory: a kernel write that fails, and a data partition that 
         r.flasher.userDataReset = Flasher::UserDataReset::Failed; // mkfs failed: the filesystem is gone
         CHECK(r.run() == FlashKitActions::Outcome::Failed);
         CHECK(r.flasher.recoveryMode);
-        CHECK(r.flasher.rebooted);
+        CHECK(r.flasher.rebooted); // into Sony's recovery, never a power off
+        CHECK_FALSE(r.flasher.poweredOff);
         CHECK(r.ui.said("restore itself from LBOOT.EPB"));
     }
 }
@@ -1058,15 +1097,15 @@ TEST_CASE("restoreFactory refuses while the data partition is in use: nothing wr
 TEST_CASE("restoreFactory with a free data partition (the new init) runs through") {
     FactoryRun r;
     r.flasher.dataErasable = true;
-    CHECK(r.run() == FlashKitActions::Outcome::Rebooting);
+    CHECK(r.run() == FlashKitActions::Outcome::PoweringOff);
     CHECK_FALSE(r.ui.said("in use by the running system"));
-    CHECK(r.flasher.rebooted);
+    CHECK(r.flasher.poweredOff);
 }
 
 TEST_CASE("restoreFactory in the half-done state: Sony's kernel and stock files, only the data partition is erased") {
     FactoryRun r(false);
     r.flasher.findings.bootIsStock = true;
-    CHECK(r.run() == FlashKitActions::Outcome::Rebooting);
+    CHECK(r.run() == FlashKitActions::Outcome::PoweringOff);
     const vector<string> &log = r.flasher.log;
     REQUIRE(log.size() == 8);
     CHECK(log[0] == "validate stock in " + r.paths.stockDir);
@@ -1076,7 +1115,7 @@ TEST_CASE("restoreFactory in the half-done state: Sony's kernel and stock files,
     CHECK(log[4] == "reset user data");
     CHECK(log[5].rfind("restore saves from ", 0) == 0);
     CHECK(log[6] == "recovery mode off");
-    CHECK(log[7] == "reboot");
+    CHECK(log[7] == "power off");
     for (const string &step : log)
         CHECK(step.find("flash ") == string::npos);
     // and while it is still in use, it is refused as well

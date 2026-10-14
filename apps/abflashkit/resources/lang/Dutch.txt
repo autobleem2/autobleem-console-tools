@@ -4,6 +4,7 @@
 
 About=
 All done - when the screen goes black replace power cord=Klaar - als het scherm zwart wordt, steek de stroomkabel opnieuw in
+Done, switching off...=Klaar, de console wordt uitgeschakeld...
 All four partitions to LBOOT.EPB on the stick, for a restore later=Alle vier partities naar LBOOT.EPB op de stick, om later te herstellen
 Back the console up to the stick, install the AutoBleem kernel and reboot=Maak een back-up van de console op de stick, installeer de AutoBleem-kernel en herstart
 Back up games=Games back-uppen

@@ -4,6 +4,7 @@
 
 About=
 All done - when the screen goes black replace power cord=Gata - când ecranul devine negru, reconectați cablul de alimentare
+Done, switching off...=Gata, se oprește...
 All four partitions to LBOOT.EPB on the stick, for a restore later=Toate cele patru partiții în LBOOT.EPB pe stick, pentru o restaurare ulterioară
 Back the console up to the stick, install the AutoBleem kernel and reboot=Salvează consola pe stick, instalează kernelul AutoBleem și repornește
 Back up games=Backup jocuri

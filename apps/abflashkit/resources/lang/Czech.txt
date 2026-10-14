@@ -4,6 +4,7 @@
 
 About=
 All done - when the screen goes black replace power cord=Hotovo - až obrazovka zčerná, znovu zapojte napájecí kabel
+Done, switching off...=Hotovo, vypínám...
 All four partitions to LBOOT.EPB on the stick, for a restore later=Všechny čtyři oddíly do LBOOT.EPB na flash disku pro pozdější obnovu
 Back the console up to the stick, install the AutoBleem kernel and reboot=Zálohovat konzoli na flash disk, nainstalovat jádro AutoBleem a restartovat
 Back up games=Záloha her

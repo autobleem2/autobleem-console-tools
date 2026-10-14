@@ -41,9 +41,9 @@ public:
     // the backup unpacked for LbootBackup::inspect(); false when it could not be
     virtual bool extractBackup(const std::string &path, const std::string &dir, const ableem::ByteProgress &bytes) = 0;
 
-    // <kernelDir>/boot.img is there and its md5 is the one in <kernelDir>/boot.md5, and likewise
-    // <kernelDir>/abrootfs.tgz against <kernelDir>/abrootfs.md5 (installPayload() unpacks it, unchecked
-    // until now)
+    // <kernelDir>/boot.img is there and its md5 is the one in <kernelDir>/boot.md5, and the rootfs next to it:
+    // <kernelDir>/abrootfs.squashfs against its sha256 in abrootfs.squashfs.sha256 (AUTOBLEEM-33), or, only
+    // when the kit has no squashfs (an old kit), abrootfs.tgz against abrootfs.md5
     virtual bool validateKernel(const std::string &kernelDir) = 0;
     // the bootloader's recovery flag, <kernelDir>/recovery-{on,off}.img into the MISC partition
     virtual void setRecoveryMode(bool on, const std::string &kernelDir) = 0;
@@ -79,6 +79,9 @@ public:
     virtual void sync() = 0;
     // stops the launcher and the compositor and reboots; the tool does not return from it on the console
     virtual void reboot() = 0;
+    // stops the launcher and the compositor and switches the console off, with fallbacks for a system whose
+    // systemd does not answer (BUG-9)
+    virtual void powerOff() = 0;
 };
 
 //******************
@@ -106,6 +109,7 @@ public:
     bool userDataErasable() override;
     void sync() override;
     void reboot() override;
+    void powerOff() override;
 
     // the mounts the erasable check reads; the tests point it at a file
     std::string procMounts = "/proc/mounts";
@@ -152,9 +156,11 @@ public:
     bool userDataErasable() override;
     void sync() override {}
     void reboot() override;
+    void powerOff() override;
 
     std::vector<std::string> log; // what it would have done, in order
     bool rebooted = false;
+    bool poweredOff = false;
     bool recoveryMode = false;
     KernelWrite kernelWrite = KernelWrite::Written; // what flashKernel() answers
     // when set, a partition's device is stood in for by <dir>/<entry>, a file of `fakePartitionBytes` made on

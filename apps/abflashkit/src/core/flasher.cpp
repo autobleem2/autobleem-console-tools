@@ -12,6 +12,7 @@
 
 #include <ableem/engine/log.h>
 #include <ableem/engine/md5.h>
+#include <ableem/engine/sha256.h>
 #include <ableem/engine/zip_archive.h>
 #include <ableem/engine/zip_writer.h>
 
@@ -96,9 +97,44 @@ bool fileMatchesMd5(const string &kernelDir, const string &file, const string &m
     return actual == expected;
 }
 
+// the first 64 characters of <kernelDir>/<sumFile> - a bare hash, or sha256sum's "<hash>  <name>", lower-cased
+string expectedSha256(const string &kernelDir, const string &sumFile) {
+    ifstream in(kernelDir + sep + sumFile);
+    string line;
+    getline(in, line);
+    if (line.size() < 64)
+        return "";
+    line = line.substr(0, 64);
+    for (char &c : line)
+        c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+    return line;
+}
+
+// <kernelDir>/<file> is there and its sha256 is the one in <kernelDir>/<sumFile>
+bool fileMatchesSha256(const string &kernelDir, const string &file, const string &sumFile) {
+    string path = kernelDir + sep + file;
+    if (!DirEntry::exists(path))
+        return false;
+    string expected = expectedSha256(kernelDir, sumFile);
+    if (expected.empty())
+        return false;
+    string actual = ableem::Sha256::ofFile(path);
+    if (actual != expected) {
+        PLOG_WARNING << file << " sha256 " << actual << " is not the expected " << expected;
+    }
+    return actual == expected;
+}
+
+// boot.img against boot.md5 always; then the AutoBleem rootfs: abrootfs.squashfs against its .sha256 (the
+// AUTOBLEEM-33 payload, which install_payload.sh copies to /media/System/Kernel/), and only a kit without a
+// squashfs (an old payload) abrootfs.tgz against abrootfs.md5. A squashfs that is there but fails is never
+// excused by an old tgz next to it.
 bool kernelIsValid(const string &kernelDir) {
-    return fileMatchesMd5(kernelDir, "boot.img", "boot.md5") &&
-           fileMatchesMd5(kernelDir, "abrootfs.tgz", "abrootfs.md5");
+    if (!fileMatchesMd5(kernelDir, "boot.img", "boot.md5"))
+        return false;
+    if (DirEntry::exists(kernelDir + sep + "abrootfs.squashfs"))
+        return fileMatchesSha256(kernelDir, "abrootfs.squashfs", "abrootfs.squashfs.sha256");
+    return fileMatchesMd5(kernelDir, "abrootfs.tgz", "abrootfs.md5");
 }
 
 // a console command that succeeded (its output goes nowhere, the answer is the exit status)
@@ -396,6 +432,23 @@ void ConsoleFlasher::reboot() {
     System::execUnixCommand("systemctl reboot");
 }
 
+// BUG-9: Restore to factory used to end in reboot() and left the kit on its "done" screen when systemctl did not
+// act (the AutoBleem start-up may not run systemd as init, and /data had just been unmounted and made again).
+// The shutdown now falls through systemctl, busybox/sysvinit poweroff -f and the kernel's own sysrq switch-off,
+// each only when the one before did not leave the console; the disks are flushed first.
+void ConsoleFlasher::powerOff() {
+    PLOG_INFO << "Powering off";
+    System::execUnixCommand("sync");
+    System::execUnixCommand("killall -9 autobleem-gui");
+    System::execUnixCommand("systemctl stop weston");
+    System::execUnixCommand("systemctl poweroff");
+    this_thread::sleep_for(chrono::seconds(5));
+    PLOG_WARNING << "systemctl poweroff did not switch the console off, forcing it";
+    System::execUnixCommand("poweroff -f");
+    this_thread::sleep_for(chrono::seconds(3));
+    System::execUnixCommand("sync; echo 1 > /proc/sys/kernel/sysrq; echo o > /proc/sysrq-trigger");
+}
+
 //*******************************
 // FakeFlasher
 //*******************************
@@ -482,6 +535,11 @@ void FakeFlasher::installPayload(const string &kernelDir) {
 void FakeFlasher::reboot() {
     step("reboot");
     rebooted = true;
+}
+
+void FakeFlasher::powerOff() {
+    step("power off");
+    poweredOff = true;
 }
 
 //*******************************

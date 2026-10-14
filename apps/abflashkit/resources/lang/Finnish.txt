@@ -4,6 +4,7 @@
 
 About=
 All done - when the screen goes black replace power cord=Valmis - kun näyttö pimenee, kytke virtajohto uudelleen
+Done, switching off...=Valmis, sammutetaan...
 All four partitions to LBOOT.EPB on the stick, for a restore later=Kaikki neljä osiota tikun LBOOT.EPB-tiedostoon myöhempää palautusta varten
 Back the console up to the stick, install the AutoBleem kernel and reboot=Varmuuskopioi konsoli tikulle, asenna AutoBleem-ydin ja käynnistä uudelleen
 Back up games=Varmuuskopioi pelit
