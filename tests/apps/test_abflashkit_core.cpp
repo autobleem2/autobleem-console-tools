@@ -18,6 +18,7 @@
 #include <ableem/engine/sha256.h>
 #include <ableem/engine/zip_archive.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -1046,7 +1047,77 @@ TEST_CASE("mkfsCommand reads dumpe2fs -h too, with its version line first") {
           "extent,flex_bg,sparse_super,large_file,huge_file,dir_nlink,extra_isize -L userdata /dev/x");
 }
 
-TEST_CASE("dataInUse: the overlay layers on /data, another mount of it, a bind of it, a mount below it") {
+namespace {
+// dumpe2fs -h /dev/disk/by-partlabel/USRDATA, as the owner's console printed it (note the TAB after "Inode size:")
+const char *const ConsoleDumpe2fs =
+    "Filesystem volume name:   <none>\n"
+    "Last mounted on:          /data\n"
+    "Filesystem UUID:          6c1ad4e6-35d3-4a58-9d6d-b3c38b9ffc39\n"
+    "Filesystem magic number:  0xEF53\n"
+    "Filesystem revision #:    1 (dynamic)\n"
+    "Filesystem features:      has_journal ext_attr resize_inode dir_index filetype extent flex_bg sparse_super "
+    "large_file huge_file uninit_bg dir_nlink extra_isize\n"
+    "Filesystem flags:         signed_directory_hash\n"
+    "Inode count:              79680\n"
+    "Block count:              319936\n"
+    "Reserved block count:     15996\n"
+    "Block size:               1024\n"
+    "Fragment size:            1024\n"
+    "Reserved GDT blocks:      255\n"
+    "Blocks per group:         8192\n"
+    "Inodes per group:         1992\n"
+    "Inode size:\t          128\n"
+    "Journal size:             4096k\n";
+} // namespace
+
+TEST_CASE("mkfsCommand on the dumpe2fs output captured from the console") {
+    const string device = "/dev/disk/by-partlabel/USRDATA";
+    // no -L: the volume name is <none>
+    CHECK(FactoryRestore::mkfsCommand(ConsoleDumpe2fs, device) ==
+          "mkfs.ext4 -F -q -b 1024 -I 128 -m 5.00 -O none,has_journal,ext_attr,resize_inode,dir_index,filetype,"
+          "extent,flex_bg,sparse_super,large_file,huge_file,uninit_bg,dir_nlink,extra_isize " +
+              device);
+    // the old bug: execUnixCommand erased the newlines, and one long line has no parameters
+    string flat = ConsoleDumpe2fs;
+    flat.erase(std::remove(flat.begin(), flat.end(), '\n'), flat.end());
+    CHECK(FactoryRestore::mkfsCommand(flat, device) == "");
+}
+
+TEST_CASE("ConsoleFlasher::runCommand keeps the newlines and gives the exit status") {
+    ConsoleFlasher::CommandResult two = ConsoleFlasher::runCommand("printf 'a\\nb\\n'");
+    CHECK(two.output == "a\nb\n");
+    CHECK(two.status == 0);
+    ConsoleFlasher::CommandResult failed = ConsoleFlasher::runCommand("printf 'x\\n'; exit 3");
+    CHECK(failed.output == "x\n");
+    CHECK(failed.status == 3);
+}
+
+TEST_CASE("restoreFactory: unreadable USRDATA parameters or a /data that cannot be unmounted write nothing") {
+    struct Case {
+        Flasher::UserDataCheck check;
+        const char *message;
+    } cases[] = {{Flasher::UserDataCheck::ParametersUnreadable, "The settings of the data partition cannot be read"},
+                 {Flasher::UserDataCheck::CannotUnmount, "The data partition cannot be unmounted"}};
+    for (const Case &c : cases) {
+        FactoryRun r;
+        r.flasher.userDataCheck = c.check;
+        CHECK(r.run() == FlashKitActions::Outcome::Refused);
+        CHECK(r.ui.said(c.message));
+        CHECK(r.ui.questions.empty());
+        CHECK_FALSE(r.wrote());
+        CHECK_FALSE(r.flasher.recoveryMode);
+        CHECK_FALSE(r.flasher.rebooted);
+        CHECK_FALSE(r.flasher.poweredOff);
+        for (const string &step : r.flasher.log) {
+            CHECK(step.find("backup") == string::npos);
+            CHECK(step.find("flash ") == string::npos);
+            CHECK(step.find("recovery mode") == string::npos);
+            CHECK(step.find("reset user data") == string::npos);
+        }
+    }
+}
+
+TEST_CASE("dataInUse: the overlay layers on /data,another mount of it, a bind of it, a mount below it") {
     CHECK(FactoryRestore::dataInUse(OverlayMounts, "/data"));
     CHECK_FALSE(FactoryRestore::dataInUse(FreeMounts, "/data"));
     CHECK_FALSE(FactoryRestore::dataInUse("", "/data"));

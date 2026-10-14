@@ -24,6 +24,7 @@
 
 #ifndef _WIN32
 #include <sys/stat.h>
+#include <sys/wait.h>
 #endif
 
 #ifndef _WIN32
@@ -139,8 +140,7 @@ bool kernelIsValid(const string &kernelDir) {
 
 // a console command that succeeded (its output goes nowhere, the answer is the exit status)
 bool commandSucceeds(const string &command) {
-    return System::execUnixCommand(("(" + command + ") >/dev/null 2>&1 && echo ABOK").c_str()).find("ABOK") !=
-           string::npos;
+    return ConsoleFlasher::runCommand("(" + command + ") >/dev/null 2>&1").status == 0;
 }
 
 bool manifestAndEris(const string &dataDir, FactoryRestore::Manifest &manifest, FactoryRestore::Eris &eris) {
@@ -165,6 +165,30 @@ bool ConsoleFlasher::hasForeignFirmware() {
 bool ConsoleFlasher::createBackup(const vector<LbootBackup::Partition> &partitions, const string &path,
                                   const Progress &status, const ableem::ByteProgress &bytes) {
     return writeBackup(partitions, path, status, bytes);
+}
+
+// System::execUnixCommand erases every '\n' of the output (other callers rely on that), so the dumpe2fs header
+// came back as one long line and no "Name:" was ever found. This keeps the output as it is.
+ConsoleFlasher::CommandResult ConsoleFlasher::runCommand(const string &command) {
+    CommandResult result;
+#ifdef _WIN32
+    FILE *pipe = _popen(command.c_str(), "r");
+#else
+    FILE *pipe = popen(command.c_str(), "r");
+#endif
+    if (!pipe)
+        return result;
+    char buffer[4096];
+    size_t got;
+    while ((got = fread(buffer, 1, sizeof(buffer), pipe)) > 0)
+        result.output.append(buffer, got);
+#ifdef _WIN32
+    result.status = _pclose(pipe);
+#else
+    int raw = pclose(pipe);
+    result.status = raw == -1 ? -1 : (WIFEXITED(raw) ? WEXITSTATUS(raw) : 128);
+#endif
+    return result;
 }
 
 bool ConsoleFlasher::validateBackup(const string &path) {
@@ -376,12 +400,7 @@ FactoryRestore::Result ConsoleFlasher::restoreRootfs(FactoryRestore::Rootfs stat
 
 Flasher::UserDataReset ConsoleFlasher::resetUserData() {
     const string device = UserDataPartition;
-    // tune2fs, else dumpe2fs -h (the console has no tune2fs): the same header lines
-    string mkfs = FactoryRestore::mkfsCommand(
-        System::execUnixCommand(("tune2fs -l " + device + " 2>/dev/null").c_str()), device);
-    if (mkfs.empty())
-        mkfs = FactoryRestore::mkfsCommand(
-            System::execUnixCommand(("dumpe2fs -h " + device + " 2>/dev/null").c_str()), device);
+    const string mkfs = userDataMkfs();
     if (mkfs.empty()) {
         PLOG_ERROR << "Cannot read the parameters of " << device;
         return UserDataReset::Untouched;
@@ -404,6 +423,36 @@ Flasher::UserDataReset ConsoleFlasher::resetUserData() {
     if (DirEntry::isDirectory("/usr/sony/share/recovery/AppData"))
         commandSucceeds(string("cp -a /usr/sony/share/recovery/AppData ") + DataMount + "/");
     return UserDataReset::Done;
+}
+
+// the mkfs command under USRDATA's present parameters, "" when they cannot be read. tune2fs, else dumpe2fs -h (the
+// console has no tune2fs): the same header lines, read with their newlines.
+string ConsoleFlasher::userDataMkfs() {
+    const string device = UserDataPartition;
+    string mkfs = FactoryRestore::mkfsCommand(runCommand("tune2fs -l " + device + " 2>/dev/null").output, device);
+    if (mkfs.empty())
+        mkfs = FactoryRestore::mkfsCommand(runCommand("dumpe2fs -h " + device + " 2>/dev/null").output, device);
+    return mkfs;
+}
+
+// The unmount is tried for real and undone at once: /proc/mounts and fuser only guess (fuser is not on every
+// console, and says nothing of a mount that is read-only or busy for another reason), umount is the answer the
+// erase itself will get. Nothing is written to the partition by it.
+Flasher::UserDataCheck ConsoleFlasher::checkUserData() {
+    const string device = UserDataPartition;
+    if (userDataMkfs().empty()) {
+        PLOG_ERROR << "Cannot read the parameters of " << device;
+        return UserDataCheck::ParametersUnreadable;
+    }
+    if (!commandSucceeds(string("sync; umount ") + DataMount)) {
+        PLOG_ERROR << DataMount << " cannot be unmounted";
+        return UserDataCheck::CannotUnmount;
+    }
+    if (!commandSucceeds(string("mount ") + DataMount) &&
+        !commandSucceeds("mount -t ext4 " + device + " " + DataMount)) {
+        PLOG_ERROR << device << " could not be mounted again after the unmount test";
+    }
+    return UserDataCheck::Ready;
 }
 
 bool ConsoleFlasher::userDataErasable() {
@@ -595,4 +644,8 @@ Flasher::UserDataReset FakeFlasher::resetUserData() {
 
 bool FakeFlasher::userDataErasable() {
     return dataErasable; // a question, not a step: not in the log
+}
+
+Flasher::UserDataCheck FakeFlasher::checkUserData() {
+    return userDataCheck; // a question, not a step: not in the log
 }

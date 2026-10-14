@@ -75,6 +75,11 @@ public:
     // USRDATA can be erased: the running system does not use it (no overlay layer on it, nothing else mounted
     // from it). Asked before anything is written.
     virtual bool userDataErasable() = 0;
+    // Asked before anything is written, right after userDataErasable(): the USRDATA parameters can be read and
+    // the mkfs command built (ParametersUnreadable), and /data can be unmounted (CannotUnmount). A failed
+    // restore at resetUserData() would come after Sony's kernel is written.
+    enum class UserDataCheck { Ready, ParametersUnreadable, CannotUnmount };
+    virtual UserDataCheck checkUserData() = 0;
 
     virtual void sync() = 0;
     // stops the launcher and the compositor and reboots; the tool does not return from it on the console
@@ -107,9 +112,18 @@ public:
                                          const ableem::ByteProgress &bytes) override;
     UserDataReset resetUserData() override;
     bool userDataErasable() override;
+    UserDataCheck checkUserData() override;
     void sync() override;
     void reboot() override;
     void powerOff() override;
+
+    // a shell command's whole output, newlines kept (System::execUnixCommand erases them), and its exit status
+    // (-1 when it could not be started). What every output the kit parses line by line is read through.
+    struct CommandResult {
+        std::string output;
+        int status = -1;
+    };
+    static CommandResult runCommand(const std::string &command);
 
     // the mounts the erasable check reads; the tests point it at a file
     std::string procMounts = "/proc/mounts";
@@ -125,6 +139,9 @@ public:
     // which point it at plain files.
     static KernelWrite writeImage(const std::string &image, const std::string &device,
                                   const ableem::ByteProgress &bytes);
+
+private:
+    static std::string userDataMkfs();
 };
 
 //******************
@@ -154,6 +171,7 @@ public:
                                          const ableem::ByteProgress &bytes) override;
     UserDataReset resetUserData() override;
     bool userDataErasable() override;
+    UserDataCheck checkUserData() override;
     void sync() override {}
     void reboot() override;
     void powerOff() override;
@@ -177,6 +195,7 @@ public:
     bool savesOk = true;
     UserDataReset userDataReset = UserDataReset::Done;
     bool dataErasable = true; // what userDataErasable() answers
+    UserDataCheck userDataCheck = UserDataCheck::Ready; // what checkUserData() answers
 
 private:
     void step(const std::string &what);

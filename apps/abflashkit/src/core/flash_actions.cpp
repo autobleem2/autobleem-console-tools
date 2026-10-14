@@ -339,6 +339,20 @@ FlashKitActions::Outcome FlashKitActions::restoreFactory() {
         ui_.wait(6000);
         return Outcome::Refused;
     }
+    // and the erase must be certain to work: its parameters readable, /data unmountable. Checked before the
+    // confirmation, so a console that cannot be restored is told so before anything is written.
+    switch (flasher_.checkUserData()) {
+    case Flasher::UserDataCheck::ParametersUnreadable:
+        ui_.status(_("The settings of the data partition cannot be read. Nothing was changed."));
+        ui_.wait(5000);
+        return Outcome::Refused;
+    case Flasher::UserDataCheck::CannotUnmount:
+        ui_.status(_("The data partition cannot be unmounted. Nothing was changed."));
+        ui_.wait(5000);
+        return Outcome::Refused;
+    case Flasher::UserDataCheck::Ready:
+        break;
+    }
     // the kernel image is Sony's and the system files are stock: only the data partition is left
     const bool dataOnly = found.bootIsStock && found.rootfs == Rootfs::Stock;
     string summary = _("Kernel image:") + " " + (found.bootIsStock ? _("stock") : _("not stock")) + "\n" +
