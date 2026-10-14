@@ -1,6 +1,6 @@
 # AutoBleem Chinese_Simplified Translation - abflashkit
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 3 / Total: 73
+# Untranslated: 3 / Total: 74
 
 About=
 All done - when the screen goes black replace power cord=全部完成 - 屏幕变黑后请重新插拔电源线
@@ -56,6 +56,7 @@ Testing=
 The built-in games are on the data partition - it would not be erased.=内置游戏位于数据分区 - 该分区不会被清除。
 The data partition could not be erased. The kernel and system files are Sony's already.=无法清除数据分区。内核和系统文件已是索尼原版。
 The data partition could not be made again. The console will restore itself from LBOOT.EPB when it restarts.=无法重新创建数据分区。主机重启时将从 LBOOT.EPB 自行恢复。
+The data partition is in use by the running system - restart with the AutoBleem stick's new start-up, or use Restore Mode with your own stock LBOOT.EPB.=数据分区正被运行中的系统使用 - 请用 AutoBleem 存储棒的新启动方式重新启动，或使用恢复模式并提供您自己的原版 LBOOT.EPB。
 The games are already backed up=游戏已经备份过了
 The kernel and system files go back to Sony's, and the data partition is erased and made again; the built-in games' saves are kept. Continue?=内核和系统文件将还原为索尼原版，数据分区将被清除并重新创建；内置游戏的存档会保留。是否继续？
 The kernel image could not be written. Nothing was changed.=无法写入内核镜像。未做任何更改。

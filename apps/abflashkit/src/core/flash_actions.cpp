@@ -322,6 +322,16 @@ FlashKitActions::Outcome FlashKitActions::restoreFactory() {
         ui_.wait(4000);
         return Outcome::Refused;
     }
+    // the data partition must be free to erase, or nothing is written: the half-done state of a console whose
+    // kernel and system files are Sony's already would only ever end at this step
+    if (!flasher_.userDataErasable()) {
+        ui_.status(_("The data partition is in use by the running system - restart with the AutoBleem stick's new "
+                     "start-up, or use Restore Mode with your own stock LBOOT.EPB."));
+        ui_.wait(6000);
+        return Outcome::Refused;
+    }
+    // the kernel image is Sony's and the system files are stock: only the data partition is left
+    const bool dataOnly = found.bootIsStock && found.rootfs == Rootfs::Stock;
     string summary = _("Kernel image:") + " " + (found.bootIsStock ? _("stock") : _("not stock")) + "\n" +
                      _("System files:") + " " + (found.rootfs == Rootfs::Stock ? _("stock") : _("Project Eris"));
     if (!found.foreignFolders.empty()) {
@@ -378,9 +388,12 @@ FlashKitActions::Outcome FlashKitActions::restoreFactory() {
     ui_.wait(2000);
     ui_.status(_("Setting recovery mode: on"));
     flasher_.setRecoveryMode(true, paths_.kernelDir);
-    ui_.status(_("Flashing KERNEL IMAGE"));
-    Flasher::KernelWrite written = flasher_.flashKernel(paths_.stockDir, bar());
-    noBar();
+    Flasher::KernelWrite written = Flasher::KernelWrite::Written;
+    if (!dataOnly) {
+        ui_.status(_("Flashing KERNEL IMAGE"));
+        written = flasher_.flashKernel(paths_.stockDir, bar());
+        noBar();
+    }
     if (written == Flasher::KernelWrite::NothingWritten) {
         flasher_.setRecoveryMode(false, paths_.kernelDir);
         led_.setMode(LedMode::Green);

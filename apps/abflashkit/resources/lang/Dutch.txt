@@ -1,6 +1,6 @@
 # AutoBleem Dutch Translation - abflashkit
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 3 / Total: 73
+# Untranslated: 3 / Total: 74
 
 About=
 All done - when the screen goes black replace power cord=Klaar - als het scherm zwart wordt, steek de stroomkabel opnieuw in
@@ -56,6 +56,7 @@ Testing=
 The built-in games are on the data partition - it would not be erased.=De ingebouwde games staan op de datapartitie - die zou niet worden gewist.
 The data partition could not be erased. The kernel and system files are Sony's already.=De datapartitie kon niet worden gewist. Kernel en systeembestanden zijn al die van Sony.
 The data partition could not be made again. The console will restore itself from LBOOT.EPB when it restarts.=De datapartitie kon niet opnieuw worden aangemaakt. De console herstelt zichzelf bij het opnieuw opstarten vanaf LBOOT.EPB.
+The data partition is in use by the running system - restart with the AutoBleem stick's new start-up, or use Restore Mode with your own stock LBOOT.EPB.=De datapartitie wordt gebruikt door het draaiende systeem - start opnieuw op met de nieuwe start-up van de AutoBleem-stick, of gebruik de herstelmodus met je eigen originele LBOOT.EPB.
 The games are already backed up=De games hebben al een back-up
 The kernel and system files go back to Sony's, and the data partition is erased and made again; the built-in games' saves are kept. Continue?=Kernel en systeembestanden gaan terug naar die van Sony, de datapartitie wordt gewist en opnieuw aangemaakt; de savegames van de ingebouwde games blijven bewaard. Doorgaan?
 The kernel image could not be written. Nothing was changed.=De kernel-image kon niet worden geschreven. Er is niets gewijzigd.

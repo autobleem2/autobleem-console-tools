@@ -87,9 +87,16 @@ public:
     // the names under `dataDir` of another firmware's folders (any case): autobleem, Eris, BleemSync
     static std::vector<std::string> foreignFolders(const std::string &dataDir);
 
-    // mkfs.ext4 for USRDATA from `tune2fs -l` output of the current filesystem - label, block and inode size, the
-    // features (without needs_recovery) and the reserved share - filling the whole partition; "" when the output
-    // lacks what is needed
+    // the data partition (mounted at `dataMount`) is in use by the running system, so it cannot be unmounted and
+    // made again: `procMounts` (the text of /proc/mounts) has an overlay whose upperdir, workdir or lowerdir is
+    // on it (relative "data/..." or absolute "/data/..."), another mount of the same device, a mount whose source
+    // is a path on it (a bind mount) or a mount below it. Not mounted at all = not in use.
+    static bool dataInUse(const std::string &procMounts, const std::string &dataMount);
+
+    // mkfs.ext4 for USRDATA from the output of `tune2fs -l` or `dumpe2fs -h` (the same "Key: value" header
+    // lines, with or without the "dumpe2fs 1.4x" first line) of the current filesystem - label, block and inode
+    // size, the features (without needs_recovery) and the reserved share - filling the whole partition; "" when
+    // the output lacks what is needed
     static std::string mkfsCommand(const std::string &tune2fsOutput, const std::string &device);
 
     // factory-YYYY-MM-DD for `when` (a time_t); the console has no battery clock, so the date may be old

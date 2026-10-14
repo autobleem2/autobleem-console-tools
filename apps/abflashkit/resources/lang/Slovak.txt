@@ -1,6 +1,6 @@
 # AutoBleem Slovak Translation - abflashkit
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 3 / Total: 73
+# Untranslated: 3 / Total: 74
 
 About=
 All done - when the screen goes black replace power cord=Hotovo - keď obrazovka sčernie, znova zapojte napájací kábel
@@ -56,6 +56,7 @@ Testing=
 The built-in games are on the data partition - it would not be erased.=Vstavané hry sú na dátovom oddieli - nebol by vymazaný.
 The data partition could not be erased. The kernel and system files are Sony's already.=Dátový oddiel sa nepodarilo vymazať. Jadro a systémové súbory sú už od Sony.
 The data partition could not be made again. The console will restore itself from LBOOT.EPB when it restarts.=Dátový oddiel sa nepodarilo vytvoriť znova. Konzola sa po reštarte obnoví z LBOOT.EPB.
+The data partition is in use by the running system - restart with the AutoBleem stick's new start-up, or use Restore Mode with your own stock LBOOT.EPB.=Dátový oddiel používa bežiaci systém - reštartujte s novým spustením z AutoBleem kľúča, alebo použite režim obnovy s vlastným pôvodným LBOOT.EPB.
 The games are already backed up=Hry už sú zálohované
 The kernel and system files go back to Sony's, and the data partition is erased and made again; the built-in games' saves are kept. Continue?=Jadro a systémové súbory sa vrátia na pôvodné od Sony, dátový oddiel sa vymaže a vytvorí znova; uložené pozície vstavaných hier zostanú zachované. Pokračovať?
 The kernel image could not be written. Nothing was changed.=Obraz jadra sa nepodarilo zapísať. Nič sa nezmenilo.

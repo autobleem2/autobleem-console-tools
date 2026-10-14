@@ -970,3 +970,119 @@ TEST_CASE("restoreFactory: a kernel write that fails, and a data partition that 
         CHECK(r.ui.said("restore itself from LBOOT.EPB"));
     }
 }
+
+//*******************************
+// the data partition in use, and dumpe2fs
+//*******************************
+namespace {
+// the console's /proc/mounts under the AutoBleem 2020 init: the root is an overlay whose layers are on /data
+const char *const OverlayMounts =
+    "rootfs / overlay rw,relatime,lowerdir=newroot,upperdir=data/autobleem/rootfs,workdir=data/autobleem/workdir 0 0\n"
+    "proc /proc proc rw,relatime 0 0\n"
+    "/dev/mmcblk0p10 /data ext4 rw,noatime,nodiratime,commit=1,data=ordered 0 0\n"
+    "rootfs /var/lib/bluetooth overlay rw,relatime,lowerdir=newroot,upperdir=data/autobleem/rootfs,"
+    "workdir=data/autobleem/workdir 0 0\n";
+// the new init: the upper layer in RAM, /data read-only and used by nothing
+const char *const FreeMounts =
+    "rootfs / overlay rw,relatime,lowerdir=newroot,upperdir=/ramdisk/upper,workdir=/ramdisk/work 0 0\n"
+    "proc /proc proc rw,relatime 0 0\n"
+    "/dev/mmcblk0p10 /data ext4 ro,noatime,nodiratime,data=ordered 0 0\n"
+    "/dev/sda1 /media vfat rw,relatime 0 0\n";
+} // namespace
+
+TEST_CASE("mkfsCommand reads dumpe2fs -h too, with its version line first") {
+    const string info =
+        "dumpe2fs 1.43.4 (31-Jan-2017)\n"
+        "Filesystem volume name:   userdata\n"
+        "Last mounted on:          /data\n"
+        "Filesystem features:      has_journal ext_attr resize_inode dir_index filetype needs_recovery extent "
+        "flex_bg sparse_super large_file huge_file dir_nlink extra_isize\n"
+        "Reserved block count:     50000\n"
+        "Block count:              1000000\n"
+        "Block size:               4096\n"
+        "Inode size:\t          256\n"
+        "Journal features:         journal_incompat_revoke\n";
+    CHECK(FactoryRestore::mkfsCommand(info, "/dev/x") ==
+          "mkfs.ext4 -F -q -b 4096 -I 256 -m 5.00 -O none,has_journal,ext_attr,resize_inode,dir_index,filetype,"
+          "extent,flex_bg,sparse_super,large_file,huge_file,dir_nlink,extra_isize -L userdata /dev/x");
+}
+
+TEST_CASE("dataInUse: the overlay layers on /data, another mount of it, a bind of it, a mount below it") {
+    CHECK(FactoryRestore::dataInUse(OverlayMounts, "/data"));
+    CHECK_FALSE(FactoryRestore::dataInUse(FreeMounts, "/data"));
+    CHECK_FALSE(FactoryRestore::dataInUse("", "/data"));
+    // absolute layer paths, in any of the three options
+    CHECK(FactoryRestore::dataInUse("/dev/p10 /data ext4 rw 0 0\nrootfs / overlay rw,upperdir=/data/x,workdir=/tmp/w 0 0\n",
+                                    "/data"));
+    CHECK(FactoryRestore::dataInUse("/dev/p10 /data ext4 rw 0 0\nrootfs / overlay rw,workdir=/data/w,upperdir=/tmp/u 0 0\n",
+                                    "/data"));
+    CHECK(FactoryRestore::dataInUse("/dev/p10 /data ext4 rw 0 0\nrootfs / overlay rw,lowerdir=/ro:/data/lower 0 0\n",
+                                    "/data"));
+    // a folder that only starts with the same letters is not /data
+    CHECK_FALSE(FactoryRestore::dataInUse("/dev/p10 /data ext4 rw 0 0\nrootfs / overlay rw,upperdir=/database/u 0 0\n",
+                                          "/data"));
+    CHECK(FactoryRestore::dataInUse("/dev/p10 /data ext4 rw 0 0\n/dev/p10 /mnt/again ext4 rw 0 0\n", "/data"));
+    CHECK(FactoryRestore::dataInUse("/dev/p10 /data ext4 rw 0 0\n/data/games /gaadata none rw,bind 0 0\n", "/data"));
+    CHECK(FactoryRestore::dataInUse("/dev/p10 /data ext4 rw 0 0\n/dev/sdb1 /data/usb vfat rw 0 0\n", "/data"));
+}
+
+TEST_CASE("ConsoleFlasher::userDataErasable follows the mounts file") {
+    TempDir tmp("mounts");
+    ConsoleFlasher flasher;
+    flasher.procMounts = tmp.at("mounts-busy");
+    tmp.writeFile("mounts-busy", OverlayMounts);
+    CHECK_FALSE(flasher.userDataErasable());
+    flasher.procMounts = tmp.at("mounts-free");
+    tmp.writeFile("mounts-free", FreeMounts);
+    CHECK(flasher.userDataErasable());
+    flasher.procMounts = tmp.at("no-such-file"); // cannot tell: not erased
+    CHECK_FALSE(flasher.userDataErasable());
+}
+
+TEST_CASE("restoreFactory refuses while the data partition is in use: nothing written, no backup, no flag") {
+    FactoryRun r;
+    r.flasher.dataErasable = false; // the overlay of the console's /proc/mounts
+    CHECK(r.run() == FlashKitActions::Outcome::Refused);
+    CHECK(r.ui.said("The data partition is in use by the running system"));
+    CHECK(r.ui.questions.empty());
+    CHECK_FALSE(r.wrote());
+    CHECK_FALSE(r.flasher.recoveryMode);
+    CHECK_FALSE(r.flasher.rebooted);
+    for (const string &step : r.flasher.log) {
+        CHECK(step.find("backup") == string::npos);
+        CHECK(step.find("flash") == string::npos);
+        CHECK(step.find("recovery mode") == string::npos);
+    }
+}
+
+TEST_CASE("restoreFactory with a free data partition (the new init) runs through") {
+    FactoryRun r;
+    r.flasher.dataErasable = true;
+    CHECK(r.run() == FlashKitActions::Outcome::Rebooting);
+    CHECK_FALSE(r.ui.said("in use by the running system"));
+    CHECK(r.flasher.rebooted);
+}
+
+TEST_CASE("restoreFactory in the half-done state: Sony's kernel and stock files, only the data partition is erased") {
+    FactoryRun r(false);
+    r.flasher.findings.bootIsStock = true;
+    CHECK(r.run() == FlashKitActions::Outcome::Rebooting);
+    const vector<string> &log = r.flasher.log;
+    REQUIRE(log.size() == 8);
+    CHECK(log[0] == "validate stock in " + r.paths.stockDir);
+    CHECK(log[1] == "inspect factory state");
+    CHECK(log[2].rfind("backup saves to ", 0) == 0);
+    CHECK(log[3] == "recovery mode on");
+    CHECK(log[4] == "reset user data");
+    CHECK(log[5].rfind("restore saves from ", 0) == 0);
+    CHECK(log[6] == "recovery mode off");
+    CHECK(log[7] == "reboot");
+    for (const string &step : log)
+        CHECK(step.find("flash ") == string::npos);
+    // and while it is still in use, it is refused as well
+    FactoryRun busy(false);
+    busy.flasher.findings.bootIsStock = true;
+    busy.flasher.dataErasable = false;
+    CHECK(busy.run() == FlashKitActions::Outcome::Refused);
+    CHECK_FALSE(busy.wrote());
+}

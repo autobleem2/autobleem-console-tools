@@ -1,6 +1,6 @@
 # AutoBleem Finnish Translation - abflashkit
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 3 / Total: 73
+# Untranslated: 3 / Total: 74
 
 About=
 All done - when the screen goes black replace power cord=Valmis - kun näyttö pimenee, kytke virtajohto uudelleen
@@ -56,6 +56,7 @@ Testing=
 The built-in games are on the data partition - it would not be erased.=Sisäiset pelit ovat datapartitiolla - sitä ei tyhjennettäisi.
 The data partition could not be erased. The kernel and system files are Sony's already.=Datapartitiota ei voitu tyhjentää. Ydin ja järjestelmätiedostot ovat jo Sonyn omat.
 The data partition could not be made again. The console will restore itself from LBOOT.EPB when it restarts.=Datapartitiota ei voitu luoda uudelleen. Konsoli palauttaa itsensä LBOOT.EPB:stä uudelleenkäynnistyksen yhteydessä.
+The data partition is in use by the running system - restart with the AutoBleem stick's new start-up, or use Restore Mode with your own stock LBOOT.EPB.=Käynnissä oleva järjestelmä käyttää datapartitiota - käynnistä uudelleen AutoBleem-tikun uudella käynnistyksellä tai käytä palautustilaa omalla alkuperäisellä LBOOT.EPB-tiedostollasi.
 The games are already backed up=Pelit on jo varmuuskopioitu
 The kernel and system files go back to Sony's, and the data partition is erased and made again; the built-in games' saves are kept. Continue?=Ydin ja järjestelmätiedostot palautetaan Sonyn versioihin, ja datapartitio tyhjennetään ja luodaan uudelleen; sisäisten pelien tallennukset säilytetään. Jatketaanko?
 The kernel image could not be written. Nothing was changed.=Ydinkuvaa ei voitu kirjoittaa. Mitään ei muutettu.

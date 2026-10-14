@@ -13,6 +13,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <fstream>
 #include <set>
@@ -453,6 +454,79 @@ vector<string> FactoryRestore::foreignFolders(const string &dataDir) {
     }
     sort(found.begin(), found.end());
     return found;
+}
+
+//*******************************
+// FactoryRestore::dataInUse
+//*******************************
+namespace {
+// `path` is `mount` or below it, with or without the leading slash ("data/autobleem/rootfs", "/data")
+bool isUnder(const string &path, const string &mount) {
+    const string name = mount.empty() || mount[0] != '/' ? mount : mount.substr(1);
+    const string rel = path.empty() || path[0] != '/' ? path : path.substr(1);
+    return !name.empty() && (rel == name || rel.compare(0, name.size() + 1, name + "/") == 0);
+}
+
+// an overlay option "upperdir=data/x", "lowerdir=a:b" names a directory of the mount
+bool optionsUse(const string &options, const string &mount) {
+    istringstream items(options);
+    string item;
+    while (getline(items, item, ',')) {
+        for (const char *key : {"upperdir=", "workdir=", "lowerdir="}) {
+            const size_t keyLength = strlen(key);
+            if (item.compare(0, keyLength, key) != 0)
+                continue;
+            istringstream paths(item.substr(keyLength));
+            string path;
+            while (getline(paths, path, ':')) {
+                if (isUnder(path, mount))
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+} // namespace
+
+bool FactoryRestore::dataInUse(const string &procMounts, const string &dataMount) {
+    struct Mount {
+        string source, point, options;
+    };
+    vector<Mount> mounts;
+    istringstream lines(procMounts);
+    string line;
+    while (getline(lines, line)) {
+        istringstream fields(line);
+        Mount mount;
+        string type;
+        if (fields >> mount.source >> mount.point >> type)
+            fields >> mount.options;
+        else
+            continue;
+        mounts.push_back(mount);
+    }
+    string device;
+    for (const Mount &mount : mounts) {
+        if (mount.point == dataMount)
+            device = mount.source;
+    }
+    if (device.empty())
+        return false;
+    for (const Mount &mount : mounts) {
+        const bool itself = mount.point == dataMount && mount.source == device;
+        if (itself)
+            continue;
+        if (optionsUse(mount.options, dataMount))
+            return true;
+        if (mount.source == device)
+            return true; // the same device mounted a second time
+        if (isUnder(mount.source, dataMount) && mount.source[0] == '/')
+            return true; // a bind mount of a folder of it
+        if (mount.point != dataMount && mount.point.size() > dataMount.size() &&
+            mount.point.compare(0, dataMount.size() + 1, dataMount + "/") == 0)
+            return true; // mounted below it
+    }
+    return false;
 }
 
 //*******************************

@@ -18,6 +18,7 @@
 #include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <sstream>
 #include <thread>
 
 #ifndef _WIN32
@@ -339,8 +340,12 @@ FactoryRestore::Result ConsoleFlasher::restoreRootfs(FactoryRestore::Rootfs stat
 
 Flasher::UserDataReset ConsoleFlasher::resetUserData() {
     const string device = UserDataPartition;
-    const string mkfs = FactoryRestore::mkfsCommand(
+    // tune2fs, else dumpe2fs -h (the console has no tune2fs): the same header lines
+    string mkfs = FactoryRestore::mkfsCommand(
         System::execUnixCommand(("tune2fs -l " + device + " 2>/dev/null").c_str()), device);
+    if (mkfs.empty())
+        mkfs = FactoryRestore::mkfsCommand(
+            System::execUnixCommand(("dumpe2fs -h " + device + " 2>/dev/null").c_str()), device);
     if (mkfs.empty()) {
         PLOG_ERROR << "Cannot read the parameters of " << device;
         return UserDataReset::Untouched;
@@ -363,6 +368,21 @@ Flasher::UserDataReset ConsoleFlasher::resetUserData() {
     if (DirEntry::isDirectory("/usr/sony/share/recovery/AppData"))
         commandSucceeds(string("cp -a /usr/sony/share/recovery/AppData ") + DataMount + "/");
     return UserDataReset::Done;
+}
+
+bool ConsoleFlasher::userDataErasable() {
+    ifstream in(procMounts);
+    if (!in) {
+        PLOG_WARNING << "Cannot read " << procMounts << ", taking the data partition for in use";
+        return false;
+    }
+    stringstream text;
+    text << in.rdbuf();
+    const bool inUse = FactoryRestore::dataInUse(text.str(), DataMount);
+    if (inUse) {
+        PLOG_WARNING << DataMount << " is in use by the running system";
+    }
+    return !inUse;
 }
 
 void ConsoleFlasher::sync() {
@@ -513,4 +533,8 @@ FactoryRestore::Result FakeFlasher::restoreRootfs(FactoryRestore::Rootfs state, 
 Flasher::UserDataReset FakeFlasher::resetUserData() {
     step("reset user data");
     return userDataReset;
+}
+
+bool FakeFlasher::userDataErasable() {
+    return dataErasable; // a question, not a step: not in the log
 }

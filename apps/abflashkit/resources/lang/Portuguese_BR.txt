@@ -1,6 +1,6 @@
 # AutoBleem Portuguese_BR Translation - abflashkit
 # Format: English Text=Translated Text (an empty value falls through to the main GUI's file)
-# Untranslated: 3 / Total: 73
+# Untranslated: 3 / Total: 74
 
 About=
 All done - when the screen goes black replace power cord=Tudo pronto - quando a tela ficar preta, reconecte o cabo de energia
@@ -56,6 +56,7 @@ Testing=
 The built-in games are on the data partition - it would not be erased.=Os jogos internos estão na partição de dados - ela não seria apagada.
 The data partition could not be erased. The kernel and system files are Sony's already.=Não foi possível apagar a partição de dados. O kernel e os arquivos do sistema já são os da Sony.
 The data partition could not be made again. The console will restore itself from LBOOT.EPB when it restarts.=Não foi possível criar a partição de dados de novo. O console se restaurará a partir do LBOOT.EPB ao reiniciar.
+The data partition is in use by the running system - restart with the AutoBleem stick's new start-up, or use Restore Mode with your own stock LBOOT.EPB.=A partição de dados está em uso pelo sistema em execução - reinicie com a nova inicialização do pendrive AutoBleem ou use o Modo de Restauração com o seu próprio LBOOT.EPB original.
 The games are already backed up=Os jogos já têm backup
 The kernel and system files go back to Sony's, and the data partition is erased and made again; the built-in games' saves are kept. Continue?=O kernel e os arquivos do sistema voltam aos da Sony, e a partição de dados é apagada e criada de novo; os saves dos jogos internos são mantidos. Continuar?
 The kernel image could not be written. Nothing was changed.=Não foi possível gravar a imagem do kernel. Nada foi alterado.

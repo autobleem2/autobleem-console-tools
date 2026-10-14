@@ -72,6 +72,9 @@ public:
     // or half made.
     enum class UserDataReset { Untouched, Done, Failed };
     virtual UserDataReset resetUserData() = 0;
+    // USRDATA can be erased: the running system does not use it (no overlay layer on it, nothing else mounted
+    // from it). Asked before anything is written.
+    virtual bool userDataErasable() = 0;
 
     virtual void sync() = 0;
     // stops the launcher and the compositor and reboots; the tool does not return from it on the console
@@ -100,8 +103,12 @@ public:
     FactoryRestore::Result restoreRootfs(FactoryRestore::Rootfs state, const std::string &dataDir,
                                          const ableem::ByteProgress &bytes) override;
     UserDataReset resetUserData() override;
+    bool userDataErasable() override;
     void sync() override;
     void reboot() override;
+
+    // the mounts the erasable check reads; the tests point it at a file
+    std::string procMounts = "/proc/mounts";
 
     static const char *const RootfsPartition; // /dev/disk/by-partlabel/ROOTFS1
     static const char *const UserDataPartition; // /dev/disk/by-partlabel/USRDATA
@@ -142,6 +149,7 @@ public:
     FactoryRestore::Result restoreRootfs(FactoryRestore::Rootfs state, const std::string &dataDir,
                                          const ableem::ByteProgress &bytes) override;
     UserDataReset resetUserData() override;
+    bool userDataErasable() override;
     void sync() override {}
     void reboot() override;
 
@@ -162,6 +170,7 @@ public:
     bool stockValid = true;
     bool savesOk = true;
     UserDataReset userDataReset = UserDataReset::Done;
+    bool dataErasable = true; // what userDataErasable() answers
 
 private:
     void step(const std::string &what);
